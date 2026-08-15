@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en" data-profile="__PROFILE__">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>__DISPLAY_NAME__</title>
+    <link rel="stylesheet" href="/static/app.css">
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <div class="page-grain" aria-hidden="true"></div>
+    <header class="masthead">
+      <div class="brand-lockup">
+        <span class="thread-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <div>
+          <div class="eyebrow">Local dictation workspace</div>
+          <div class="brand-line">
+            <h1>__DISPLAY_NAME__</h1>
+            __DEVELOPMENT_BADGE__
+          </div>
+        </div>
+      </div>
+
+      <div class="status-block">
+        <span class="status-label">Cleanup</span>
+        <div id="cleanup-status" class="status-pill" data-state="unchanged" role="status" aria-live="polite">
+          <span class="status-light" aria-hidden="true"></span>
+          <span id="cleanup-status-text">Ready</span>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="control-rail" aria-label="Cleanup controls">
+        <label class="switch-control" for="cleanup-enabled">
+          <input id="cleanup-enabled" type="checkbox" checked>
+          <span class="switch-track" aria-hidden="true"><span></span></span>
+          <span>Clean automatically</span>
+        </label>
+
+        <div class="control-actions">
+          <button id="run-cleanup" class="button button-primary" type="button">
+            <span aria-hidden="true">↻</span> Run cleanup
+          </button>
+          <button id="cancel-cleanup" class="button" type="button" disabled>Cancel</button>
+          <button id="clear-text" class="button button-quiet" type="button">Clear</button>
+        </div>
+      </section>
+
+      <section class="workspace" aria-label="Dictation workspace">
+        <article class="text-panel original-panel">
+          <header class="panel-heading">
+            <div>
+              <span class="panel-number">01</span>
+              <h2>Original</h2>
+            </div>
+            <span class="panel-note">Voiceitt listens here</span>
+          </header>
+          <div class="editor-wrap" id="original-editor-wrap">
+            <textarea
+              id="original-text"
+              aria-label="Original dictated text"
+              autocomplete="off"
+              placeholder="Place the cursor here, then begin dictating…"
+              spellcheck="false"
+            ></textarea>
+            <div id="caret-mirror" class="caret-mirror" aria-hidden="true"><span></span></div>
+            <span id="faux-caret" class="faux-caret" aria-hidden="true"></span>
+          </div>
+          <footer class="panel-footer">
+            <span><strong id="original-count">0</strong> characters</span>
+            <span>HTTP input surface</span>
+          </footer>
+        </article>
+
+        <div class="weave-divider" aria-hidden="true">
+          <span></span><i></i><span></span>
+        </div>
+
+        <article class="text-panel cleaned-panel">
+          <header class="panel-heading">
+            <div>
+              <span class="panel-number">02</span>
+              <h2>Cleaned</h2>
+            </div>
+            <span class="panel-note">Editable before sending</span>
+          </header>
+          <div class="editor-wrap">
+            <textarea
+              id="cleaned-text"
+              aria-label="Cleaned outgoing text"
+              autocomplete="off"
+              placeholder="Cleaned text appears here. You can edit it."
+              spellcheck="true"
+            ></textarea>
+          </div>
+          <footer class="panel-footer">
+            <span><strong id="cleaned-count">0</strong> characters</span>
+            <span id="model-label">Gemini</span>
+          </footer>
+        </article>
+      </section>
+
+      <section class="outgoing-strip" aria-label="Outgoing text state">
+        <div>
+          <span class="outgoing-label">Raycast will send</span>
+          <strong id="outgoing-kind">Nothing yet</strong>
+        </div>
+        <div id="publication-state" class="publication-state" role="status" aria-live="polite">
+          <span aria-hidden="true"></span>
+          <span>State ready</span>
+        </div>
+      </section>
+    </main>
+
+    <footer class="page-footer">
+      <span>Sayloom keeps the raw text sendable when cleanup cannot finish.</span>
+      <span class="shortcut-hint"><kbd>⌘</kbd><kbd>↵</kbd> reruns cleanup</span>
+    </footer>
+  </body>
+</html>
