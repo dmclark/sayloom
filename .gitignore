@@ -1,0 +1,33 @@
+# Python environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Operating data must remain outside Git
+data/
+state/
+logs/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+
+# Packaging and editor output
+build/
+dist/
+*.egg-info/
+.DS_Store
+.idea/
+.vscode/
+*.swp

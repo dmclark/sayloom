@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>local.local-text.development</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__REPOSITORY_ROOT__/scripts/run-development.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__REPOSITORY_ROOT__</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>LOCAL_TEXT_PROFILE</key>
+    <string>development</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>__STATE_DIRECTORY__/logs/service.log</string>
+  <key>StandardErrorPath</key>
+  <string>__STATE_DIRECTORY__/logs/service-error.log</string>
+</dict>
+</plist>
