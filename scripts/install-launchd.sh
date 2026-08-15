@@ -32,6 +32,7 @@ trap - EXIT HUP INT TERM
 
 if launchctl print "$domain/$label" >/dev/null 2>&1; then
   launchctl bootout "$domain/$label"
+  sleep 1
 fi
 launchctl bootstrap "$domain" "$plist"
 
