@@ -22,11 +22,11 @@ uv run ruff check .
 uv run pytest
 ```
 
-Do not use hot reload for validated coding tasks. After a user-level service has been deliberately installed in a future operation, use `scripts/verify-then-restart.sh`: it updates the locked environment, runs checks, and only then asks launchd to restart the service.
+Do not use hot reload for validated coding tasks. After the user-level service is installed, use `scripts/verify-then-restart.sh`: it updates the locked environment, runs checks, and only then asks launchd to restart the service.
 
-## Optional launchd preparation
+## User-level launchd service
 
-The repository includes, but does not install or load, a user-level launchd template. Its neutral identifiers are:
+The user-level launchd service uses these neutral identifiers:
 
 - label: `local.local-text.development`
 - state: `~/Library/Application Support/local-text/development`
@@ -39,7 +39,20 @@ uv run python scripts/render-launchd-plist.py > /tmp/local-text-development.plis
 plutil -lint /tmp/local-text-development.plist
 ```
 
-Installing or loading that plist is intentionally outside this bootstrap task. Runtime logs and all future operating data belong in the external state directory, never in this repository.
+After reviewing it, install or safely reload only this user agent:
+
+```sh
+uv sync --locked
+scripts/install-launchd.sh
+```
+
+The installer creates the external state and log directories with user-only permissions. To stop the agent and remove its installed plist while preserving external state:
+
+```sh
+scripts/uninstall-launchd.sh
+```
+
+Runtime logs and all future operating data belong in the external state directory, never in this repository.
 
 ## Privacy
 
