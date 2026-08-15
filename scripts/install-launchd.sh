@@ -18,6 +18,8 @@ fi
 umask 077
 mkdir -p "$state_root" "$state_directory" "$log_directory" "$agent_directory"
 chmod 700 "$state_root" "$state_directory" "$log_directory"
+touch "$log_directory/service.log" "$log_directory/service-error.log"
+chmod 600 "$log_directory/service.log" "$log_directory/service-error.log"
 
 temporary_plist=$(mktemp "$agent_directory/.$label.XXXXXX")
 trap 'rm -f "$temporary_plist"' EXIT HUP INT TERM
