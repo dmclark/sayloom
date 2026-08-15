@@ -8,10 +8,10 @@ Requirements: macOS, Python 3.12+, and [uv](https://docs.astral.sh/uv/).
 
 ```sh
 uv sync --locked
-uv run uvicorn local_text.app:app --host 127.0.0.1 --port 8877
+uv run uvicorn local_text.app:app --host 127.0.0.1 --port 7523
 ```
 
-Open <http://127.0.0.1:8877/> or check <http://127.0.0.1:8877/health>.
+Open <http://127.0.0.1:7523/> or check <http://127.0.0.1:7523/health>.
 
 The local default is the `development` profile and displays **Sayloom Development**. A release process can explicitly select release branding with `LOCAL_TEXT_PROFILE=release`. Application startup performs no database migrations.
 
@@ -30,7 +30,7 @@ The user-level launchd service uses these neutral identifiers:
 
 - label: `local.local-text.development`
 - state: `~/Library/Application Support/local-text/development`
-- port: `8877`
+- port: `7523`
 
 Render a plist for review without changing machine state:
 
