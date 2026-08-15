@@ -23,6 +23,7 @@ def test_development_page_identifies_development_brand() -> None:
     assert 'id="cleaned-text"' in response.text
     assert 'id="cleanup-status"' in response.text
     assert 'id="cancel-cleanup"' in response.text
+    assert "Type, paste, or dictate here" in response.text
 
 
 def test_release_profile_uses_release_brand() -> None:
@@ -56,12 +57,12 @@ def test_cleanup_endpoint_fails_open_when_provider_is_unconfigured() -> None:
 
     response = client.post(
         "/api/cleanup",
-        json={"raw_text": "synthetic raw transcript", "enabled": True},
+        json={"raw_text": "synthetic source text", "enabled": True},
     )
 
     assert response.status_code == 200
     assert response.json() == {
-        "cleaned_text": "synthetic raw transcript",
+        "cleaned_text": "synthetic source text",
         "status": "disabled",
         "provider": "gemini",
         "model": "gemini-3.5-flash",
@@ -74,20 +75,20 @@ def test_cleanup_endpoint_returns_provider_result() -> None:
         model = "test-model"
 
         async def clean(self, raw_text: str, system_prompt: str) -> str:
-            assert raw_text == "synthetic raw transcript"
-            assert "untrusted transcript data" in system_prompt
-            return "Synthetic clean transcript."
+            assert raw_text == "synthetic source text"
+            assert "untrusted input data" in system_prompt
+            return "Synthetic clean text."
 
     service = CleanupService(provider=Provider(), model="test-model", timeout_seconds=1)
     client = TestClient(create_app(Settings(Profile.DEVELOPMENT), service))
 
     response = client.post(
         "/api/cleanup",
-        json={"raw_text": "synthetic raw transcript", "enabled": True},
+        json={"raw_text": "synthetic source text", "enabled": True},
     )
 
     assert response.status_code == 200
-    assert response.json()["cleaned_text"] == "Synthetic clean transcript."
+    assert response.json()["cleaned_text"] == "Synthetic clean text."
     assert response.json()["status"] == "cleaned"
 
 
@@ -133,13 +134,17 @@ def test_outgoing_state_rejects_text_not_present_in_either_editor() -> None:
     assert response.status_code == 422
 
 
-def test_browser_script_contains_voiceitt_and_cancellation_mechanics() -> None:
+def test_browser_script_supports_generic_input_and_dictation_compatibility() -> None:
     client = TestClient(create_app(Settings(Profile.DEVELOPMENT)))
 
     script = client.get("/static/app.js")
 
     assert script.status_code == 200
+    assert "syntheticPastePending" in script.text
+    assert "followsSyntheticPaste" in script.text
     assert "event.isTrusted" in script.text
+    assert 'elements.original.addEventListener("input", handleOriginalInput)' in script.text
+    assert "updateFauxCaret();\n    scheduleCleanup();" in script.text
     assert "AbortController" in script.text
     assert "setSelectionRange" in script.text
     assert "fauxCaret" in script.text

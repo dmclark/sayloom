@@ -1,6 +1,6 @@
 # Sayloom Development
 
-A local-first Voiceitt dictation workspace. The minimal daily surface keeps editable Original and Cleaned text, fails open to the original when Gemini is unavailable, and publishes the selected outgoing text for Raycast. The Python package and machine-level identifiers are deliberately neutral and independent of the display brand.
+A local-first text cleanup workspace for typing, paste, and compatible dictation input. The minimal daily surface keeps editable Original and Cleaned text, fails open to the original when Gemini is unavailable, and publishes the selected outgoing text for Raycast. The Python package and machine-level identifiers are deliberately neutral and independent of the display brand.
 
 ## Setup
 
@@ -17,7 +17,9 @@ The local default is the `development` profile and displays **Sayloom Developmen
 
 ## Gemini cleanup
 
-Cleanup is enabled by default and always fails open to the unchanged Original text. Configure the development LaunchAgent by creating the external, user-only file `~/Library/Application Support/local-text/development/environment`:
+Cleanup is enabled by default for every Original update, regardless of whether it came from typing, ordinary paste, or compatible dictation. It always fails open to the unchanged Original text. Dictation tools that signal a write with an untrusted synthetic paste followed by a trusted input event receive compatible caret and focus handling, but that event sequence is not a required input API.
+
+Configure the development LaunchAgent by creating the external, user-only file `~/Library/Application Support/local-text/development/environment`:
 
 ```sh
 LOCAL_TEXT_GEMINI_API_KEY=replace-with-your-key
@@ -80,7 +82,7 @@ Add this repository's `raycast/` directory as a Raycast Script Commands director
 
 Raycast owns global hotkeys; no hotkey values are committed. Assign the familiar hotkeys to these development-branded commands in Raycast settings. Send commands refuse empty, malformed, or unavailable outgoing state and never press Return. Amp, Supacode, and VS Code use a Sticky-Keys-safe synthetic paste and restore the prior text clipboard. iTerm inserts multiline text directly without using the clipboard.
 
-Gate 1 is complete only after testing Voiceitt dictation and all five bound commands on the real Mac. Confirm Open Sayloom both creates and raises the **Sayloom Development** Chrome window, Gemini success and fail-open status, cancellation, multiline iTerm insertion, target-app insertion without submission, clipboard restoration, and refusal of empty/unavailable state.
+Gate 1 is complete only after testing typing, ordinary paste, compatible dictation input, and all five bound commands on the real Mac. Confirm every input path reaches cleanup, Open Sayloom both creates and raises the **Sayloom Development** Chrome window, Gemini success and fail-open status, cancellation, multiline iTerm insertion, target-app insertion without submission, clipboard restoration, and refusal of empty/unavailable state.
 
 ## Privacy
 

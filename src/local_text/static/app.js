@@ -42,8 +42,8 @@
   let activeRequest = null;
   let requestSequence = 0;
   let cleanedWasEdited = false;
-  let voiceittPastePending = false;
-  let voiceittPasteTimer = null;
+  let syntheticPastePending = false;
+  let syntheticPasteTimer = null;
   let returnSelectionPending = false;
 
   function setStatus(nextStatus) {
@@ -271,10 +271,10 @@
   }
 
   function handleOriginalInput(event) {
-    const isVoiceittWrite = voiceittPastePending && event.isTrusted;
-    if (isVoiceittWrite) {
-      window.clearTimeout(voiceittPasteTimer);
-      voiceittPastePending = false;
+    const followsSyntheticPaste = syntheticPastePending && event.isTrusted;
+    if (followsSyntheticPaste) {
+      window.clearTimeout(syntheticPasteTimer);
+      syntheticPastePending = false;
       const caret = elements.original.selectionEnd;
       window.requestAnimationFrame(() => {
         elements.original.focus({ preventScroll: true });
@@ -283,24 +283,16 @@
       });
     }
     updateFauxCaret();
-    if (isVoiceittWrite) {
-      scheduleCleanup();
-    } else {
-      window.clearTimeout(cleanupTimer);
-      abortActiveRequest({ markStale: false });
-      elements.cleaned.value = elements.original.value;
-      cleanedWasEdited = false;
-      setStatus(elements.cleanupEnabled.checked ? "unchanged" : "disabled");
-      schedulePublication();
-    }
+    scheduleCleanup();
   }
 
+  // Compatibility path for dictation tools that precede trusted input with a synthetic paste.
   elements.original.addEventListener("paste", (event) => {
     if (!event.isTrusted) {
-      voiceittPastePending = true;
-      window.clearTimeout(voiceittPasteTimer);
-      voiceittPasteTimer = window.setTimeout(() => {
-        voiceittPastePending = false;
+      syntheticPastePending = true;
+      window.clearTimeout(syntheticPasteTimer);
+      syntheticPasteTimer = window.setTimeout(() => {
+        syntheticPastePending = false;
       }, 1_000);
     }
   });

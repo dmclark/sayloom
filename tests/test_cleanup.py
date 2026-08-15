@@ -113,7 +113,7 @@ def test_gemini_response_requires_text_parts() -> None:
     )
 
 
-def test_gemini_provider_separately_frames_prompt_and_untrusted_transcript() -> None:
+def test_gemini_provider_separately_frames_prompt_and_untrusted_source_text() -> None:
     observed: dict[str, object] = {}
     response_body = json.dumps(
         {"candidates": [{"content": {"parts": [{"text": "Synthetic clean text."}]}}]}
@@ -144,7 +144,7 @@ def test_gemini_provider_separately_frames_prompt_and_untrusted_transcript() -> 
             timeout_seconds=1,
             endpoint=f"http://{host}:{port}",
         )
-        result = asyncio.run(provider.clean("synthetic raw text", "Synthetic system prompt"))
+        result = asyncio.run(provider.clean("synthetic source text", "Synthetic system prompt"))
     finally:
         server.shutdown()
         thread.join()
@@ -158,5 +158,5 @@ def test_gemini_provider_separately_frames_prompt_and_untrusted_transcript() -> 
     assert request_body["system_instruction"]["parts"][0]["text"] == "Synthetic system prompt"
     assert (
         request_body["contents"][0]["parts"][0]["text"]
-        == "<TRANSCRIPT>\nsynthetic raw text\n</TRANSCRIPT>"
+        == "<SOURCE_TEXT>\nsynthetic source text\n</SOURCE_TEXT>"
     )
