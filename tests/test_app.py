@@ -76,7 +76,10 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="cleanup-status"' in response.text
     assert 'id="cancel-cleanup"' in response.text
     assert 'id="prompt-history"' in response.text
+    assert 'id="active-prompt-selector"' in response.text
+    assert 'id="prompt-manager"' in response.text
     assert 'id="save-prompt"' in response.text
+    assert 'id="workspace-resizer"' in response.text
     assert "Type, paste, or dictate here" in response.text
 
 
@@ -293,18 +296,28 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     assert "followsSyntheticPaste" in script.text
     assert "event.isTrusted" in script.text
     assert 'elements.original.addEventListener("input", handleOriginalInput)' in script.text
-    assert "updateFauxCaret();\n    scheduleCleanup();" in script.text
+    assert "scheduleCleanup();" in script.text
     assert "AbortController" in script.text
     assert "setSelectionRange" in script.text
-    assert "fauxCaret" in script.text
+    assert "fauxCaret" not in script.text
+    assert 'elements.workspaceResizer.addEventListener("pointerdown"' in script.text
+    assert "elements.promptManager.showModal()" in script.text
 
 
-def test_faux_caret_uses_a_nonzero_editor_font_marker(initialized_settings: Settings) -> None:
+def test_stacked_workspace_uses_native_caret_and_accessible_resizer(
+    initialized_settings: Settings,
+) -> None:
     client = TestClient(create_app(initialized_settings))
 
     stylesheet = client.get("/static/app.css")
+    page = client.get("/")
 
     assert stylesheet.status_code == 200
-    assert "caret-color: transparent" in stylesheet.text
-    assert ".caret-mirror span {" in stylesheet.text
-    assert stylesheet.text.count("height: 1.25em") == 2
+    assert "caret-color: var(--blue)" in stylesheet.text
+    assert "caret-color: transparent" not in stylesheet.text
+    assert ".faux-caret" not in stylesheet.text
+    assert "grid-template-rows:" in stylesheet.text
+    assert "cursor: row-resize" in stylesheet.text
+    assert 'role="separator"' in page.text
+    assert 'aria-valuemin="45"' in page.text
+    assert 'aria-valuemax="80"' in page.text

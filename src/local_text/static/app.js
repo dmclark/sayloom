@@ -3,6 +3,9 @@
 
   const CLEANUP_DEBOUNCE_MS = 700;
   const PUBLICATION_DEBOUNCE_MS = 150;
+  const DEFAULT_ORIGINAL_SHARE = 65;
+  const MINIMUM_ORIGINAL_SHARE = 45;
+  const MAXIMUM_ORIGINAL_SHARE = 80;
 
   const elements = {
     original: document.querySelector("#original-text"),
@@ -18,9 +21,12 @@
     outgoingKind: document.querySelector("#outgoing-kind"),
     publication: document.querySelector("#publication-state"),
     modelLabel: document.querySelector("#model-label"),
-    caretMirror: document.querySelector("#caret-mirror"),
-    fauxCaret: document.querySelector("#faux-caret"),
-    activePromptLabel: document.querySelector("#active-prompt-label"),
+    workspace: document.querySelector(".workspace"),
+    workspaceResizer: document.querySelector("#workspace-resizer"),
+    activePromptSelector: document.querySelector("#active-prompt-selector"),
+    managePrompts: document.querySelector("#manage-prompts"),
+    promptManager: document.querySelector("#prompt-manager"),
+    closePromptManager: document.querySelector("#close-prompt-manager"),
     promptHistory: document.querySelector("#prompt-history"),
     promptVersionMeta: document.querySelector("#prompt-version-meta"),
     promptTitle: document.querySelector("#prompt-title"),
@@ -55,11 +61,31 @@
   let returnSelectionPending = false;
   let promptVersions = [];
   let activePromptVersionId = null;
+  let activeResizePointer = null;
 
   function setStatus(nextStatus) {
     status = nextStatus;
     elements.status.dataset.state = nextStatus;
     elements.statusText.textContent = statusLabels[nextStatus] || nextStatus;
+  }
+
+  function setWorkspaceShare(value) {
+    const originalShare = Math.min(
+      MAXIMUM_ORIGINAL_SHARE,
+      Math.max(MINIMUM_ORIGINAL_SHARE, Math.round(value)),
+    );
+    elements.workspace.style.setProperty("--original-share", `${originalShare}fr`);
+    elements.workspace.style.setProperty("--cleaned-share", `${100 - originalShare}fr`);
+    elements.workspaceResizer.setAttribute("aria-valuenow", String(originalShare));
+    elements.workspaceResizer.setAttribute(
+      "aria-valuetext",
+      `Original ${originalShare} percent, Cleaned ${100 - originalShare} percent`,
+    );
+  }
+
+  function resizeFromPointer(event) {
+    const bounds = elements.workspace.getBoundingClientRect();
+    setWorkspaceShare(((event.clientY - bounds.top) / bounds.height) * 100);
   }
 
   function selectedOutgoingState() {
@@ -171,7 +197,6 @@
     elements.original.focus({ preventScroll: true });
     const end = Math.min(selection.end, elements.original.value.length);
     elements.original.setSelectionRange(Math.min(selection.start, end), end);
-    updateFauxCaret();
   }
 
   async function runCleanup() {
@@ -266,20 +291,6 @@
     cleanupTimer = window.setTimeout(runCleanup, CLEANUP_DEBOUNCE_MS);
   }
 
-  function updateFauxCaret() {
-    const textarea = elements.original;
-    const mirror = elements.caretMirror;
-    const beforeCaret = textarea.value.slice(0, textarea.selectionEnd);
-    const marker = document.createElement("span");
-    mirror.textContent = beforeCaret;
-    if (beforeCaret.endsWith("\n")) mirror.append(document.createTextNode("\u200b"));
-    mirror.append(marker);
-    const mirrorRect = mirror.getBoundingClientRect();
-    const markerRect = marker.getBoundingClientRect();
-    elements.fauxCaret.style.left = `${markerRect.left - mirrorRect.left - textarea.scrollLeft}px`;
-    elements.fauxCaret.style.top = `${markerRect.top - mirrorRect.top - textarea.scrollTop}px`;
-  }
-
   function handleOriginalInput(event) {
     const followsSyntheticPaste = syntheticPastePending && event.isTrusted;
     if (followsSyntheticPaste) {
@@ -289,10 +300,8 @@
       window.requestAnimationFrame(() => {
         elements.original.focus({ preventScroll: true });
         elements.original.setSelectionRange(caret, caret);
-        updateFauxCaret();
       });
     }
-    updateFauxCaret();
     scheduleCleanup();
   }
 
@@ -307,10 +316,6 @@
     }
   });
   elements.original.addEventListener("input", handleOriginalInput);
-  elements.original.addEventListener("click", updateFauxCaret);
-  elements.original.addEventListener("keyup", updateFauxCaret);
-  elements.original.addEventListener("scroll", updateFauxCaret);
-  elements.original.addEventListener("focus", updateFauxCaret);
 
   elements.cleaned.addEventListener("input", () => {
     cleanedWasEdited = true;
@@ -344,7 +349,38 @@
     renderCountsAndSelection();
     clearPublishedState();
     elements.original.focus();
-    updateFauxCaret();
+  });
+
+  elements.workspaceResizer.addEventListener("pointerdown", (event) => {
+    activeResizePointer = event.pointerId;
+    elements.workspaceResizer.setPointerCapture(event.pointerId);
+    elements.workspaceResizer.classList.add("is-resizing");
+    resizeFromPointer(event);
+  });
+  elements.workspaceResizer.addEventListener("pointermove", (event) => {
+    if (event.pointerId === activeResizePointer) resizeFromPointer(event);
+  });
+  function finishResize(event) {
+    if (event.pointerId !== activeResizePointer) return;
+    activeResizePointer = null;
+    elements.workspaceResizer.classList.remove("is-resizing");
+  }
+  elements.workspaceResizer.addEventListener("pointerup", finishResize);
+  elements.workspaceResizer.addEventListener("pointercancel", finishResize);
+  elements.workspaceResizer.addEventListener("dblclick", () => {
+    setWorkspaceShare(DEFAULT_ORIGINAL_SHARE);
+  });
+  elements.workspaceResizer.addEventListener("keydown", (event) => {
+    const currentShare = Number(elements.workspaceResizer.getAttribute("aria-valuenow"));
+    const nextShare = {
+      ArrowUp: currentShare - 2,
+      ArrowDown: currentShare + 2,
+      Home: MINIMUM_ORIGINAL_SHARE,
+      End: MAXIMUM_ORIGINAL_SHARE,
+    }[event.key];
+    if (nextShare === undefined) return;
+    event.preventDefault();
+    setWorkspaceShare(nextShare);
   });
 
   function selectedPrompt() {
@@ -371,21 +407,59 @@
     const result = await response.json();
     promptVersions = Array.isArray(result.versions) ? result.versions : [];
     activePromptVersionId = result.active_prompt_version_id;
+    elements.activePromptSelector.textContent = "";
     elements.promptHistory.textContent = "";
     promptVersions.forEach((prompt) => {
-      const option = document.createElement("option");
-      option.value = String(prompt.id);
-      option.textContent = `v${prompt.version} · ${prompt.title}${prompt.active ? " — active" : ""}`;
-      elements.promptHistory.append(option);
+      const activeOption = document.createElement("option");
+      activeOption.value = String(prompt.id);
+      activeOption.textContent = `v${prompt.version} · ${prompt.title}`;
+      elements.activePromptSelector.append(activeOption);
+
+      const historyOption = document.createElement("option");
+      historyOption.value = String(prompt.id);
+      historyOption.textContent = `v${prompt.version} · ${prompt.title}${prompt.active ? " — active" : ""}`;
+      elements.promptHistory.append(historyOption);
     });
-    const activePrompt = promptVersions.find((prompt) => prompt.id === activePromptVersionId);
-    elements.activePromptLabel.textContent = activePrompt
-      ? `v${activePrompt.version} · ${activePrompt.title}`
-      : "No active prompt";
+    elements.activePromptSelector.value = String(activePromptVersionId ?? "");
     elements.promptHistory.value = String(selectId ?? activePromptVersionId ?? "");
     renderSelectedPrompt();
   }
 
+  async function activatePromptVersion(prompt, successMessage) {
+    const response = await fetch(`/api/prompts/${prompt.id}/activate`, { method: "POST" });
+    if (!response.ok) throw new Error(`Activation failed with ${response.status}`);
+    await loadPromptHistory(prompt.id);
+    elements.promptSaveStatus.textContent = successMessage;
+    if (elements.original.value) scheduleCleanup();
+  }
+
+  elements.managePrompts.addEventListener("click", () => {
+    elements.promptHistory.value = String(activePromptVersionId ?? "");
+    renderSelectedPrompt();
+    elements.promptSaveStatus.textContent = "Ready to create an immutable version.";
+    elements.promptManager.showModal();
+  });
+  elements.closePromptManager.addEventListener("click", () => elements.promptManager.close());
+  elements.promptManager.addEventListener("click", (event) => {
+    if (event.target === elements.promptManager) elements.promptManager.close();
+  });
+  elements.activePromptSelector.addEventListener("change", async () => {
+    const prompt = promptVersions.find(
+      (candidate) => candidate.id === Number(elements.activePromptSelector.value),
+    );
+    if (!prompt) return;
+    elements.activePromptSelector.disabled = true;
+    setPublicationState("pending", "Changing prompt…");
+    try {
+      await activatePromptVersion(prompt, `Version ${prompt.version} is active.`);
+      setPublicationState("ready", `Prompt v${prompt.version} active`);
+    } catch (_error) {
+      elements.activePromptSelector.value = String(activePromptVersionId ?? "");
+      setPublicationState("error", "Prompt unchanged");
+    } finally {
+      elements.activePromptSelector.disabled = false;
+    }
+  });
   elements.promptHistory.addEventListener("change", renderSelectedPrompt);
   elements.activatePrompt.addEventListener("click", async () => {
     const prompt = selectedPrompt();
@@ -393,11 +467,7 @@
     elements.activatePrompt.disabled = true;
     elements.promptSaveStatus.textContent = "Activating selected version…";
     try {
-      const response = await fetch(`/api/prompts/${prompt.id}/activate`, { method: "POST" });
-      if (!response.ok) throw new Error(`Activation failed with ${response.status}`);
-      await loadPromptHistory(prompt.id);
-      elements.promptSaveStatus.textContent = `Version ${prompt.version} is active.`;
-      if (elements.original.value) scheduleCleanup();
+      await activatePromptVersion(prompt, `Version ${prompt.version} is active.`);
     } catch (_error) {
       elements.activatePrompt.disabled = false;
       elements.promptSaveStatus.textContent = "Could not activate that version.";
@@ -446,7 +516,6 @@
     window.requestAnimationFrame(() => {
       elements.original.focus({ preventScroll: true });
       elements.original.setSelectionRange(0, elements.original.value.length);
-      updateFauxCaret();
     });
   });
 
@@ -475,7 +544,7 @@
         setStatus("disabled");
       }
       renderCountsAndSelection();
-      updateFauxCaret();
+      setWorkspaceShare(DEFAULT_ORIGINAL_SHARE);
       await loadPromptHistory();
       publishNow();
     } catch (_error) {

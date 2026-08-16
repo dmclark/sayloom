@@ -33,11 +33,21 @@
 
     <main>
       <section class="control-rail" aria-label="Cleanup controls">
-        <label class="switch-control" for="cleanup-enabled">
-          <input id="cleanup-enabled" type="checkbox" checked>
-          <span class="switch-track" aria-hidden="true"><span></span></span>
-          <span>Clean automatically</span>
-        </label>
+        <div class="control-context">
+          <label class="switch-control" for="cleanup-enabled">
+            <input id="cleanup-enabled" type="checkbox" checked>
+            <span class="switch-track" aria-hidden="true"><span></span></span>
+            <span>Clean automatically</span>
+          </label>
+
+          <div class="prompt-quick-control">
+            <label for="active-prompt-selector">Prompt</label>
+            <select id="active-prompt-selector" aria-label="Active cleanup prompt"></select>
+            <button id="manage-prompts" class="button button-quiet" type="button">
+              Manage prompts
+            </button>
+          </div>
+        </div>
 
         <div class="control-actions">
           <button id="run-cleanup" class="button button-primary" type="button">
@@ -46,40 +56,6 @@
           <button id="cancel-cleanup" class="button" type="button" disabled>Cancel</button>
           <button id="clear-text" class="button button-quiet" type="button">Clear</button>
         </div>
-      </section>
-
-      <section class="prompt-drawer" aria-label="Cleanup prompt versions">
-        <details>
-          <summary>
-            <span>
-              <span class="prompt-kicker">Cleanup instruction</span>
-              <strong id="active-prompt-label">Loading prompt history…</strong>
-            </span>
-            <span class="prompt-disclosure" aria-hidden="true">Manage versions ＋</span>
-          </summary>
-          <div class="prompt-manager">
-            <div class="prompt-history-column">
-              <label for="prompt-history">Version history</label>
-              <select id="prompt-history" size="5" aria-label="Prompt version history"></select>
-              <p id="prompt-version-meta" class="prompt-meta"></p>
-              <button id="activate-prompt" class="button" type="button">Make selected active</button>
-            </div>
-            <div class="prompt-editor-column">
-              <label for="prompt-title">Version title</label>
-              <input id="prompt-title" maxlength="120" autocomplete="off">
-              <label for="prompt-text">Cleanup instruction</label>
-              <textarea id="prompt-text" maxlength="100000" spellcheck="true"></textarea>
-              <div class="prompt-save-row">
-                <span id="prompt-save-status" role="status" aria-live="polite">
-                  Changes create an immutable version.
-                </span>
-                <button id="save-prompt" class="button button-primary" type="button">
-                  Save new &amp; activate
-                </button>
-              </div>
-            </div>
-          </div>
-        </details>
       </section>
 
       <section class="workspace" aria-label="Text cleanup workspace">
@@ -99,8 +75,6 @@
               placeholder="Type, paste, or use compatible dictation…"
               spellcheck="false"
             ></textarea>
-            <div id="caret-mirror" class="caret-mirror" aria-hidden="true"><span></span></div>
-            <span id="faux-caret" class="faux-caret" aria-hidden="true"></span>
           </div>
           <footer class="panel-footer">
             <span><strong id="original-count">0</strong> characters</span>
@@ -108,8 +82,19 @@
           </footer>
         </article>
 
-        <div class="weave-divider" aria-hidden="true">
-          <span></span><i></i><span></span>
+        <div
+          id="workspace-resizer"
+          class="workspace-resizer"
+          role="separator"
+          tabindex="0"
+          aria-label="Resize Original and Cleaned fields"
+          aria-orientation="horizontal"
+          aria-valuemin="45"
+          aria-valuemax="80"
+          aria-valuenow="65"
+          aria-valuetext="Original 65 percent, Cleaned 35 percent"
+        >
+          <span aria-hidden="true"></span><i aria-hidden="true"></i><span aria-hidden="true"></span>
         </div>
 
         <article class="text-panel cleaned-panel">
@@ -147,6 +132,44 @@
         </div>
       </section>
     </main>
+
+    <dialog id="prompt-manager" class="prompt-manager-dialog" aria-labelledby="prompt-manager-title">
+      <div class="prompt-sheet">
+        <header class="prompt-sheet-header">
+          <div>
+            <span class="prompt-kicker">Durable configuration</span>
+            <h2 id="prompt-manager-title">Prompt versions</h2>
+          </div>
+          <button id="close-prompt-manager" class="dialog-close" type="button" aria-label="Close prompt manager">×</button>
+        </header>
+        <p class="prompt-introduction">
+          Versions are immutable. Select any version as a starting point; saving creates and
+          activates a new version without changing its source.
+        </p>
+        <div class="prompt-manager">
+          <div class="prompt-history-column">
+            <label for="prompt-history">Version history</label>
+            <select id="prompt-history" size="8" aria-label="Prompt version history"></select>
+            <p id="prompt-version-meta" class="prompt-meta"></p>
+            <button id="activate-prompt" class="button" type="button">Make selected active</button>
+          </div>
+          <div class="prompt-editor-column">
+            <label for="prompt-title">New version title</label>
+            <input id="prompt-title" maxlength="120" autocomplete="off">
+            <label for="prompt-text">Cleanup instruction</label>
+            <textarea id="prompt-text" maxlength="100000" spellcheck="true"></textarea>
+            <div class="prompt-save-row">
+              <span id="prompt-save-status" role="status" aria-live="polite">
+                Ready to create an immutable version.
+              </span>
+              <button id="save-prompt" class="button button-primary" type="button">
+                Save new &amp; activate
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </dialog>
 
     <footer class="page-footer">
       <span>Sayloom keeps the raw text sendable when cleanup cannot finish.</span>

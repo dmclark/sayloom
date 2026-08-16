@@ -35,7 +35,7 @@ Set its permissions to `0600`, then use the verified restart workflow below. The
 
 ## Durable prompt configuration
 
-SQLite in the external profile state directory is authoritative for the seeded prompt, immutable custom prompt versions, exact active-version selection, the cleanup default, seed state, and one-time import status. Open **Cleanup instruction → Manage versions** in the daily workspace to read history, base a new version on an earlier version, save and activate a new immutable version, or reactivate an exact earlier version.
+SQLite in the external profile state directory is authoritative for the seeded prompt, immutable custom prompt versions, exact active-version selection, the cleanup default, seed state, and one-time import status. The daily control row provides a compact active-prompt selector; **Manage prompts** opens a full-width version-management dialog for reading history, basing a new version on an earlier version, saving and activating a new immutable version, or reactivating an exact earlier version. Original and Cleaned are vertically stacked and share an accessible draggable divider with a 65/35 default split and keyboard-adjustable 45–80% Original range. Both editors use the browser's native insertion point.
 
 Normal startup only checks schema state. The administration commands are explicit:
 
@@ -115,7 +115,7 @@ Add this repository's `raycast/` directory as a Raycast Script Commands director
 
 Raycast owns global hotkeys; no hotkey values are committed. Assign the familiar hotkeys to these development-branded commands in Raycast settings. Send commands refuse empty, malformed, or unavailable outgoing state and never press Return. Amp, Supacode, and VS Code use a Sticky-Keys-safe synthetic paste and restore the prior text clipboard. iTerm inserts multiline text directly without using the clipboard.
 
-The five Gate 1 commands remain unchanged by the durable prompt core. Real-device Gate 2 verification adds prompt-history rendering, new-version activation, exact rollback to an earlier version, cleanup with the selected version, durable cleanup-toggle state, controlled backup/migrate/restart health, and one-time importer preview/confirm behavior.
+The five Gate 1 command surfaces remain intact through the durable prompt core. Real-device Gate 2 verification adds prompt-history rendering, new-version activation, exact rollback to an earlier version, cleanup with the selected version, durable cleanup-toggle state, controlled backup/migrate/restart health, and one-time importer preview/confirm behavior.
 
 ## Privacy
 
