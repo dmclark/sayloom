@@ -5,9 +5,17 @@ command_temp_directory=""
 clipboard_backup=""
 clipboard_changed=0
 
+copy_utf8_to_clipboard() {
+  LC_ALL=en_US.UTF-8 /usr/bin/pbcopy
+}
+
+read_utf8_clipboard() {
+  LC_ALL=en_US.UTF-8 /usr/bin/pbpaste
+}
+
 finish_command() {
   if [ "$clipboard_changed" -eq 1 ] && [ -n "$clipboard_backup" ]; then
-    /usr/bin/pbcopy < "$clipboard_backup" || true
+    copy_utf8_to_clipboard < "$clipboard_backup" || true
   fi
   if [ -n "$command_temp_directory" ]; then
     /bin/rm -rf "$command_temp_directory"
@@ -66,8 +74,8 @@ paste_outgoing_text() {
   /bin/sleep 0.3
 
   clipboard_backup="$command_temp_directory/clipboard.txt"
-  /usr/bin/pbpaste > "$clipboard_backup" 2>/dev/null || : > "$clipboard_backup"
-  /usr/bin/pbcopy < "$outgoing_file" || fail_command "could not prepare the clipboard"
+  read_utf8_clipboard > "$clipboard_backup" 2>/dev/null || : > "$clipboard_backup"
+  copy_utf8_to_clipboard < "$outgoing_file" || fail_command "could not prepare the clipboard"
   clipboard_changed=1
 
   "$cliclick" \
@@ -79,6 +87,6 @@ paste_outgoing_text() {
     || fail_command "synthetic paste failed"
 
   /bin/sleep 0.15
-  /usr/bin/pbcopy < "$clipboard_backup" || fail_command "could not restore the clipboard"
+  copy_utf8_to_clipboard < "$clipboard_backup" || fail_command "could not restore the clipboard"
   clipboard_changed=0
 }

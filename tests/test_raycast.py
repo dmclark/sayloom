@@ -50,12 +50,12 @@ def test_all_raycast_shell_files_parse() -> None:
 
 class OutgoingStateServer:
     def __init__(self, state: object) -> None:
-        body = json.dumps(state).encode()
+        body = json.dumps(state, ensure_ascii=False).encode()
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self) -> None:  # noqa: N802
                 self.send_response(200)
-                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
@@ -99,6 +99,17 @@ def test_raycast_fetch_preserves_multiline_outgoing_text() -> None:
 
     assert result.returncode == 0
     assert result.stdout == b"synthetic line one\nsynthetic line two"
+
+
+def test_raycast_fetch_preserves_utf8_outgoing_text() -> None:
+    outgoing = "Synthetic\u00a0text — ‘quoted’ café"
+    with OutgoingStateServer({"outgoing_text": outgoing}) as url:
+        result = run_fetch(url)
+
+    assert result.returncode == 0
+    assert result.stdout == outgoing.encode()
+    assert "LC_ALL=en_US.UTF-8 /usr/bin/pbcopy" in (RAYCAST_DIRECTORY / "lib.sh").read_text()
+    assert "LC_ALL=en_US.UTF-8 /usr/bin/pbpaste" in (RAYCAST_DIRECTORY / "lib.sh").read_text()
 
 
 def test_raycast_fetch_refuses_empty_or_malformed_state() -> None:
