@@ -48,6 +48,40 @@
         </div>
       </section>
 
+      <section class="prompt-drawer" aria-label="Cleanup prompt versions">
+        <details>
+          <summary>
+            <span>
+              <span class="prompt-kicker">Cleanup instruction</span>
+              <strong id="active-prompt-label">Loading prompt history…</strong>
+            </span>
+            <span class="prompt-disclosure" aria-hidden="true">Manage versions ＋</span>
+          </summary>
+          <div class="prompt-manager">
+            <div class="prompt-history-column">
+              <label for="prompt-history">Version history</label>
+              <select id="prompt-history" size="5" aria-label="Prompt version history"></select>
+              <p id="prompt-version-meta" class="prompt-meta"></p>
+              <button id="activate-prompt" class="button" type="button">Make selected active</button>
+            </div>
+            <div class="prompt-editor-column">
+              <label for="prompt-title">Version title</label>
+              <input id="prompt-title" maxlength="120" autocomplete="off">
+              <label for="prompt-text">Cleanup instruction</label>
+              <textarea id="prompt-text" maxlength="100000" spellcheck="true"></textarea>
+              <div class="prompt-save-row">
+                <span id="prompt-save-status" role="status" aria-live="polite">
+                  Changes create an immutable version.
+                </span>
+                <button id="save-prompt" class="button button-primary" type="button">
+                  Save new &amp; activate
+                </button>
+              </div>
+            </div>
+          </div>
+        </details>
+      </section>
+
       <section class="workspace" aria-label="Text cleanup workspace">
         <article class="text-panel original-panel">
           <header class="panel-heading">

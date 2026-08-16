@@ -27,7 +27,12 @@ class StaticProvider:
 
 
 def run_cleanup(service: CleanupService, raw_text: str, *, enabled: bool = True):
-    return asyncio.run(service.clean(CleanupRequest(raw_text=raw_text, enabled=enabled)))
+    return asyncio.run(
+        service.clean(
+            CleanupRequest(raw_text=raw_text, enabled=enabled),
+            "Synthetic cleanup instruction",
+        )
+    )
 
 
 def test_empty_input_and_disabled_cleanup_do_not_call_provider() -> None:

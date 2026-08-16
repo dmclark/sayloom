@@ -20,6 +20,14 @@
     modelLabel: document.querySelector("#model-label"),
     caretMirror: document.querySelector("#caret-mirror"),
     fauxCaret: document.querySelector("#faux-caret"),
+    activePromptLabel: document.querySelector("#active-prompt-label"),
+    promptHistory: document.querySelector("#prompt-history"),
+    promptVersionMeta: document.querySelector("#prompt-version-meta"),
+    promptTitle: document.querySelector("#prompt-title"),
+    promptText: document.querySelector("#prompt-text"),
+    promptSaveStatus: document.querySelector("#prompt-save-status"),
+    savePrompt: document.querySelector("#save-prompt"),
+    activatePrompt: document.querySelector("#activate-prompt"),
   };
 
   const statusLabels = {
@@ -45,6 +53,8 @@
   let syntheticPastePending = false;
   let syntheticPasteTimer = null;
   let returnSelectionPending = false;
+  let promptVersions = [];
+  let activePromptVersionId = null;
 
   function setStatus(nextStatus) {
     status = nextStatus;
@@ -337,6 +347,89 @@
     updateFauxCaret();
   });
 
+  function selectedPrompt() {
+    const selectedId = Number(elements.promptHistory.value);
+    return promptVersions.find((prompt) => prompt.id === selectedId) || null;
+  }
+
+  function renderSelectedPrompt() {
+    const prompt = selectedPrompt();
+    if (!prompt) return;
+    elements.promptTitle.value = prompt.title;
+    elements.promptText.value = prompt.system_text;
+    elements.promptVersionMeta.textContent = [
+      `Version ${prompt.version}`,
+      prompt.source,
+      new Date(prompt.created_at).toLocaleString(),
+    ].join(" · ");
+    elements.activatePrompt.disabled = prompt.id === activePromptVersionId;
+  }
+
+  async function loadPromptHistory(selectId = null) {
+    const response = await fetch("/api/prompts");
+    if (!response.ok) throw new Error(`Prompt history failed with ${response.status}`);
+    const result = await response.json();
+    promptVersions = Array.isArray(result.versions) ? result.versions : [];
+    activePromptVersionId = result.active_prompt_version_id;
+    elements.promptHistory.textContent = "";
+    promptVersions.forEach((prompt) => {
+      const option = document.createElement("option");
+      option.value = String(prompt.id);
+      option.textContent = `v${prompt.version} · ${prompt.title}${prompt.active ? " — active" : ""}`;
+      elements.promptHistory.append(option);
+    });
+    const activePrompt = promptVersions.find((prompt) => prompt.id === activePromptVersionId);
+    elements.activePromptLabel.textContent = activePrompt
+      ? `v${activePrompt.version} · ${activePrompt.title}`
+      : "No active prompt";
+    elements.promptHistory.value = String(selectId ?? activePromptVersionId ?? "");
+    renderSelectedPrompt();
+  }
+
+  elements.promptHistory.addEventListener("change", renderSelectedPrompt);
+  elements.activatePrompt.addEventListener("click", async () => {
+    const prompt = selectedPrompt();
+    if (!prompt) return;
+    elements.activatePrompt.disabled = true;
+    elements.promptSaveStatus.textContent = "Activating selected version…";
+    try {
+      const response = await fetch(`/api/prompts/${prompt.id}/activate`, { method: "POST" });
+      if (!response.ok) throw new Error(`Activation failed with ${response.status}`);
+      await loadPromptHistory(prompt.id);
+      elements.promptSaveStatus.textContent = `Version ${prompt.version} is active.`;
+      if (elements.original.value) scheduleCleanup();
+    } catch (_error) {
+      elements.activatePrompt.disabled = false;
+      elements.promptSaveStatus.textContent = "Could not activate that version.";
+    }
+  });
+  elements.savePrompt.addEventListener("click", async () => {
+    const title = elements.promptTitle.value.trim();
+    const systemText = elements.promptText.value.trim();
+    if (!title || !systemText) {
+      elements.promptSaveStatus.textContent = "A title and cleanup instruction are required.";
+      return;
+    }
+    elements.savePrompt.disabled = true;
+    elements.promptSaveStatus.textContent = "Saving immutable version…";
+    try {
+      const response = await fetch("/api/prompts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, system_text: systemText, activate: true }),
+      });
+      if (!response.ok) throw new Error(`Save failed with ${response.status}`);
+      const prompt = await response.json();
+      await loadPromptHistory(prompt.id);
+      elements.promptSaveStatus.textContent = `Version ${prompt.version} saved and active.`;
+      if (elements.original.value) scheduleCleanup();
+    } catch (_error) {
+      elements.promptSaveStatus.textContent = "Could not save the new version.";
+    } finally {
+      elements.savePrompt.disabled = false;
+    }
+  });
+
   document.addEventListener("keydown", (event) => {
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
       event.preventDefault();
@@ -365,14 +458,8 @@
       ]);
       const config = configResponse.ok ? await configResponse.json() : {};
       const published = stateResponse.ok ? await stateResponse.json() : null;
-      const query = new URLSearchParams(window.location.search);
-      const override = query.get("cleanup") ?? query.get("ai");
-      const overrideEnabled = override === null
-        ? null
-        : !["0", "off", "false", "no"].includes(override.toLowerCase());
 
-      elements.cleanupEnabled.checked = overrideEnabled
-        ?? published?.cleanup_enabled
+      elements.cleanupEnabled.checked = published?.cleanup_enabled
         ?? config.cleanup_enabled_by_default
         ?? true;
       elements.modelLabel.textContent = config.cleanup_available
@@ -389,6 +476,7 @@
       }
       renderCountsAndSelection();
       updateFauxCaret();
+      await loadPromptHistory();
       publishNow();
     } catch (_error) {
       setPublicationState("error", "State unavailable");

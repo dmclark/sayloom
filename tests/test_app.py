@@ -1,3 +1,6 @@
+import sqlite3
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from local_text.app import create_app
@@ -5,18 +8,63 @@ from local_text.cleanup import CleanupService
 from local_text.config import Profile, Settings
 
 
-def test_health_reports_development_profile() -> None:
-    client = TestClient(create_app(Settings(Profile.DEVELOPMENT)))
+def test_health_reports_development_profile(initialized_settings: Settings) -> None:
+    client = TestClient(create_app(initialized_settings))
 
-    assert client.get("/health").json() == {"status": "ok", "profile": "development"}
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "profile": "development",
+        "database": {
+            "state": "current",
+            "current_revision": "0001_gate2_prompt_core",
+            "expected_revision": "0001_gate2_prompt_core",
+        },
+        "configuration_error": None,
+    }
+
+
+def test_health_reports_missing_schema_without_creating_database(tmp_path: Path) -> None:
+    database_path = tmp_path / "missing.sqlite3"
+    client = TestClient(
+        create_app(Settings(Profile.DEVELOPMENT, database_path=database_path))
+    )
+
+    response = client.get("/health")
+
+    assert response.status_code == 503
+    assert response.json()["status"] == "setup_required"
+    assert response.json()["database"]["state"] == "missing"
+    assert not database_path.exists()
+
+
+def test_health_reports_schema_mismatch(tmp_path: Path) -> None:
+    database_path = tmp_path / "mismatch.sqlite3"
+    with sqlite3.connect(database_path) as connection:
+        connection.execute("CREATE TABLE alembic_version (version_num TEXT NOT NULL)")
+        connection.execute("INSERT INTO alembic_version VALUES ('obsolete_revision')")
+    client = TestClient(
+        create_app(Settings(Profile.DEVELOPMENT, database_path=database_path))
+    )
+
+    response = client.get("/health")
+
+    assert response.status_code == 503
+    assert response.json()["database"] == {
+        "state": "mismatch",
+        "current_revision": "obsolete_revision",
+        "expected_revision": "0001_gate2_prompt_core",
+    }
 
 
 def test_default_cleanup_timeout_allows_provider_generation_latency() -> None:
     assert Settings(Profile.DEVELOPMENT).cleanup_timeout_seconds == 30
 
 
-def test_development_page_identifies_development_brand() -> None:
-    client = TestClient(create_app(Settings(Profile.DEVELOPMENT)))
+def test_development_page_identifies_development_brand(initialized_settings: Settings) -> None:
+    client = TestClient(create_app(initialized_settings))
 
     response = client.get("/")
 
@@ -27,11 +75,15 @@ def test_development_page_identifies_development_brand() -> None:
     assert 'id="cleaned-text"' in response.text
     assert 'id="cleanup-status"' in response.text
     assert 'id="cancel-cleanup"' in response.text
+    assert 'id="prompt-history"' in response.text
+    assert 'id="save-prompt"' in response.text
     assert "Type, paste, or dictate here" in response.text
 
 
-def test_release_profile_uses_release_brand() -> None:
-    client = TestClient(create_app(Settings(Profile.RELEASE)))
+def test_release_profile_uses_release_brand(initialized_settings: Settings) -> None:
+    client = TestClient(
+        create_app(Settings(Profile.RELEASE, database_path=initialized_settings.database_path))
+    )
 
     assert client.app.title == "Sayloom"
     assert client.get("/health").json()["profile"] == "release"
@@ -40,8 +92,12 @@ def test_release_profile_uses_release_brand() -> None:
     assert 'aria-label="Development profile"' not in page
 
 
-def test_config_reports_cleanup_without_exposing_key() -> None:
-    settings = Settings(Profile.DEVELOPMENT, gemini_api_key="not-a-real-key")
+def test_config_reports_cleanup_without_exposing_key(initialized_settings: Settings) -> None:
+    settings = Settings(
+        Profile.DEVELOPMENT,
+        gemini_api_key="not-a-real-key",
+        database_path=initialized_settings.database_path,
+    )
     client = TestClient(create_app(settings))
 
     response = client.get("/api/config")
@@ -56,8 +112,10 @@ def test_config_reports_cleanup_without_exposing_key() -> None:
     assert "not-a-real-key" not in response.text
 
 
-def test_cleanup_endpoint_fails_open_when_provider_is_unconfigured() -> None:
-    client = TestClient(create_app(Settings(Profile.DEVELOPMENT)))
+def test_cleanup_endpoint_fails_open_when_provider_is_unconfigured(
+    initialized_settings: Settings,
+) -> None:
+    client = TestClient(create_app(initialized_settings))
 
     response = client.post(
         "/api/cleanup",
@@ -73,7 +131,7 @@ def test_cleanup_endpoint_fails_open_when_provider_is_unconfigured() -> None:
     }
 
 
-def test_cleanup_endpoint_returns_provider_result() -> None:
+def test_cleanup_endpoint_returns_provider_result(initialized_settings: Settings) -> None:
     class Provider:
         provider_id = "gemini"
         model = "test-model"
@@ -84,7 +142,7 @@ def test_cleanup_endpoint_returns_provider_result() -> None:
             return "Synthetic clean text."
 
     service = CleanupService(provider=Provider(), model="test-model", timeout_seconds=1)
-    client = TestClient(create_app(Settings(Profile.DEVELOPMENT), service))
+    client = TestClient(create_app(initialized_settings, service))
 
     response = client.post(
         "/api/cleanup",
@@ -96,8 +154,91 @@ def test_cleanup_endpoint_returns_provider_result() -> None:
     assert response.json()["status"] == "cleaned"
 
 
-def test_outgoing_state_is_published_and_cleared_in_memory() -> None:
-    client = TestClient(create_app(Settings(Profile.DEVELOPMENT)))
+def test_prompt_api_creates_history_and_activates_an_exact_version(
+    initialized_settings: Settings,
+) -> None:
+    client = TestClient(create_app(initialized_settings))
+
+    initial = client.get("/api/prompts").json()
+    seeded = initial["versions"][0]
+    created_response = client.post(
+        "/api/prompts",
+        json={
+            "title": "Synthetic concise cleanup",
+            "system_text": "Return concise synthetic text only.",
+            "activate": True,
+        },
+    )
+
+    assert created_response.status_code == 201
+    created = created_response.json()
+    assert created["version"] == 2
+    assert created["active"] is True
+    history = client.get("/api/prompts").json()
+    assert [prompt["version"] for prompt in history["versions"]] == [2, 1]
+    assert history["active_prompt_version_id"] == created["id"]
+    assert history["versions"][1]["system_text"] == seeded["system_text"]
+
+    activated = client.post(f"/api/prompts/{seeded['id']}/activate")
+    assert activated.status_code == 200
+    assert activated.json()["id"] == seeded["id"]
+    assert client.get("/api/prompts").json()["active_prompt_version_id"] == seeded["id"]
+    assert client.post("/api/prompts/9999/activate").status_code == 404
+
+
+def test_cleanup_uses_the_durable_active_prompt(initialized_settings: Settings) -> None:
+    observed: list[str] = []
+
+    class Provider:
+        provider_id = "gemini"
+        model = "test-model"
+
+        async def clean(self, raw_text: str, system_prompt: str) -> str:
+            observed.append(system_prompt)
+            return raw_text
+
+    service = CleanupService(provider=Provider(), model="test-model", timeout_seconds=1)
+    client = TestClient(create_app(initialized_settings, service))
+    client.post(
+        "/api/prompts",
+        json={
+            "title": "Synthetic active prompt",
+            "system_text": "Use this exact synthetic instruction.",
+            "activate": True,
+        },
+    )
+
+    response = client.post(
+        "/api/cleanup",
+        json={"raw_text": "synthetic source text", "enabled": True},
+    )
+
+    assert response.status_code == 200
+    assert observed == ["Use this exact synthetic instruction."]
+
+
+def test_cleanup_toggle_is_durable_configuration(initialized_settings: Settings) -> None:
+    client = TestClient(create_app(initialized_settings))
+    update = {
+        "cleanup_enabled": False,
+        "raw_text": "synthetic raw text",
+        "cleaned_text": "synthetic raw text",
+        "outgoing_text": "synthetic raw text",
+        "outgoing_kind": "raw",
+        "status": "disabled",
+    }
+
+    assert client.put("/api/outgoing-state", json=update).status_code == 200
+
+    restarted = TestClient(create_app(initialized_settings))
+    assert restarted.get("/api/config").json()["cleanup_enabled_by_default"] is False
+    assert restarted.get("/api/outgoing-state").json()["cleanup_enabled"] is False
+
+
+def test_outgoing_state_is_published_and_cleared_in_memory(
+    initialized_settings: Settings,
+) -> None:
+    client = TestClient(create_app(initialized_settings))
     update = {
         "cleanup_enabled": True,
         "raw_text": "synthetic raw text",
@@ -120,8 +261,10 @@ def test_outgoing_state_is_published_and_cleared_in_memory() -> None:
     assert cleared.json()["revision"] == 2
 
 
-def test_outgoing_state_rejects_text_not_present_in_either_editor() -> None:
-    client = TestClient(create_app(Settings(Profile.DEVELOPMENT)))
+def test_outgoing_state_rejects_text_not_present_in_either_editor(
+    initialized_settings: Settings,
+) -> None:
+    client = TestClient(create_app(initialized_settings))
 
     response = client.put(
         "/api/outgoing-state",
@@ -138,8 +281,10 @@ def test_outgoing_state_rejects_text_not_present_in_either_editor() -> None:
     assert response.status_code == 422
 
 
-def test_browser_script_supports_generic_input_and_dictation_compatibility() -> None:
-    client = TestClient(create_app(Settings(Profile.DEVELOPMENT)))
+def test_browser_script_supports_generic_input_and_dictation_compatibility(
+    initialized_settings: Settings,
+) -> None:
+    client = TestClient(create_app(initialized_settings))
 
     script = client.get("/static/app.js")
 
@@ -154,8 +299,8 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility() -> 
     assert "fauxCaret" in script.text
 
 
-def test_faux_caret_uses_a_nonzero_editor_font_marker() -> None:
-    client = TestClient(create_app(Settings(Profile.DEVELOPMENT)))
+def test_faux_caret_uses_a_nonzero_editor_font_marker(initialized_settings: Settings) -> None:
+    client = TestClient(create_app(initialized_settings))
 
     stylesheet = client.get("/static/app.css")
 
