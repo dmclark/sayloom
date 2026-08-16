@@ -74,11 +74,11 @@ Runtime logs and all future operating data belong in the external state director
 
 Add this repository's `raycast/` directory as a Raycast Script Commands directory. It contains exactly five user-facing commands:
 
-- **Open Sayloom**
-- **Send to Amp**
-- **Send to iTerm**
-- **Send to Supacode**
-- **Send to VS Code**
+- **Open Sayloom Development**
+- **Send to Amp — Sayloom Development**
+- **Send to iTerm — Sayloom Development**
+- **Send to Supacode — Sayloom Development**
+- **Send to VS Code — Sayloom Development**
 
 Raycast owns global hotkeys; no hotkey values are committed. Assign the familiar hotkeys to these development-branded commands in Raycast settings. Send commands refuse empty, malformed, or unavailable outgoing state and never press Return. Amp, Supacode, and VS Code use a Sticky-Keys-safe synthetic paste and restore the prior text clipboard. iTerm inserts multiline text directly without using the clipboard.
 

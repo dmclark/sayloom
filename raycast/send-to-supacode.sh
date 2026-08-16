@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # @raycast.schemaVersion 1
-# @raycast.title Send to Supacode
+# @raycast.title Send to Supacode — Sayloom Development
 # @raycast.mode compact
 # @raycast.packageName Sayloom Development
 # @raycast.icon 🧵

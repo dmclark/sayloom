@@ -7,11 +7,11 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).parent.parent
 RAYCAST_DIRECTORY = REPOSITORY_ROOT / "raycast"
 COMMANDS = {
-    "open-sayloom.sh": "Open Sayloom",
-    "send-to-amp.sh": "Send to Amp",
-    "send-to-iterm.sh": "Send to iTerm",
-    "send-to-supacode.sh": "Send to Supacode",
-    "send-to-vs-code.sh": "Send to VS Code",
+    "open-sayloom.sh": "Open Sayloom Development",
+    "send-to-amp.sh": "Send to Amp — Sayloom Development",
+    "send-to-iterm.sh": "Send to iTerm — Sayloom Development",
+    "send-to-supacode.sh": "Send to Supacode — Sayloom Development",
+    "send-to-vs-code.sh": "Send to VS Code — Sayloom Development",
 }
 
 
@@ -24,6 +24,7 @@ def test_exactly_five_development_branded_script_commands() -> None:
 
     assert set(command_files) == set(COMMANDS)
     for name, title in COMMANDS.items():
+        assert "Sayloom Development" in title
         content = command_files[name].read_text()
         assert f"# @raycast.title {title}" in content
         assert "# @raycast.packageName Sayloom Development" in content

@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # @raycast.schemaVersion 1
-# @raycast.title Open Sayloom
+# @raycast.title Open Sayloom Development
 # @raycast.mode compact
 # @raycast.packageName Sayloom Development
 # @raycast.icon 🧵
