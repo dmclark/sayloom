@@ -282,7 +282,7 @@ textarea {
   font-family: Charter, "Iowan Old Style", Georgia, serif;
   font-size: clamp(1.03rem, 1.25vw, 1.28rem);
   line-height: 1.7;
-  caret-color: var(--thread);
+  caret-color: transparent;
 }
 
 textarea::placeholder { color: #9a988f; font-style: italic; }
@@ -302,14 +302,19 @@ textarea::placeholder { color: #9a988f; font-style: italic; }
   line-height: 1.7;
 }
 
-.caret-mirror span { display: inline-block; width: 0; }
+.caret-mirror span {
+  display: inline-block;
+  width: 0;
+  height: 1.15em;
+}
 
 .faux-caret {
   position: absolute;
   display: none;
   width: 2px;
-  height: 1.5em;
+  height: 1.15em;
   background: var(--thread);
+  font-size: clamp(1.03rem, 1.25vw, 1.28rem);
   pointer-events: none;
   animation: caret-blink 1.1s step-end infinite;
 }

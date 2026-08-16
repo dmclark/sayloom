@@ -152,3 +152,14 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility() -> 
     assert "AbortController" in script.text
     assert "setSelectionRange" in script.text
     assert "fauxCaret" in script.text
+
+
+def test_faux_caret_uses_a_nonzero_editor_font_marker() -> None:
+    client = TestClient(create_app(Settings(Profile.DEVELOPMENT)))
+
+    stylesheet = client.get("/static/app.css")
+
+    assert stylesheet.status_code == 200
+    assert "caret-color: transparent" in stylesheet.text
+    assert ".caret-mirror span {" in stylesheet.text
+    assert stylesheet.text.count("height: 1.15em") == 2
