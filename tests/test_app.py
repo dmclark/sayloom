@@ -80,7 +80,12 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="prompt-manager"' in response.text
     assert 'id="save-prompt"' in response.text
     assert 'id="workspace-resizer"' in response.text
+    assert 'id="show-canvas"' in response.text
+    assert 'id="show-prompts"' in response.text
     assert "Type, paste, or dictate here" in response.text
+    assert response.text.index('class="outgoing-strip"') < response.text.index(
+        'id="cleanup-status"'
+    )
 
 
 def test_release_profile_uses_release_brand(initialized_settings: Settings) -> None:
@@ -301,6 +306,7 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     assert "setSelectionRange" in script.text
     assert "fauxCaret" not in script.text
     assert 'elements.workspaceResizer.addEventListener("pointerdown"' in script.text
+    assert 'elements.promptsNav.addEventListener("click"' in script.text
     assert "elements.promptManager.showModal()" in script.text
 
 
@@ -318,6 +324,10 @@ def test_stacked_workspace_uses_native_caret_and_accessible_resizer(
     assert ".faux-caret" not in stylesheet.text
     assert "grid-template-rows:" in stylesheet.text
     assert "cursor: row-resize" in stylesheet.text
+    assert ".utility-rail" in stylesheet.text
+    assert "min-width: 720px" not in stylesheet.text
+    assert "@media (max-width: 760px)" in stylesheet.text
     assert 'role="separator"' in page.text
     assert 'aria-valuemin="45"' in page.text
     assert 'aria-valuemax="80"' in page.text
+    assert 'class="panel-prompt-control"' in page.text

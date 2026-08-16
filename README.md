@@ -35,7 +35,7 @@ Set its permissions to `0600`, then use the verified restart workflow below. The
 
 ## Durable prompt configuration
 
-SQLite in the external profile state directory is authoritative for the seeded prompt, immutable custom prompt versions, exact active-version selection, the cleanup default, seed state, and one-time import status. The daily control row provides a compact active-prompt selector; **Manage prompts** opens a full-width version-management dialog for reading history, basing a new version on an earlier version, saving and activating a new immutable version, or reactivating an exact earlier version. Original and Cleaned are vertically stacked and share an accessible draggable divider with a 65/35 default split and keyboard-adjustable 45–80% Original range. Both editors use the browser's native insertion point.
+SQLite in the external profile state directory is authoritative for the seeded prompt, immutable custom prompt versions, exact active-version selection, the cleanup default, seed state, and one-time import status. The Cleaned header provides a compact active-prompt selector; **Prompts** in the light workspace rail opens a full-width version-management dialog for reading history, basing a new version on an earlier version, saving and activating a new immutable version, or reactivating an exact earlier version. Original and Cleaned are vertically stacked and share an accessible draggable divider with a 65/35 default split and keyboard-adjustable 45–80% Original range. At narrower widths the workspace rail becomes a horizontal navigation strip. Both editors use the browser's native insertion point.
 
 Normal startup only checks schema state. The administration commands are explicit:
 

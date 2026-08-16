@@ -24,7 +24,8 @@
     workspace: document.querySelector(".workspace"),
     workspaceResizer: document.querySelector("#workspace-resizer"),
     activePromptSelector: document.querySelector("#active-prompt-selector"),
-    managePrompts: document.querySelector("#manage-prompts"),
+    canvasNav: document.querySelector("#show-canvas"),
+    promptsNav: document.querySelector("#show-prompts"),
     promptManager: document.querySelector("#prompt-manager"),
     closePromptManager: document.querySelector("#close-prompt-manager"),
     promptHistory: document.querySelector("#prompt-history"),
@@ -67,6 +68,15 @@
     status = nextStatus;
     elements.status.dataset.state = nextStatus;
     elements.statusText.textContent = statusLabels[nextStatus] || nextStatus;
+  }
+
+  function setActiveSection(activeButton) {
+    [elements.canvasNav, elements.promptsNav].forEach((button) => {
+      const isActive = button === activeButton;
+      button.classList.toggle("is-active", isActive);
+      if (isActive) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
   }
 
   function setWorkspaceShare(value) {
@@ -433,15 +443,23 @@
     if (elements.original.value) scheduleCleanup();
   }
 
-  elements.managePrompts.addEventListener("click", () => {
+  elements.canvasNav.addEventListener("click", () => {
+    setActiveSection(elements.canvasNav);
+    elements.original.focus();
+  });
+  elements.promptsNav.addEventListener("click", () => {
     elements.promptHistory.value = String(activePromptVersionId ?? "");
     renderSelectedPrompt();
     elements.promptSaveStatus.textContent = "Ready to create an immutable version.";
+    setActiveSection(elements.promptsNav);
     elements.promptManager.showModal();
   });
   elements.closePromptManager.addEventListener("click", () => elements.promptManager.close());
   elements.promptManager.addEventListener("click", (event) => {
     if (event.target === elements.promptManager) elements.promptManager.close();
+  });
+  elements.promptManager.addEventListener("close", () => {
+    setActiveSection(elements.canvasNav);
   });
   elements.activePromptSelector.addEventListener("change", async () => {
     const prompt = promptVersions.find(

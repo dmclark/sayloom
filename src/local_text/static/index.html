@@ -21,14 +21,6 @@
           </div>
         </div>
       </div>
-
-      <div class="status-block">
-        <span class="status-label">Cleanup</span>
-        <div id="cleanup-status" class="status-pill" data-state="unchanged" role="status" aria-live="polite">
-          <span class="status-light" aria-hidden="true"></span>
-          <span id="cleanup-status-text">Ready</span>
-        </div>
-      </div>
     </header>
 
     <main>
@@ -39,14 +31,6 @@
             <span class="switch-track" aria-hidden="true"><span></span></span>
             <span>Clean automatically</span>
           </label>
-
-          <div class="prompt-quick-control">
-            <label for="active-prompt-selector">Prompt</label>
-            <select id="active-prompt-selector" aria-label="Active cleanup prompt"></select>
-            <button id="manage-prompts" class="button button-quiet" type="button">
-              Manage prompts
-            </button>
-          </div>
         </div>
 
         <div class="control-actions">
@@ -58,77 +42,106 @@
         </div>
       </section>
 
-      <section class="workspace" aria-label="Text cleanup workspace">
-        <article class="text-panel original-panel">
-          <header class="panel-heading">
-            <div>
-              <span class="panel-number">01</span>
-              <h2>Original</h2>
-            </div>
-            <span class="panel-note">Type, paste, or dictate here</span>
-          </header>
-          <div class="editor-wrap" id="original-editor-wrap">
-            <textarea
-              id="original-text"
-              aria-label="Original source text"
-              autocomplete="off"
-              placeholder="Type, paste, or use compatible dictation…"
-              spellcheck="false"
-            ></textarea>
-          </div>
-          <footer class="panel-footer">
-            <span><strong id="original-count">0</strong> characters</span>
-            <span>Browser input surface</span>
-          </footer>
-        </article>
+      <div class="workspace-shell">
+        <nav class="utility-rail" aria-label="Workspace sections">
+          <button id="show-canvas" class="utility-rail-item is-active" type="button" aria-current="page">
+            <span class="utility-rail-index" aria-hidden="true">01</span>
+            <span>Canvas</span>
+          </button>
+          <button id="show-prompts" class="utility-rail-item" type="button">
+            <span class="utility-rail-index" aria-hidden="true">02</span>
+            <span>Prompts</span>
+          </button>
+          <button class="utility-rail-item" type="button" disabled title="More tools are not available yet">
+            <span class="utility-rail-index" aria-hidden="true">03</span>
+            <span>More</span>
+          </button>
+        </nav>
 
-        <div
-          id="workspace-resizer"
-          class="workspace-resizer"
-          role="separator"
-          tabindex="0"
-          aria-label="Resize Original and Cleaned fields"
-          aria-orientation="horizontal"
-          aria-valuemin="45"
-          aria-valuemax="80"
-          aria-valuenow="65"
-          aria-valuetext="Original 65 percent, Cleaned 35 percent"
-        >
-          <span aria-hidden="true"></span><i aria-hidden="true"></i><span aria-hidden="true"></span>
-        </div>
-
-        <article class="text-panel cleaned-panel">
-          <header class="panel-heading">
-            <div>
-              <span class="panel-number">02</span>
-              <h2>Cleaned</h2>
+        <section class="workspace" aria-label="Text cleanup workspace">
+          <article class="text-panel original-panel">
+            <header class="panel-heading">
+              <div class="panel-title">
+                <span class="panel-number">01</span>
+                <h2>Original</h2>
+              </div>
+              <span class="panel-note">Type, paste, or dictate here</span>
+            </header>
+            <div class="editor-wrap" id="original-editor-wrap">
+              <textarea
+                id="original-text"
+                aria-label="Original source text"
+                autocomplete="off"
+                placeholder="Type, paste, or use compatible dictation…"
+                spellcheck="false"
+              ></textarea>
             </div>
-            <span class="panel-note">Editable before sending</span>
-          </header>
-          <div class="editor-wrap">
-            <textarea
-              id="cleaned-text"
-              aria-label="Cleaned outgoing text"
-              autocomplete="off"
-              placeholder="Cleaned text appears here. You can edit it."
-              spellcheck="true"
-            ></textarea>
+            <footer class="panel-footer">
+              <span><strong id="original-count">0</strong> characters</span>
+              <span>Browser input surface</span>
+            </footer>
+          </article>
+
+          <div
+            id="workspace-resizer"
+            class="workspace-resizer"
+            role="separator"
+            tabindex="0"
+            aria-label="Resize Original and Cleaned fields"
+            aria-orientation="horizontal"
+            aria-valuemin="45"
+            aria-valuemax="80"
+            aria-valuenow="65"
+            aria-valuetext="Original 65 percent, Cleaned 35 percent"
+          >
+            <span aria-hidden="true"></span><i aria-hidden="true"></i><span aria-hidden="true"></span>
           </div>
-          <footer class="panel-footer">
-            <span><strong id="cleaned-count">0</strong> characters</span>
-            <span id="model-label">Gemini</span>
-          </footer>
-        </article>
-      </section>
+
+          <article class="text-panel cleaned-panel">
+            <header class="panel-heading">
+              <div class="panel-title">
+                <span class="panel-number">02</span>
+                <h2>Cleaned</h2>
+              </div>
+              <div class="panel-prompt-control">
+                <label for="active-prompt-selector">Prompt</label>
+                <select id="active-prompt-selector" aria-label="Active cleanup prompt"></select>
+              </div>
+            </header>
+            <div class="editor-wrap">
+              <textarea
+                id="cleaned-text"
+                aria-label="Cleaned outgoing text"
+                autocomplete="off"
+                placeholder="Cleaned text appears here. You can edit it."
+                spellcheck="true"
+              ></textarea>
+            </div>
+            <footer class="panel-footer">
+              <span><strong id="cleaned-count">0</strong> characters</span>
+              <span id="model-label">Gemini</span>
+            </footer>
+          </article>
+        </section>
+      </div>
 
       <section class="outgoing-strip" aria-label="Outgoing text state">
-        <div>
+        <div class="outgoing-summary">
           <span class="outgoing-label">Raycast will send</span>
           <strong id="outgoing-kind">Nothing yet</strong>
         </div>
-        <div id="publication-state" class="publication-state" role="status" aria-live="polite">
-          <span aria-hidden="true"></span>
-          <span>State ready</span>
+        <div class="outgoing-statuses">
+          <div class="status-block">
+            <span class="status-label">Cleanup</span>
+            <div id="cleanup-status" class="status-pill" data-state="unchanged" role="status" aria-live="polite">
+              <span class="status-light" aria-hidden="true"></span>
+              <span id="cleanup-status-text">Ready</span>
+            </div>
+          </div>
+          <div id="publication-state" class="publication-state" role="status" aria-live="polite">
+            <span aria-hidden="true"></span>
+            <span>State ready</span>
+          </div>
         </div>
       </section>
     </main>
