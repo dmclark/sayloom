@@ -11,6 +11,10 @@ def test_health_reports_development_profile() -> None:
     assert client.get("/health").json() == {"status": "ok", "profile": "development"}
 
 
+def test_default_cleanup_timeout_allows_provider_generation_latency() -> None:
+    assert Settings(Profile.DEVELOPMENT).cleanup_timeout_seconds == 30
+
+
 def test_development_page_identifies_development_brand() -> None:
     client = TestClient(create_app(Settings(Profile.DEVELOPMENT)))
 

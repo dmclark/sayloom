@@ -15,7 +15,7 @@ class Settings:
     profile: Profile
     gemini_api_key: str | None = field(default=None, repr=False)
     gemini_model: str = "gemini-3.5-flash"
-    cleanup_timeout_seconds: float = 8.0
+    cleanup_timeout_seconds: float = 30.0
     cleanup_enabled_by_default: bool = True
 
     @property
@@ -40,7 +40,7 @@ def load_settings() -> Settings:
         profile=profile,
         gemini_api_key=api_key,
         gemini_model=os.getenv("LOCAL_TEXT_GEMINI_MODEL", "gemini-3.5-flash"),
-        cleanup_timeout_seconds=float(os.getenv("LOCAL_TEXT_CLEANUP_TIMEOUT_SECONDS", "8")),
+        cleanup_timeout_seconds=float(os.getenv("LOCAL_TEXT_CLEANUP_TIMEOUT_SECONDS", "30")),
         cleanup_enabled_by_default=_enabled(
             os.getenv("LOCAL_TEXT_CLEANUP_ENABLED"), default=True
         ),

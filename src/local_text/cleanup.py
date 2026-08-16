@@ -68,7 +68,10 @@ class GeminiProvider:
                     "parts": [{"text": f"<SOURCE_TEXT>\n{raw_text}\n</SOURCE_TEXT>"}],
                 }
             ],
-            "generationConfig": {"temperature": 0.2},
+            "generationConfig": {
+                "temperature": 0.2,
+                "thinkingConfig": {"thinkingLevel": "minimal"},
+            },
         }
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.post(

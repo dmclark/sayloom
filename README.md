@@ -25,7 +25,7 @@ Configure the development LaunchAgent by creating the external, user-only file `
 LOCAL_TEXT_GEMINI_API_KEY=replace-with-your-key
 # Optional:
 # LOCAL_TEXT_GEMINI_MODEL=gemini-3.5-flash
-# LOCAL_TEXT_CLEANUP_TIMEOUT_SECONDS=8
+# LOCAL_TEXT_CLEANUP_TIMEOUT_SECONDS=30
 # LOCAL_TEXT_CLEANUP_ENABLED=0
 ```
 

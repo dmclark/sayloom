@@ -160,3 +160,6 @@ def test_gemini_provider_separately_frames_prompt_and_untrusted_source_text() ->
         request_body["contents"][0]["parts"][0]["text"]
         == "<SOURCE_TEXT>\nsynthetic source text\n</SOURCE_TEXT>"
     )
+    assert request_body["generationConfig"]["thinkingConfig"] == {
+        "thinkingLevel": "minimal"
+    }
