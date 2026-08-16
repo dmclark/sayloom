@@ -162,4 +162,4 @@ def test_faux_caret_uses_a_nonzero_editor_font_marker() -> None:
     assert stylesheet.status_code == 200
     assert "caret-color: transparent" in stylesheet.text
     assert ".caret-mirror span {" in stylesheet.text
-    assert stylesheet.text.count("height: 1.15em") == 2
+    assert stylesheet.text.count("height: 1.25em") == 2

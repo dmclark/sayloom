@@ -305,14 +305,14 @@ textarea::placeholder { color: #9a988f; font-style: italic; }
 .caret-mirror span {
   display: inline-block;
   width: 0;
-  height: 1.15em;
+  height: 1.25em;
 }
 
 .faux-caret {
   position: absolute;
   display: none;
   width: 2px;
-  height: 1.15em;
+  height: 1.25em;
   background: var(--thread);
   font-size: clamp(1.03rem, 1.25vw, 1.28rem);
   pointer-events: none;
