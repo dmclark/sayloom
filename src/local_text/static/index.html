@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en" data-profile="__PROFILE__">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>__DISPLAY_NAME__</title>
+    <link rel="stylesheet" href="/static/app.css">
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <div class="page-grain" aria-hidden="true"></div>
+    <header class="masthead">
+      <div class="brand-lockup">
+        <span class="thread-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <div>
+          <div class="eyebrow">Local text workspace</div>
+          <div class="brand-line">
+            <h1>__DISPLAY_NAME__</h1>
+            __DEVELOPMENT_BADGE__
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="control-rail" aria-label="Cleanup controls">
+        <label class="switch-control" for="cleanup-enabled">
+          <input id="cleanup-enabled" type="checkbox" checked>
+          <span class="switch-track" aria-hidden="true"><span></span></span>
+          <span>Clean automatically</span>
+        </label>
+        <button
+          id="toggle-original"
+          class="panel-toggle"
+          type="button"
+          aria-controls="original-editor-wrap"
+          aria-expanded="true"
+        >Hide input</button>
+      </section>
+
+      <div class="workspace-shell">
+        <nav class="utility-rail" aria-label="Workspace sections">
+          <button id="show-canvas" class="utility-rail-item is-active" type="button" aria-current="page">
+            <span class="utility-rail-index" aria-hidden="true">01</span>
+            <span>Canvas</span>
+          </button>
+          <button id="show-prompts" class="utility-rail-item" type="button">
+            <span class="utility-rail-index" aria-hidden="true">02</span>
+            <span>Prompts</span>
+          </button>
+          <button class="utility-rail-item" type="button" disabled title="More tools are not available yet">
+            <span class="utility-rail-index" aria-hidden="true">03</span>
+            <span>More</span>
+          </button>
+        </nav>
+
+        <section class="workspace" aria-label="Text cleanup workspace">
+          <article class="text-panel original-panel">
+            <header class="panel-heading">
+              <div class="panel-title">
+                <span class="panel-number">01</span>
+                <h2>Original</h2>
+              </div>
+              <span class="panel-note">Type, paste, or dictate here</span>
+            </header>
+            <div class="editor-wrap" id="original-editor-wrap">
+              <textarea
+                id="original-text"
+                aria-label="Original source text"
+                autocomplete="off"
+                placeholder="Type, paste, or use compatible dictation…"
+                spellcheck="false"
+              ></textarea>
+            </div>
+            <footer class="panel-footer original-panel-footer">
+              <span><strong id="original-count">0</strong> characters</span>
+              <div class="panel-footer-actions">
+                <button id="run-cleanup" class="button button-primary" type="button">
+                  <span aria-hidden="true">↻</span> Run cleanup
+                </button>
+                <button id="clear-text" class="button button-quiet" type="button">Clear</button>
+              </div>
+            </footer>
+          </article>
+
+          <div
+            id="workspace-resizer"
+            class="workspace-resizer"
+            role="separator"
+            tabindex="0"
+            aria-label="Resize Original and Cleaned fields"
+            aria-orientation="horizontal"
+            aria-valuemin="45"
+            aria-valuemax="80"
+            aria-valuenow="65"
+            aria-valuetext="Original 65 percent, Cleaned 35 percent"
+          >
+            <span aria-hidden="true"></span><i aria-hidden="true"></i><span aria-hidden="true"></span>
+          </div>
+
+          <article class="text-panel cleaned-panel">
+            <header class="panel-heading">
+              <div class="panel-title">
+                <span class="panel-number">02</span>
+                <h2>Cleaned</h2>
+              </div>
+              <div class="panel-prompt-control">
+                <label for="active-prompt-selector">Prompt</label>
+                <select id="active-prompt-selector" aria-label="Active cleanup prompt"></select>
+              </div>
+            </header>
+            <div class="editor-wrap">
+              <textarea
+                id="cleaned-text"
+                aria-label="Cleaned outgoing text"
+                autocomplete="off"
+                placeholder="Cleaned text appears here."
+                readonly
+                spellcheck="true"
+              ></textarea>
+            </div>
+            <footer class="panel-footer">
+              <span><strong id="cleaned-count">0</strong> characters</span>
+              <span id="model-label">Gemini</span>
+            </footer>
+          </article>
+        </section>
+      </div>
+
+      <section class="outgoing-strip" aria-label="Outgoing text state">
+        <div class="outgoing-summary">
+          <span class="outgoing-label">Raycast will send</span>
+          <strong id="outgoing-kind">Nothing yet</strong>
+        </div>
+        <div class="outgoing-statuses">
+          <div id="cleanup-status" class="status-pill" data-state="unchanged" role="status" aria-live="polite">
+            <span class="status-light" aria-hidden="true"></span>
+            <span id="cleanup-status-text">Ready</span>
+          </div>
+          <div id="publication-state" class="publication-state" role="status" aria-live="polite">
+            <span aria-hidden="true"></span>
+            <span>State ready</span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="prompt-manager" class="prompt-manager-dialog" aria-labelledby="prompt-manager-title">
+      <div class="prompt-sheet">
+        <header class="prompt-sheet-header">
+          <div>
+            <span class="prompt-kicker">Durable configuration</span>
+            <h2 id="prompt-manager-title">Prompt versions</h2>
+          </div>
+          <button id="close-prompt-manager" class="dialog-close" type="button" aria-label="Close prompt manager">×</button>
+        </header>
+        <p class="prompt-introduction">
+          Versions are immutable. Select any version as a starting point; saving creates and
+          activates a new version without changing its source.
+        </p>
+        <div class="prompt-manager">
+          <div class="prompt-history-column">
+            <label for="prompt-history">Version history</label>
+            <select id="prompt-history" size="8" aria-label="Prompt version history"></select>
+            <p id="prompt-version-meta" class="prompt-meta"></p>
+            <button id="activate-prompt" class="button" type="button">Make selected active</button>
+          </div>
+          <div class="prompt-editor-column">
+            <label for="prompt-title">New version title</label>
+            <input id="prompt-title" maxlength="120" autocomplete="off">
+            <label for="prompt-text">Cleanup instruction</label>
+            <textarea id="prompt-text" maxlength="100000" spellcheck="true"></textarea>
+            <div class="prompt-save-row">
+              <span id="prompt-save-status" role="status" aria-live="polite">
+                Ready to create an immutable version.
+              </span>
+              <button id="save-prompt" class="button button-primary" type="button">
+                Save new &amp; activate
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </dialog>
+
+    <footer class="page-footer">
+      <span>Sayloom keeps the raw text sendable when cleanup cannot finish.</span>
+      <span class="shortcut-hint"><kbd>⌘</kbd><kbd>↵</kbd> reruns cleanup</span>
+    </footer>
+  </body>
+</html>
