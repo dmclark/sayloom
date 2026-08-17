@@ -45,7 +45,6 @@
     disabled: "Disabled · raw",
     timeout: "Timeout · raw",
     error: "Error · raw",
-    stale: "Cancelled · raw",
   };
 
   let status = "unchanged";
@@ -55,6 +54,7 @@
   let publicationSequence = 0;
   let activeRequest = null;
   let requestSequence = 0;
+  let replaceAllPending = false;
   let syntheticPastePending = false;
   let syntheticPasteTimer = null;
   let returnSelectionPending = false;
@@ -111,8 +111,10 @@
   function selectedOutgoingState() {
     const rawText = elements.original.value;
     const cleanedText = elements.cleaned.value;
-    let outgoingText = elements.cleanupEnabled.checked ? cleanedText : rawText;
-    let outgoingKind = elements.cleanupEnabled.checked ? "cleaned" : "raw";
+    const cleanupInProgress = status === "waiting" || status === "cleaning";
+    const useCleaned = elements.cleanupEnabled.checked && !cleanupInProgress;
+    let outgoingText = useCleaned ? cleanedText : rawText;
+    let outgoingKind = useCleaned ? "cleaned" : "raw";
 
     if (!outgoingText && rawText) {
       outgoingText = rawText;
@@ -194,16 +196,11 @@
     publicationTimer = window.setTimeout(publishNow, PUBLICATION_DEBOUNCE_MS);
   }
 
-  function abortActiveRequest({ markStale = true } = {}) {
+  function abortActiveRequest() {
     if (!activeRequest) return false;
     activeRequest.abort();
     activeRequest = null;
     requestSequence += 1;
-    if (markStale) {
-      elements.cleaned.value = elements.original.value;
-      setStatus("stale");
-      schedulePublication();
-    }
     return true;
   }
 
@@ -217,7 +214,7 @@
   async function runCleanup() {
     window.clearTimeout(cleanupTimer);
     cleanupTimer = null;
-    abortActiveRequest({ markStale: false });
+    abortActiveRequest();
 
     const rawText = elements.original.value;
     if (!rawText.trim()) {
@@ -233,7 +230,6 @@
       return;
     }
 
-    elements.cleaned.value = "";
     const sequence = ++requestSequence;
     const controller = new AbortController();
     const selection = {
@@ -272,7 +268,7 @@
     } catch (error) {
       if (sequence !== requestSequence) return;
       elements.cleaned.value = rawText;
-      setStatus(error.name === "AbortError" ? "stale" : "error");
+      setStatus("error");
       restoreOriginalSelection(selection);
     } finally {
       if (sequence === requestSequence) {
@@ -291,13 +287,20 @@
       return;
     }
     abortActiveRequest();
-    elements.cleaned.value = "";
     setStatus("waiting");
     schedulePublication();
     cleanupTimer = window.setTimeout(runCleanup, CLEANUP_DEBOUNCE_MS);
   }
 
+  function originalIsFullySelected() {
+    return elements.original.value.length > 0
+      && elements.original.selectionStart === 0
+      && elements.original.selectionEnd === elements.original.value.length;
+  }
+
   function handleOriginalInput(event) {
+    if (replaceAllPending) elements.cleaned.value = "";
+    replaceAllPending = false;
     const followsSyntheticPaste = syntheticPastePending && event.isTrusted;
     if (followsSyntheticPaste) {
       window.clearTimeout(syntheticPasteTimer);
@@ -312,7 +315,11 @@
   }
 
   // Compatibility path for dictation tools that precede trusted input with a synthetic paste.
+  elements.original.addEventListener("beforeinput", () => {
+    replaceAllPending = originalIsFullySelected();
+  });
   elements.original.addEventListener("paste", (event) => {
+    replaceAllPending = originalIsFullySelected();
     if (!event.isTrusted) {
       syntheticPastePending = true;
       window.clearTimeout(syntheticPasteTimer);
@@ -326,7 +333,7 @@
   elements.cleanupEnabled.addEventListener("change", () => {
     if (!elements.cleanupEnabled.checked) {
       window.clearTimeout(cleanupTimer);
-      abortActiveRequest({ markStale: false });
+      abortActiveRequest();
       elements.cleaned.value = elements.original.value;
       setStatus("disabled");
       publishNow();
@@ -342,7 +349,8 @@
   elements.clear.addEventListener("click", () => {
     window.clearTimeout(cleanupTimer);
     window.clearTimeout(publicationTimer);
-    abortActiveRequest({ markStale: false });
+    abortActiveRequest();
+    replaceAllPending = false;
     elements.original.value = "";
     elements.cleaned.value = "";
     setStatus("unchanged");

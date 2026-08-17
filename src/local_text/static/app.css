@@ -168,8 +168,7 @@ h2 { font-size: 1.45rem; letter-spacing: -0.02em; }
 }
 
 .status-pill[data-state="timeout"] .status-light,
-.status-pill[data-state="error"] .status-light,
-.status-pill[data-state="stale"] .status-light {
+.status-pill[data-state="error"] .status-light {
   background: var(--night);
   box-shadow: 0 0 0 4px rgba(23, 105, 170, 0.16);
 }

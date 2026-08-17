@@ -314,9 +314,11 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
 
     assert script.status_code == 200
     assert "syntheticPastePending" in script.text
+    assert "replaceAllPending" in script.text
     assert "followsSyntheticPaste" in script.text
     assert "event.isTrusted" in script.text
     assert 'elements.original.addEventListener("input", handleOriginalInput)' in script.text
+    assert 'elements.original.addEventListener("beforeinput"' in script.text
     assert "scheduleCleanup();" in script.text
     assert "AbortController" in script.text
     assert "setSelectionRange" in script.text
@@ -331,10 +333,11 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
         "function scheduleCleanup()", maxsplit=1
     )[0]
     scheduled_cleanup = script.text.split("function scheduleCleanup()", maxsplit=1)[1].split(
-        "function handleOriginalInput", maxsplit=1
+        "function originalIsFullySelected", maxsplit=1
     )[0]
-    assert 'elements.cleaned.value = "";' in run_cleanup
-    assert 'elements.cleaned.value = "";' in scheduled_cleanup
+    assert 'elements.cleaned.value = "";' not in run_cleanup
+    assert 'elements.cleaned.value = "";' not in scheduled_cleanup
+    assert 'const cleanupInProgress = status === "waiting" || status === "cleaning";' in script.text
     initialization = script.text.split("async function initialize()", maxsplit=1)[1].split(
         "initialize();", maxsplit=1
     )[0]
