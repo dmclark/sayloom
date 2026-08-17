@@ -2,6 +2,8 @@
 
 A local-first text cleanup workspace for typing, paste, and compatible dictation input. The daily surface keeps an editable, collapsible Original field and a read-only Cleaned result, fails open to the original when Gemini is unavailable, publishes the selected outgoing text for Raycast, and manages immutable cleanup-prompt versions. The Python package and machine-level identifiers are deliberately neutral and independent of the display brand.
 
+![Sayloom Development workspace](docs/images/sayloom-development.png)
+
 ## Setup
 
 Requirements: macOS, Python 3.12+, and [uv](https://docs.astral.sh/uv/).
