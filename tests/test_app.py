@@ -74,6 +74,7 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="original-text"' in response.text
     assert 'id="cleaned-text"' in response.text
     assert 'id="cleanup-status"' in response.text
+    assert 'class="status-label"' not in response.text
     assert 'id="cancel-cleanup"' not in response.text
     assert 'id="prompt-history"' in response.text
     assert 'id="active-prompt-selector"' in response.text

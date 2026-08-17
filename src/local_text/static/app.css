@@ -66,7 +66,6 @@ main,
 
 .brand-lockup,
 .brand-line,
-.status-block,
 .control-rail,
 .panel-heading,
 .panel-title,
@@ -105,7 +104,6 @@ main,
 .thread-mark i:nth-child(3) { transform: rotate(120deg); }
 
 .eyebrow,
-.status-label,
 .panel-number,
 .panel-note,
 .outgoing-label {
@@ -136,13 +134,12 @@ h2 { font-size: 1.45rem; letter-spacing: -0.02em; }
   letter-spacing: 0.16em;
 }
 
-.status-block { gap: 8px; }
-
 .status-pill {
   display: flex;
   align-items: center;
+  flex: 0 0 144px;
   gap: 8px;
-  min-width: 132px;
+  width: 144px;
   padding: 8px 12px;
   border: 1px solid var(--line);
   border-radius: 100px;
@@ -556,16 +553,16 @@ textarea::placeholder { color: #9a988f; font-style: italic; }
 .workspace-resizer.is-resizing i { width: 62px; border-color: var(--night); }
 
 .outgoing-strip {
-  justify-content: space-between;
-  gap: 24px;
+  justify-content: flex-start;
+  gap: 20px;
   min-height: 62px;
   padding: 0 4px;
   border-bottom: 1px solid var(--ink);
 }
 
-.outgoing-summary { align-items: baseline; gap: 12px; }
-.outgoing-statuses { justify-content: flex-end; gap: 24px; }
-#outgoing-kind { font-family: "Iowan Old Style", Palatino, serif; font-size: 1rem; font-weight: 500; }
+.outgoing-summary { flex: 0 0 340px; align-items: baseline; gap: 12px; }
+.outgoing-statuses { justify-content: flex-start; gap: 18px; }
+#outgoing-kind { white-space: nowrap; font-family: "Iowan Old Style", Palatino, serif; font-size: 1rem; font-weight: 500; }
 
 .publication-state { gap: 8px; color: var(--muted); font-size: 0.71rem; }
 .publication-state[data-state="error"] > span:first-child { background: var(--night); }
@@ -632,7 +629,8 @@ kbd { min-width: 22px; padding: 2px 5px; border: 1px solid var(--line); border-b
     gap: 12px;
     padding: 15px 4px;
   }
-  .outgoing-statuses { width: 100%; justify-content: space-between; }
+  .outgoing-summary { flex-basis: auto; }
+  .outgoing-statuses { justify-content: flex-start; }
 }
 
 @media (max-width: 540px) {
@@ -642,7 +640,6 @@ kbd { min-width: 22px; padding: 2px 5px; border: 1px solid var(--line); border-b
   .panel-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
   .panel-prompt-control { width: 100%; }
   .panel-prompt-control select { width: 100%; }
-  .outgoing-statuses { align-items: flex-start; flex-direction: column; gap: 10px; }
   .page-footer { align-items: flex-start; flex-direction: column; justify-content: center; gap: 8px; }
 }
 
