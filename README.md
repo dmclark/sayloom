@@ -19,7 +19,7 @@ The local default is the `development` profile and displays **Sayloom Developmen
 
 ## Gemini cleanup
 
-Cleanup is enabled by default for every Original update, regardless of whether it came from typing, ordinary paste, or compatible dictation. It always fails open to the unchanged Original text. Dictation tools that signal a write with an untrusted synthetic paste followed by a trusted input event receive compatible caret and focus handling, but that event sequence is not a required input API.
+Cleanup is enabled by default for every Original update, regardless of whether it came from typing, ordinary paste, or compatible dictation. Cleaned remains blank while cleanup is waiting or running, while the outgoing state immediately fails open to the unchanged Original text. Dictation tools that signal a write with an untrusted synthetic paste followed by a trusted input event receive compatible caret and focus handling, but that event sequence is not a required input API.
 
 Configure the development LaunchAgent by creating the external, user-only file `~/Library/Application Support/local-text/development/environment`:
 

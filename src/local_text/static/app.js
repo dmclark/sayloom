@@ -230,7 +230,7 @@
       return;
     }
 
-    elements.cleaned.value = rawText;
+    elements.cleaned.value = "";
     cleanedWasEdited = false;
     const sequence = ++requestSequence;
     const controller = new AbortController();
@@ -294,7 +294,7 @@
       return;
     }
     abortActiveRequest();
-    elements.cleaned.value = elements.original.value;
+    elements.cleaned.value = "";
     cleanedWasEdited = false;
     setStatus("waiting");
     schedulePublication();

@@ -308,6 +308,14 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     assert 'elements.workspaceResizer.addEventListener("pointerdown"' in script.text
     assert 'elements.promptsNav.addEventListener("click"' in script.text
     assert "elements.promptManager.showModal()" in script.text
+    run_cleanup = script.text.split("async function runCleanup()", maxsplit=1)[1].split(
+        "function scheduleCleanup()", maxsplit=1
+    )[0]
+    scheduled_cleanup = script.text.split("function scheduleCleanup()", maxsplit=1)[1].split(
+        "function handleOriginalInput", maxsplit=1
+    )[0]
+    assert 'elements.cleaned.value = "";' in run_cleanup
+    assert 'elements.cleaned.value = "";' in scheduled_cleanup
 
 
 def test_stacked_workspace_uses_native_caret_and_accessible_resizer(
