@@ -12,8 +12,8 @@
     cleaned: document.querySelector("#cleaned-text"),
     cleanupEnabled: document.querySelector("#cleanup-enabled"),
     runCleanup: document.querySelector("#run-cleanup"),
-    cancelCleanup: document.querySelector("#cancel-cleanup"),
     clear: document.querySelector("#clear-text"),
+    toggleOriginal: document.querySelector("#toggle-original"),
     status: document.querySelector("#cleanup-status"),
     statusText: document.querySelector("#cleanup-status-text"),
     originalCount: document.querySelector("#original-count"),
@@ -46,7 +46,6 @@
     timeout: "Timeout · raw",
     error: "Error · raw",
     stale: "Cancelled · raw",
-    edited: "Edited",
   };
 
   let status = "unchanged";
@@ -56,7 +55,6 @@
   let publicationSequence = 0;
   let activeRequest = null;
   let requestSequence = 0;
-  let cleanedWasEdited = false;
   let syntheticPastePending = false;
   let syntheticPasteTimer = null;
   let returnSelectionPending = false;
@@ -76,6 +74,18 @@
       button.classList.toggle("is-active", isActive);
       if (isActive) button.setAttribute("aria-current", "page");
       else button.removeAttribute("aria-current");
+    });
+  }
+
+  function setOriginalCollapsed(collapsed) {
+    const selectionStart = elements.original.selectionStart;
+    const selectionEnd = elements.original.selectionEnd;
+    elements.workspace.classList.toggle("is-original-collapsed", collapsed);
+    elements.toggleOriginal.textContent = collapsed ? "Show input" : "Hide input";
+    elements.toggleOriginal.setAttribute("aria-expanded", String(!collapsed));
+    window.requestAnimationFrame(() => {
+      elements.original.focus({ preventScroll: true });
+      elements.original.setSelectionRange(selectionStart, selectionEnd);
     });
   }
 
@@ -102,9 +112,7 @@
     const rawText = elements.original.value;
     const cleanedText = elements.cleaned.value;
     let outgoingText = elements.cleanupEnabled.checked ? cleanedText : rawText;
-    let outgoingKind = elements.cleanupEnabled.checked
-      ? (cleanedWasEdited ? "edited" : "cleaned")
-      : "raw";
+    let outgoingKind = elements.cleanupEnabled.checked ? "cleaned" : "raw";
 
     if (!outgoingText && rawText) {
       outgoingText = rawText;
@@ -112,7 +120,7 @@
     }
     if (!outgoingText) {
       outgoingKind = "empty";
-    } else if (outgoingText === rawText && !cleanedWasEdited) {
+    } else if (outgoingText === rawText) {
       outgoingKind = "raw";
     }
 
@@ -134,7 +142,6 @@
       empty: "Nothing yet",
       raw: "Original · raw fail-open",
       cleaned: "Cleaned result",
-      edited: "Your edited cleanup",
     };
     elements.outgoingKind.textContent = labels[outgoing.outgoing_kind];
   }
@@ -192,10 +199,8 @@
     activeRequest.abort();
     activeRequest = null;
     requestSequence += 1;
-    elements.cancelCleanup.disabled = true;
     if (markStale) {
       elements.cleaned.value = elements.original.value;
-      cleanedWasEdited = false;
       setStatus("stale");
       schedulePublication();
     }
@@ -217,21 +222,18 @@
     const rawText = elements.original.value;
     if (!rawText.trim()) {
       elements.cleaned.value = rawText;
-      cleanedWasEdited = false;
       setStatus("unchanged");
       schedulePublication();
       return;
     }
     if (!elements.cleanupEnabled.checked) {
       elements.cleaned.value = rawText;
-      cleanedWasEdited = false;
       setStatus("disabled");
       schedulePublication();
       return;
     }
 
     elements.cleaned.value = "";
-    cleanedWasEdited = false;
     const sequence = ++requestSequence;
     const controller = new AbortController();
     const selection = {
@@ -240,7 +242,6 @@
       end: elements.original.selectionEnd,
     };
     activeRequest = controller;
-    elements.cancelCleanup.disabled = false;
     setStatus("cleaning");
     schedulePublication();
 
@@ -258,7 +259,6 @@
       elements.cleaned.value = typeof result.cleaned_text === "string"
         ? result.cleaned_text
         : rawText;
-      cleanedWasEdited = false;
       const statusMap = {
         cleaned: "cleaned",
         unchanged: "unchanged",
@@ -272,13 +272,11 @@
     } catch (error) {
       if (sequence !== requestSequence) return;
       elements.cleaned.value = rawText;
-      cleanedWasEdited = false;
       setStatus(error.name === "AbortError" ? "stale" : "error");
       restoreOriginalSelection(selection);
     } finally {
       if (sequence === requestSequence) {
         activeRequest = null;
-        elements.cancelCleanup.disabled = true;
         schedulePublication();
       }
     }
@@ -288,14 +286,12 @@
     window.clearTimeout(cleanupTimer);
     if (!elements.cleanupEnabled.checked) {
       elements.cleaned.value = elements.original.value;
-      cleanedWasEdited = false;
       setStatus("disabled");
       schedulePublication();
       return;
     }
     abortActiveRequest();
     elements.cleaned.value = "";
-    cleanedWasEdited = false;
     setStatus("waiting");
     schedulePublication();
     cleanupTimer = window.setTimeout(runCleanup, CLEANUP_DEBOUNCE_MS);
@@ -327,18 +323,11 @@
   });
   elements.original.addEventListener("input", handleOriginalInput);
 
-  elements.cleaned.addEventListener("input", () => {
-    cleanedWasEdited = true;
-    setStatus("edited");
-    schedulePublication();
-  });
-
   elements.cleanupEnabled.addEventListener("change", () => {
     if (!elements.cleanupEnabled.checked) {
       window.clearTimeout(cleanupTimer);
       abortActiveRequest({ markStale: false });
       elements.cleaned.value = elements.original.value;
-      cleanedWasEdited = false;
       setStatus("disabled");
       publishNow();
     } else {
@@ -346,15 +335,16 @@
     }
   });
 
+  elements.toggleOriginal.addEventListener("click", () => {
+    setOriginalCollapsed(!elements.workspace.classList.contains("is-original-collapsed"));
+  });
   elements.runCleanup.addEventListener("click", runCleanup);
-  elements.cancelCleanup.addEventListener("click", () => abortActiveRequest());
   elements.clear.addEventListener("click", () => {
     window.clearTimeout(cleanupTimer);
     window.clearTimeout(publicationTimer);
     abortActiveRequest({ markStale: false });
     elements.original.value = "";
     elements.cleaned.value = "";
-    cleanedWasEdited = false;
     setStatus("unchanged");
     renderCountsAndSelection();
     clearPublishedState();
@@ -539,32 +529,23 @@
 
   async function initialize() {
     try {
-      const [configResponse, stateResponse] = await Promise.all([
+      const [configResponse] = await Promise.all([
         fetch("/api/config"),
-        fetch("/api/outgoing-state"),
+        clearPublishedState(),
       ]);
       const config = configResponse.ok ? await configResponse.json() : {};
-      const published = stateResponse.ok ? await stateResponse.json() : null;
 
-      elements.cleanupEnabled.checked = published?.cleanup_enabled
-        ?? config.cleanup_enabled_by_default
-        ?? true;
+      elements.cleanupEnabled.checked = config.cleanup_enabled_by_default ?? true;
       elements.modelLabel.textContent = config.cleanup_available
         ? `Gemini · ${config.cleanup_model}`
         : "Gemini · configuration needed";
 
-      if (published?.revision > 0) {
-        elements.original.value = published.raw_text || "";
-        elements.cleaned.value = published.cleaned_text || "";
-        cleanedWasEdited = published.outgoing_kind === "edited";
-        setStatus(published.status || "unchanged");
-      } else if (!elements.cleanupEnabled.checked) {
-        setStatus("disabled");
-      }
+      elements.original.value = "";
+      elements.cleaned.value = "";
+      setStatus(elements.cleanupEnabled.checked ? "unchanged" : "disabled");
       renderCountsAndSelection();
       setWorkspaceShare(DEFAULT_ORIGINAL_SHARE);
       await loadPromptHistory();
-      publishNow();
     } catch (_error) {
       setPublicationState("error", "State unavailable");
     }

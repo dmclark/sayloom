@@ -25,21 +25,18 @@
 
     <main>
       <section class="control-rail" aria-label="Cleanup controls">
-        <div class="control-context">
-          <label class="switch-control" for="cleanup-enabled">
-            <input id="cleanup-enabled" type="checkbox" checked>
-            <span class="switch-track" aria-hidden="true"><span></span></span>
-            <span>Clean automatically</span>
-          </label>
-        </div>
-
-        <div class="control-actions">
-          <button id="run-cleanup" class="button button-primary" type="button">
-            <span aria-hidden="true">↻</span> Run cleanup
-          </button>
-          <button id="cancel-cleanup" class="button" type="button" disabled>Cancel</button>
-          <button id="clear-text" class="button button-quiet" type="button">Clear</button>
-        </div>
+        <label class="switch-control" for="cleanup-enabled">
+          <input id="cleanup-enabled" type="checkbox" checked>
+          <span class="switch-track" aria-hidden="true"><span></span></span>
+          <span>Clean automatically</span>
+        </label>
+        <button
+          id="toggle-original"
+          class="panel-toggle"
+          type="button"
+          aria-controls="original-editor-wrap"
+          aria-expanded="true"
+        >Hide input</button>
       </section>
 
       <div class="workspace-shell">
@@ -76,9 +73,14 @@
                 spellcheck="false"
               ></textarea>
             </div>
-            <footer class="panel-footer">
+            <footer class="panel-footer original-panel-footer">
               <span><strong id="original-count">0</strong> characters</span>
-              <span>Browser input surface</span>
+              <div class="panel-footer-actions">
+                <button id="run-cleanup" class="button button-primary" type="button">
+                  <span aria-hidden="true">↻</span> Run cleanup
+                </button>
+                <button id="clear-text" class="button button-quiet" type="button">Clear</button>
+              </div>
             </footer>
           </article>
 
@@ -113,7 +115,8 @@
                 id="cleaned-text"
                 aria-label="Cleaned outgoing text"
                 autocomplete="off"
-                placeholder="Cleaned text appears here. You can edit it."
+                placeholder="Cleaned text appears here."
+                readonly
                 spellcheck="true"
               ></textarea>
             </div>

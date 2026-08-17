@@ -74,7 +74,7 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="original-text"' in response.text
     assert 'id="cleaned-text"' in response.text
     assert 'id="cleanup-status"' in response.text
-    assert 'id="cancel-cleanup"' in response.text
+    assert 'id="cancel-cleanup"' not in response.text
     assert 'id="prompt-history"' in response.text
     assert 'id="active-prompt-selector"' in response.text
     assert 'id="prompt-manager"' in response.text
@@ -82,7 +82,23 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="workspace-resizer"' in response.text
     assert 'id="show-canvas"' in response.text
     assert 'id="show-prompts"' in response.text
+    assert 'id="toggle-original"' in response.text
     assert "Type, paste, or dictate here" in response.text
+    control_rail = response.text.split('class="control-rail"', maxsplit=1)[1].split(
+        "</section>", maxsplit=1
+    )[0]
+    assert 'id="toggle-original"' in control_rail
+    original_panel = response.text.split('class="text-panel original-panel"', maxsplit=1)[
+        1
+    ].split("</article>", maxsplit=1)[0]
+    assert 'id="toggle-original"' not in original_panel
+    assert 'class="panel-footer original-panel-footer"' in original_panel
+    assert 'id="run-cleanup"' in original_panel
+    assert 'id="clear-text"' in original_panel
+    cleaned_panel = response.text.split('class="text-panel cleaned-panel"', maxsplit=1)[
+        1
+    ].split("</article>", maxsplit=1)[0]
+    assert "readonly" in cleaned_panel
     assert response.text.index('class="outgoing-strip"') < response.text.index(
         'id="cleanup-status"'
     )
@@ -308,6 +324,9 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     assert 'elements.workspaceResizer.addEventListener("pointerdown"' in script.text
     assert 'elements.promptsNav.addEventListener("click"' in script.text
     assert "elements.promptManager.showModal()" in script.text
+    assert "cancelCleanup" not in script.text
+    assert "setOriginalCollapsed" in script.text
+    assert 'elements.cleaned.addEventListener("input"' not in script.text
     run_cleanup = script.text.split("async function runCleanup()", maxsplit=1)[1].split(
         "function scheduleCleanup()", maxsplit=1
     )[0]
@@ -316,6 +335,14 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     )[0]
     assert 'elements.cleaned.value = "";' in run_cleanup
     assert 'elements.cleaned.value = "";' in scheduled_cleanup
+    initialization = script.text.split("async function initialize()", maxsplit=1)[1].split(
+        "initialize();", maxsplit=1
+    )[0]
+    assert "clearPublishedState()" in initialization
+    assert 'elements.original.value = "";' in initialization
+    assert 'elements.cleaned.value = "";' in initialization
+    assert 'fetch("/api/outgoing-state")' not in initialization
+    assert "publishNow();" not in initialization
 
 
 def test_stacked_workspace_uses_native_caret_and_accessible_resizer(
@@ -333,6 +360,7 @@ def test_stacked_workspace_uses_native_caret_and_accessible_resizer(
     assert "grid-template-rows:" in stylesheet.text
     assert "cursor: row-resize" in stylesheet.text
     assert ".utility-rail" in stylesheet.text
+    assert ".workspace.is-original-collapsed" in stylesheet.text
     assert "min-width: 720px" not in stylesheet.text
     assert "@media (max-width: 760px)" in stylesheet.text
     assert 'role="separator"' in page.text

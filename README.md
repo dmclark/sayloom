@@ -1,6 +1,6 @@
 # Sayloom Development
 
-A local-first text cleanup workspace for typing, paste, and compatible dictation input. The daily surface keeps editable Original and Cleaned text, fails open to the original when Gemini is unavailable, publishes the selected outgoing text for Raycast, and manages immutable cleanup-prompt versions. The Python package and machine-level identifiers are deliberately neutral and independent of the display brand.
+A local-first text cleanup workspace for typing, paste, and compatible dictation input. The daily surface keeps an editable, collapsible Original field and a read-only Cleaned result, fails open to the original when Gemini is unavailable, publishes the selected outgoing text for Raycast, and manages immutable cleanup-prompt versions. The Python package and machine-level identifiers are deliberately neutral and independent of the display brand.
 
 ## Setup
 
@@ -19,7 +19,7 @@ The local default is the `development` profile and displays **Sayloom Developmen
 
 ## Gemini cleanup
 
-Cleanup is enabled by default for every Original update, regardless of whether it came from typing, ordinary paste, or compatible dictation. Cleaned remains blank while cleanup is waiting or running, while the outgoing state immediately fails open to the unchanged Original text. Dictation tools that signal a write with an untrusted synthetic paste followed by a trusted input event receive compatible caret and focus handling, but that event sequence is not a required input API.
+Cleanup is enabled by default for every Original update, regardless of whether it came from typing, ordinary paste, or compatible dictation. Cleaned remains blank while cleanup is waiting or running, while the outgoing state immediately fails open to the unchanged Original text. Reloading the page clears both editors and the process-local outgoing state without changing durable prompt or cleanup settings. Dictation tools that signal a write with an untrusted synthetic paste followed by a trusted input event receive compatible caret and focus handling, but that event sequence is not a required input API.
 
 Configure the development LaunchAgent by creating the external, user-only file `~/Library/Application Support/local-text/development/environment`:
 
@@ -35,7 +35,7 @@ Set its permissions to `0600`, then use the verified restart workflow below. The
 
 ## Durable prompt configuration
 
-SQLite in the external profile state directory is authoritative for the seeded prompt, immutable custom prompt versions, exact active-version selection, the cleanup default, seed state, and one-time import status. The Cleaned header provides a compact active-prompt selector; **Prompts** in the contained dark workspace rail opens a full-width version-management dialog for reading history, basing a new version on an earlier version, saving and activating a new immutable version, or reactivating an exact earlier version. Original and Cleaned are vertically stacked and share an accessible draggable divider with a 65/35 default split and keyboard-adjustable 45–80% Original range. At narrower widths the workspace rail becomes a horizontal navigation strip. Both editors use the browser's native insertion point.
+SQLite in the external profile state directory is authoritative for the seeded prompt, immutable custom prompt versions, exact active-version selection, the cleanup default, seed state, and one-time import status. The Cleaned header provides a compact active-prompt selector; **Prompts** in the contained dark workspace rail opens a full-width version-management dialog for reading history, basing a new version on an earlier version, saving and activating a new immutable version, or reactivating an exact earlier version. Original and Cleaned are vertically stacked and share an accessible draggable divider with a 65/35 default split and keyboard-adjustable 45–80% Original range. Original can collapse while retaining text-entry focus so Cleaned fills the canvas. At narrower widths the workspace rail becomes a horizontal navigation strip. Original uses the browser's native insertion point; Cleaned is read-only.
 
 Normal startup only checks schema state. The administration commands are explicit:
 
