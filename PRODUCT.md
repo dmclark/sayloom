@@ -72,6 +72,9 @@ interaction has been fully exercised, accepted, or proven in regular use.
   validated through regular use. The desired UX instead distinguishes a
   durable default from a page-session selection.
 - Outgoing text published via HTTP for Raycast commands to fetch and insert.
+- Generic timeout, error, and unavailable states are visible, but the browser
+  currently discards API response details. Inspectable error details are not
+  implemented.
 - SQLite-first persistence for authored configuration only (prompts, settings,
   seed state). No operating data in Git.
 - Controlled verify-then-restart workflow; no migrations or seeds at normal
@@ -106,6 +109,8 @@ interaction has been fully exercised, accepted, or proven in regular use.
   predecessor additionally modeled multiple stable logical prompts, each with
   versions, plus archive, conflict panels, owner overlays, and target-scoped
   activation. Those capabilities are not implemented in Sayloom.
+- **Inspectable API errors:** current generic status labels do not expose which
+  operation failed, the safe server-provided reason, or actionable detail.
 
 ### Open decisions
 
@@ -143,6 +148,11 @@ interaction has been fully exercised, accepted, or proven in regular use.
   changes, not hot reload.
 - **Fails open:** If cleanup is unavailable or times out, outgoing text falls
   back to the original raw input. The user is never blocked.
+- **Visible and inspectable failures:** API failures show a concise summary at
+  the affected workflow and offer persistent, expandable safe details. Details
+  may include the operation, time, HTTP status, stable error code, sanitized
+  server message, and recovery action, but never credentials, request headers,
+  raw or cleaned text, private paths, provider payloads, or stack traces.
 - **Prompt selection scope:** One prompt version is the durable configured
   default. Choosing another version in the workspace creates a page-session
   selection that continues across cleanup runs, drafts, and in-app navigation.

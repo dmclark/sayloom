@@ -74,6 +74,7 @@ questions without opening a manager:
 - What did cleanup produce?
 - Which prompt and vocabulary affected that result?
 - Is the result current, still processing, or unavailable?
+- If an operation failed, what failed, why, and what can I safely do next?
 - Will the next target hotkey use Original or Cleaned?
 - Is the outgoing state available to the delivery integration?
 
@@ -163,6 +164,7 @@ In scope for the shaped surface:
   manual rerun, collapse, resize, clear, and raw fail-open behavior. Collapse
   and resize are explicit product requirements.
 - Make outgoing source selection explicit and unambiguous.
+- Make every API failure visible and provide inspectable, privacy-safe details.
 - Keep exact cleanup-instruction version selection visible in the workspace.
 - Add the proposed independently active vocabulary profiles and their
   management surface; no vocabulary implementation exists yet.
@@ -279,6 +281,41 @@ not discard unsaved authored configuration without confirmation.
   distant status pill.
 - Sending through an external hotkey does not clear or archive the draft. The
   web app cannot claim delivery success unless an integration can report it.
+
+#### API errors and details
+
+Generic status alone is insufficient. Every failed API operation must expose
+both an immediate summary and a way to inspect useful details without blocking
+Original, raw fail-open, or sending.
+
+- Show the summary at the control or status region that owns the operation:
+  cleanup errors with cleanup status, publication errors with Outgoing,
+  vocabulary errors with the affected profile or suggestion, and target errors
+  with the affected target.
+- Keep an error visible until the operation succeeds, the underlying state
+  changes, or the user explicitly dismisses it. Do not use a transient toast as
+  the only record of failure.
+- Provide **View details** beside the summary. Its expandable panel shows the
+  operation, local time, HTTP status when available, stable error code,
+  sanitized server-provided message, and a concrete retry or setup action.
+- Provide **Copy details** for support and debugging. The copied form uses the
+  same sanitized fields shown on screen; it must not silently include more.
+- Distinguish at least cleanup/provider, outgoing publication, configuration,
+  vocabulary, and target-management failures. Multiple simultaneous failures
+  remain separately identifiable rather than overwriting one generic status.
+- Network failure, timeout, malformed response, and server rejection need
+  distinct summaries even when they share the same retry action.
+- Never display or copy API keys, authorization or request headers, Original or
+  Cleaned text, full provider responses, stack traces, database contents,
+  private paths, or other operating data. If the backend cannot provide safe
+  detail, show the status/code and say that no additional safe detail is
+  available rather than inventing a cause.
+- Fail-open behavior remains independent: an error can be fully inspectable
+  while Outgoing continues to use Original.
+
+This requires a structured safe-error contract from the API. The browser must
+not parse arbitrary exception text, and the server must sanitize provider and
+configuration failures before returning user-visible detail.
 
 ### Future: expanded prompt-version management (not version one)
 
@@ -468,6 +505,11 @@ automatic cleanup disabled, timeout, provider error, stale result, publication
 pending, publication ready, and publication unavailable. None may prevent
 editing or choosing Original.
 
+For every API-backed workflow, also cover network unavailable, timeout,
+non-success HTTP status, structured safe detail, malformed/unknown response,
+retrying, resolved, and dismissed. Error summaries and their detail controls
+must remain keyboard accessible and must not be conveyed by color alone.
+
 The source API currently accepts 0–100,000 characters. Design for a typical
 short message through several paragraphs without making the maximum case
 unusable. Character limits and overflow must be stated before submission, not
@@ -519,6 +561,10 @@ schema state rather than running migrations.
   `local_text` identifiers.
 - Normal startup does not migrate or seed the database.
 - Cleanup fails open to Original, including while a result is pending.
+- API errors remain visible and provide expandable, copyable, sanitized details
+  at the affected workflow. Error reporting never exposes credentials,
+  operating text, provider payloads, stack traces, database contents, or
+  private paths.
 - The Original/Cleaned workspace remains resizable and Original remains
   collapsible without content loss. That collapsed state is the version-one
   CART-style open-caption interaction and does not persist text or caption
@@ -551,7 +597,9 @@ Remaining validation before implementation:
    contract is finalized.
 3. Confirm which target installation and permission states the local runtime
    can observe reliably; the UI must not promise states it cannot verify.
-4. Run a visual-direction decision for the surface; the present main page is a
+4. Define the stable safe-error codes and sanitized detail available from each
+   version-one API operation.
+5. Run a visual-direction decision for the surface; the present main page is a
    liked reference, not a locked design.
-5. Revisit Recording review only when its private storage, retention, recovery,
+6. Revisit Recording review only when its private storage, retention, recovery,
    and neutral-export contract can be shaped together.
