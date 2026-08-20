@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-19T21:30:37Z",
+  "title": "Design System: Sayloom",
+  "extensions": {
+    "colorMeta": {
+      "thread-blue": {
+        "role": "primary",
+        "displayName": "Thread Blue",
+        "canonical": "#1769aa",
+        "tonalRamp": ["#08213a", "#0b3558", "#0e4975", "#125d92", "#1769aa", "#4a8fc3", "#91bddc", "#dbeaf6"]
+      },
+      "thread-blue-dark": {
+        "role": "primary",
+        "displayName": "Deep Thread Blue",
+        "canonical": "#0b3f6b",
+        "tonalRamp": ["#061622", "#08263d", "#0a3559", "#0b3f6b", "#225b82", "#5a83a3", "#a4bdd0", "#e1ebf2"]
+      },
+      "thread-blue-pale": {
+        "role": "primary",
+        "displayName": "Pale Thread Blue",
+        "canonical": "#dbeaf6",
+        "tonalRamp": ["#142532", "#29465b", "#496f8a", "#73a0bf", "#a4c8df", "#c4dceb", "#dbeaf6", "#f4f9fd"]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#111820",
+        "tonalRamp": ["#080b0f", "#111820", "#28333e", "#46535f", "#6b7781", "#9aa3aa", "#cbd0d4", "#f1f3f4"]
+      },
+      "night": {
+        "role": "neutral",
+        "displayName": "Night",
+        "canonical": "#0b121b",
+        "tonalRamp": ["#05090d", "#0b121b", "#202c39", "#3d4a58", "#63707c", "#929ba3", "#c7ccd0", "#eff1f3"]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted Graphite",
+        "canonical": "#5e6874",
+        "tonalRamp": ["#12171c", "#252d35", "#3d4752", "#5e6874", "#7c8792", "#a4acb4", "#ced3d7", "#f2f4f5"]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Work Paper",
+        "canonical": "#eceae4",
+        "tonalRamp": ["#262521", "#4c4a43", "#77746b", "#a5a198", "#cbc8c0", "#dfdcd5", "#eceae4", "#f8f7f3"]
+      },
+      "paper-bright": {
+        "role": "neutral",
+        "displayName": "Bright Paper",
+        "canonical": "#fffdf7",
+        "tonalRamp": ["#292823", "#514f47", "#7d7a70", "#aaa69b", "#d1cec5", "#e9e6df", "#fffdf7", "#ffffff"]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Rule Gray",
+        "canonical": "#b9bec6",
+        "tonalRamp": ["#1c2025", "#373d44", "#58616b", "#7d8791", "#a0a8b0", "#b9bec6", "#d9dce0", "#f4f5f6"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Brand Display", "purpose": "Product name only." },
+      "headline": { "displayName": "Sheet Heading", "purpose": "Panel and setup-area titles." },
+      "body": { "displayName": "Interface Body", "purpose": "Controls, explanations, and metadata." },
+      "editor": { "displayName": "Working Text", "purpose": "Original and Cleaned passages." },
+      "label": { "displayName": "Operational Label", "purpose": "Micro-labels, section numbers, and compact status captions." }
+    },
+    "shadows": [
+      {
+        "name": "sheet-ambient",
+        "value": "0 14px 42px rgba(11, 18, 27, 0.15)",
+        "purpose": "Separates a complete working sheet from the page field."
+      },
+      {
+        "name": "control-low",
+        "value": "0 2px 8px rgba(11, 18, 27, 0.08)",
+        "purpose": "Gives compact raised controls a quiet tactile edge."
+      },
+      {
+        "name": "dialog-high",
+        "value": "0 28px 90px rgba(11, 18, 27, 0.38)",
+        "purpose": "Reserved for modal sheets."
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-state",
+        "value": "120ms ease",
+        "purpose": "Hover, press, and border changes on compact controls."
+      },
+      {
+        "name": "toggle-state",
+        "value": "180ms ease",
+        "purpose": "Switch and selection transitions."
+      },
+      {
+        "name": "processing-breathe",
+        "value": "850ms ease-in-out infinite alternate",
+        "purpose": "Low-amplitude processing light only."
+      }
+    ],
+    "breakpoints": [
+      { "name": "compact-desktop", "value": "920px" },
+      { "name": "horizontal-navigation", "value": "760px" },
+      { "name": "stacked-panel-heading", "value": "540px" }
+    ]
+  },
+  "components": [],
+  "narrative": {
+    "northStar": "The Threaded Work Sheet",
+    "overview": "Sayloom feels like a carefully prepared working sheet: warm paper, exact rules, ink-led typography, and a blue thread that connects source, transformation, outgoing state, and safe recovery detail. It is a quiet macOS utility rather than a generic dashboard. The interface should disappear during repeated use while remaining legible enough to trust at a glance. This is an extension of the incumbent code-defined world, not a replacement. New setup surfaces and inspectable failures inherit the same paper, rule, rail, heading, field, and control language.",
+    "keyCharacteristics": [
+      "Warm paper and cool output surfaces bounded by fine, functional rules.",
+      "Near-black utility chrome with one restrained thread-blue accent.",
+      "Editorial serif for identity and working text; workhorse sans for controls.",
+      "Vertically ordered, spacious task canvases with compact operational metadata.",
+      "State is always written in words; color supports meaning but never carries it.",
+      "Failures remain inspectable as quiet, ruled records beside their owning workflow without interrupting raw fail-open."
+    ],
+    "rules": [
+      { "name": "The Blue Thread Rule", "body": "Blue appears only where the interface needs to show selection, action, focus, or live state. Large inactive regions remain neutral.", "section": "colors" },
+      { "name": "The Written State Rule", "body": "Waiting, stale, failed, disabled, installed, and selected states must have adjacent text. Never ask hue alone to explain state.", "section": "colors" },
+      { "name": "The Two Voices Rule", "body": "Serif identifies the brand, titles the working sheet, and carries authored or generated prose. Sans-serif operates the product.", "section": "typography" },
+      { "name": "The Compact Label Rule", "body": "Uppercase tracking is reserved for short labels; never apply it to paragraphs, long actions, or wrapped navigation text.", "section": "typography" },
+      { "name": "The Linear Proof Rule", "body": "Original → transformation context → Cleaned → Outgoing must read in that order without crossing the page or opening a manager.", "section": "layout" },
+      { "name": "The Sheet, Not Card Rule", "body": "Borders organize working surfaces; shadows only separate a complete sheet from the page. Do not turn every group into a card.", "section": "elevation" },
+      { "name": "The Earned Curve Rule", "body": "A curve must identify a switch, a compact state, or a circular action. Content containers remain sheet-like.", "section": "shapes" },
+      { "name": "The Inspectable Failure Rule", "body": "Every API failure leaves a durable, safe, copyable explanation at its owning workflow while the user's available path continues independently.", "section": "components" }
+    ],
+    "dos": [
+      "Do inherit the incumbent paper, rail, rule, type, and control language on Workspace, Cleanup, and Targets.",
+      "Do preserve generous text canvases and compact setup controls.",
+      "Do keep prompt and vocabulary context visible with Cleaned.",
+      "Do keep Original, Cleaned, and Outgoing source unambiguous in every state.",
+      "Do use one continuous sheet or ruled list before adding another container.",
+      "Do preserve keyboard focus, resizing, text selection, and readable wrapping.",
+      "Do keep each simultaneous API failure separately named, persistent, and expandable at the workflow that owns it.",
+      "Do make visible safe details and copied details the same bounded dataset."
+    ],
+    "donts": [
+      "Don't introduce rounded dashboard cards, bento grids, glass, or a second accent identity.",
+      "Don't use serif type for buttons, form labels, navigation, or status text.",
+      "Don't decorate inactive regions with blue or rely on color-only state.",
+      "Don't place Original and Cleaned side by side or hide the resizable divider.",
+      "Don't add recording-review UI, a target picker, or delivery claims to the workspace visual world.",
+      "Don't persist or depict real dictated content in documentation or comps.",
+      "Don't use a toast as the only failure record or collapse unrelated errors into one global banner.",
+      "Don't let an expanded error disclosure block editing, choosing Original, or understanding the current outgoing value."
+    ]
+  }
+}

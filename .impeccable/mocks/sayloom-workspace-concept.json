@@ -1,0 +1,24 @@
+{
+  "surface": "Sayloom workspace",
+  "mode": "operate",
+  "buildPath": "comp",
+  "image": ".impeccable/mocks/sayloom-workspace-concept.png",
+  "dimensions": {
+    "width": 1473,
+    "height": 1068
+  },
+  "reference": "docs/images/sayloom-development.png",
+  "approved": true,
+  "approvalBasis": "The approved visual world is preserved; this requested refresh adds the settled version-one inspectable-error requirement.",
+  "createdAt": "2026-08-19T20:26:30Z",
+  "refreshedAt": "2026-08-19T21:30:37Z",
+  "state": "cleanup and publication failures with raw fail-open active",
+  "requirementsShown": [
+    "persistent inline summary at each owning workflow",
+    "expanded View details disclosure",
+    "sanitized visible fields with Copy details",
+    "separate cleanup and publication failures",
+    "Original selected with raw fail-open active"
+  ],
+  "prompt": "Edit this existing Sayloom failure-state UI comp with surgical fidelity. Preserve every pixel-level design choice, layout, dimensions, typography, wording, spacing, controls, error summaries, expanded safe details, navigation, selected Original fail-open state, colors, and materials unless explicitly changed below. Do not redesign or move anything.\n\nCorrect only the two contradictory compact status labels at the far lower right of the Outgoing strip:\n1. Replace “Cleaned” with “Cleanup unavailable”.\n2. Replace “State published” with “Publication unavailable”.\nUse the same compact sans typography, rule spacing, and understated status-marker treatment already present. Neither failure marker should look like a success state; keep the Ink/Night and restrained blue visual language with explicit text, no red or orange. Leave “Using Original · raw fail-open active”, the separate OUTGOING error summary, View details, and every other label exactly unchanged."
+}
