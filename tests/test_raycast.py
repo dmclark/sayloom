@@ -48,6 +48,16 @@ def test_all_raycast_shell_files_parse() -> None:
         subprocess.run(["/bin/sh", "-n", path], check=True)
 
 
+def test_raycast_uses_the_fixed_development_port_without_a_generic_service() -> None:
+    library = (RAYCAST_DIRECTORY / "lib.sh").read_text()
+    opener = (RAYCAST_DIRECTORY / "open-sayloom.sh").read_text()
+
+    assert "http://127.0.0.1:7523" in library
+    assert "http://127.0.0.1:7523/" in opener
+    assert "launchctl kickstart" not in opener
+    assert "local.local-text.development\"" not in opener
+
+
 class OutgoingStateServer:
     def __init__(self, state: object) -> None:
         body = json.dumps(state, ensure_ascii=False).encode()

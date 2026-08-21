@@ -28,14 +28,7 @@ is_healthy() {
 }
 
 if ! is_healthy; then
-  /bin/launchctl kickstart "gui/$(/usr/bin/id -u)/local.local-text.development" \
-    || fail_command "the development service could not be started"
-  attempt=0
-  while [ "$attempt" -lt 20 ] && ! is_healthy; do
-    /bin/sleep 0.15
-    attempt=$((attempt + 1))
-  done
-  is_healthy || fail_command "the development service is not healthy"
+  fail_command "development is not healthy; restart the selected state with scripts/dev.py"
 fi
 
 /usr/bin/osascript <<'APPLESCRIPT'

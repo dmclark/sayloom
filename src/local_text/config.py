@@ -14,6 +14,7 @@ class Profile(StrEnum):
 @dataclass(frozen=True)
 class Settings:
     profile: Profile
+    development_state_name: str | None = None
     gemini_api_key: str | None = field(default=None, repr=False)
     gemini_model: str = "gemini-3.5-flash"
     cleanup_timeout_seconds: float = 30.0
@@ -22,6 +23,12 @@ class Settings:
     @property
     def display_name(self) -> str:
         return "Sayloom Development" if self.profile is Profile.DEVELOPMENT else "Sayloom"
+
+    @property
+    def page_title(self) -> str:
+        if self.profile is Profile.DEVELOPMENT and self.development_state_name:
+            return f"{self.display_name} — {self.development_state_name}"
+        return self.display_name
 
     @property
     def resolved_database_path(self) -> Path:
@@ -50,6 +57,7 @@ def load_settings() -> Settings:
     )
     return Settings(
         profile=profile,
+        development_state_name=os.getenv("LOCAL_TEXT_DEVELOPMENT_STATE_NAME"),
         gemini_api_key=api_key,
         gemini_model=os.getenv("LOCAL_TEXT_GEMINI_MODEL", "gemini-3.5-flash"),
         cleanup_timeout_seconds=float(os.getenv("LOCAL_TEXT_CLEANUP_TIMEOUT_SECONDS", "30")),

@@ -114,7 +114,7 @@ main,
   text-transform: uppercase;
 }
 
-.brand-line { gap: 13px; }
+.brand-line { flex-wrap: wrap; gap: 13px; }
 
 h1, h2 { margin: 0; font-family: "Iowan Old Style", Palatino, serif; font-weight: 500; }
 h1 { font-size: clamp(2rem, 3vw, 3rem); line-height: 1; letter-spacing: -0.035em; }
@@ -125,6 +125,7 @@ h2 { font-size: 1.45rem; letter-spacing: -0.02em; }
   place-items: center;
   min-width: 40px;
   height: 22px;
+  padding: 0 8px;
   margin-top: 6px;
   border: 1px solid var(--blue);
   color: var(--blue-dark);
@@ -132,6 +133,7 @@ h2 { font-size: 1.45rem; letter-spacing: -0.02em; }
   font-size: 0.62rem;
   font-weight: 800;
   letter-spacing: 0.16em;
+  white-space: nowrap;
 }
 
 .status-pill {

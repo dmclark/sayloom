@@ -4,18 +4,34 @@ A local-first text cleanup workspace for typing, paste, and compatible dictation
 
 ![Sayloom Development workspace](docs/images/sayloom-development.png)
 
-## Setup
+## Development states
 
 Requirements: macOS, Python 3.12+, and [uv](https://docs.astral.sh/uv/).
 
 ```sh
 uv sync --locked
-uv run python -m local_text.admin migrate
-uv run python -m local_text.admin seed
-uv run uvicorn local_text.app:app --host 127.0.0.1 --port 7523
+scripts/dev.py create feature-workflow
+scripts/dev.py initialize --state feature-workflow
+scripts/dev.py status --state feature-workflow
 ```
 
-Open <http://127.0.0.1:7523/> or check <http://127.0.0.1:7523/health>.
+Every development runtime must use an explicit named external state. `create`
+prints its state directory, database, service label, and fixed development port;
+no command falls
+back to a shared state. Put optional credentials in the shared development
+configuration file, then run
+`scripts/dev.py restart --state feature-workflow`.
+Restart verifies, backs up, explicitly migrates/seeds, and health-checks only
+the selected state-scoped service. State manifests bind the canonical checkout
+and state paths to a checkout-specific service label and the fixed loopback
+port. Missing, changed, cross-checkout, and path-escaping manifests are rejected
+before an operation can use them.
+
+Development always uses `127.0.0.1:7523`, so Raycast commands have one stable
+endpoint. A controlled restart stops any registered named development state on
+that port before starting the selected state. It refuses to stop an unregistered
+listener. Only one named development state runs at a time; production remains
+separate on port 7532.
 
 The local default is the `development` profile and displays **Sayloom Development**. A release process can explicitly select release branding with `LOCAL_TEXT_PROFILE=release`. Application startup performs no database migrations or seed writes. If the database is absent or at the wrong schema revision, `/health` reports `setup_required` with HTTP 503 rather than changing it.
 
@@ -23,31 +39,56 @@ The local default is the `development` profile and displays **Sayloom Developmen
 
 Cleanup is enabled by default for every Original update, regardless of whether it came from typing, ordinary paste, or compatible dictation. Replacing a fully selected Original clears the previous Cleaned result for the new session; incremental input keeps the last result visible while cleanup is waiting or running. During either kind of reprocessing, outgoing state immediately fails open to the current Original text. Reloading the page clears both editors and the process-local outgoing state without changing durable prompt or cleanup settings. Dictation tools that signal a write with an untrusted synthetic paste followed by a trusted input event receive compatible caret and focus handling, but that event sequence is not a required input API.
 
-Configure the development LaunchAgent by creating the external, user-only file `~/Library/Application Support/local-text/development/environment`:
+Development configuration uses two external, user-only files under `~/.config`:
+
+```text
+~/.config/local-text/development/environment
+~/.config/local-text/development/states/CHECKOUT_ID/STATE_NAME/environment
+```
+
+The shared file is loaded first. The checkout-and-state-specific file is loaded
+second and may override shared values. `scripts/dev.py status --state NAME`
+prints the exact paths and a sanitized effective status without displaying
+credential values. Each file uses unquoted `KEY=value` entries:
 
 ```sh
 LOCAL_TEXT_GEMINI_API_KEY=replace-with-your-key
 # Optional:
 # LOCAL_TEXT_GEMINI_MODEL=gemini-3.5-flash
 # LOCAL_TEXT_CLEANUP_TIMEOUT_SECONDS=30
-# LOCAL_TEXT_DATABASE_PATH=/an/external/state/location/local-text.sqlite3
 ```
 
-Set its permissions to `0600`, then use the verified restart workflow below. The file and key must never enter Git. The cleanup toggle is a durable application setting managed by the UI and SQLite.
+Create the shared file with an editor so the credential does not enter shell
+history or command arguments:
+
+```sh
+install -d -m 700 "$HOME/.config/local-text/development"
+"${EDITOR:?Set EDITOR first}" "$HOME/.config/local-text/development/environment"
+chmod 600 "$HOME/.config/local-text/development/environment"
+scripts/dev.py restart --state NAME
+```
+
+The files and keys must never enter Git. Only the three keys shown above are
+accepted; files must be regular, non-symlink files with mode `0600`, are parsed
+as data, and are never sourced as shell code. Database path, state directory,
+profile, service label, and port overrides are rejected: those routing values
+remain exclusively bound by the selected state manifest.
 
 ## Durable prompt configuration
 
 SQLite in the external profile state directory is authoritative for the seeded prompt, immutable custom prompt versions, exact active-version selection, the cleanup default, seed state, and one-time import status. The Cleaned header provides a compact active-prompt selector; **Prompts** in the contained dark workspace rail opens a full-width version-management dialog for reading history, basing a new version on an earlier version, saving and activating a new immutable version, or reactivating an exact earlier version. Original and Cleaned are vertically stacked and share an accessible draggable divider with a 65/35 default split and keyboard-adjustable 45–80% Original range. Original can collapse while retaining text-entry focus so Cleaned fills the canvas. At narrower widths the workspace rail becomes a horizontal navigation strip. Original uses the browser's native insertion point; Cleaned is read-only.
 
-Normal startup only checks schema state. The administration commands are explicit:
+Normal startup only checks schema state. Development-state administration is explicit:
 
 ```sh
-uv run python -m local_text.admin schema
-uv run python -m local_text.admin migrate
-uv run python -m local_text.admin seed
+scripts/dev.py status --state NAME
+scripts/dev.py initialize --state NAME
 ```
 
-Use `scripts/verify-then-restart.sh` for a real update rather than running migration steps individually. It runs all checks, makes an online SQLite backup when a database exists, migrates, applies the deterministic seed release, restarts only `local.local-text.development`, and requires a healthy response from port 7523.
+Use `scripts/dev.py restart --state NAME` for a real update rather than running
+migration steps individually. It runs all checks, makes an online SQLite backup,
+migrates, applies the deterministic seed release, and restarts only the selected
+state-scoped service.
 
 ### One-time configuration import
 
@@ -73,37 +114,25 @@ uv run ruff check .
 uv run pytest
 ```
 
-Do not use hot reload for validated coding tasks. After the user-level service is installed, use the controlled `scripts/verify-then-restart.sh` workflow described above.
+Do not use hot reload for validated coding tasks. Use the controlled
+`scripts/dev.py restart --state NAME` workflow described above.
 
-## User-level launchd service
+## State-scoped launchd service
 
-The user-level launchd service uses these neutral identifiers:
-
-- label: `local.local-text.development`
-- state: `~/Library/Application Support/local-text/development`
-- port: `7523`
-
-Render a plist for review without changing machine state:
+Render a selected state's plist for review without changing machine state:
 
 ```sh
-uv run python scripts/render-launchd-plist.py > /tmp/local-text-development.plist
+uv run python scripts/render-launchd-plist.py \
+  --state feature-workflow > /tmp/local-text-development.plist
 plutil -lint /tmp/local-text-development.plist
 ```
 
-After reviewing it, install or safely reload only this user agent:
+`restart` installs or reloads only the selected state's user agent. Runtime logs
+and all future operating data belong in that external state directory, never in
+this repository.
 
-```sh
-uv sync --locked
-scripts/install-launchd.sh
-```
-
-The installer creates the external state and log directories with user-only permissions. To stop the agent and remove its installed plist while preserving external state:
-
-```sh
-scripts/uninstall-launchd.sh
-```
-
-Runtime logs and all future operating data belong in the external state directory, never in this repository.
+End-user Preferences and Keychain-backed credential management are deferred;
+this developer-safety gate intentionally provides no Preferences or Keychain UI.
 
 ## Raycast commands
 

@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 from local_text.cleanup import CleanupRequest, CleanupResult, CleanupService, GeminiProvider
-from local_text.config import Settings, load_settings
+from local_text.config import Profile, Settings, load_settings
 from local_text.database import ApplicationDatabase
 from local_text.prompt_store import PromptNotFoundError, PromptRecord, PromptStore, SeedStateError
 from local_text.state import OutgoingStateStore, OutgoingStateUpdate
@@ -50,7 +50,7 @@ def create_app(
     cleanup_service: CleanupService | None = None,
 ) -> FastAPI:
     runtime = settings or load_settings()
-    application = FastAPI(title=runtime.display_name)
+    application = FastAPI(title=runtime.page_title)
     database = ApplicationDatabase(runtime.resolved_database_path)
     schema = database.schema_status()
     prompts = PromptStore(database)
@@ -87,6 +87,7 @@ def create_app(
         return {
             "status": "ok" if ready else "setup_required",
             "profile": runtime.profile,
+            "development_state": runtime.development_state_name,
             "database": {
                 "state": schema.state,
                 "current_revision": schema.current_revision,
@@ -106,23 +107,32 @@ def create_app(
 
     @application.get("/", response_class=HTMLResponse)
     def development_page() -> str:
-        development_badge = (
-            '<span class="development-badge" aria-label="Development profile">DEV</span>'
-            if runtime.profile.value == "development"
-            else ""
-        )
+        development_badge = ""
+        if runtime.profile is Profile.DEVELOPMENT:
+            badge_text = "DEV"
+            badge_label = "Development profile"
+            if runtime.development_state_name:
+                state_name = escape(runtime.development_state_name)
+                badge_text = f"DEV · {state_name}"
+                badge_label = f"Development state {state_name}"
+            development_badge = (
+                f'<span class="development-badge" aria-label="{badge_label}">'
+                f"{badge_text}</span>"
+            )
         return (
-            INDEX_TEMPLATE.replace("__DISPLAY_NAME__", escape(runtime.display_name))
+            INDEX_TEMPLATE.replace("__PAGE_TITLE__", escape(runtime.page_title))
+            .replace("__DISPLAY_NAME__", escape(runtime.display_name))
             .replace("__PROFILE__", escape(runtime.profile.value))
             .replace("__DEVELOPMENT_BADGE__", development_badge)
         )
 
     @application.get("/api/config")
-    def browser_config() -> dict[str, str | bool]:
+    def browser_config() -> dict[str, str | bool | None]:
         require_configuration()
         return {
             "display_name": runtime.display_name,
             "profile": runtime.profile,
+            "development_state": runtime.development_state_name,
             "cleanup_enabled_by_default": prompts.cleanup_enabled_by_default(),
             "cleanup_available": provider is not None or cleanup_service is not None,
             "cleanup_model": runtime.gemini_model,

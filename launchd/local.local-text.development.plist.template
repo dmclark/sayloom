@@ -3,18 +3,21 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>local.local-text.development</string>
+  <string>__LABEL__</string>
   <key>ProgramArguments</key>
   <array>
     <string>__REPOSITORY_ROOT__/scripts/run-development.sh</string>
+    <string>--state-root</string>
+    <string>__STATE_ROOT__</string>
+    <string>--state</string>
+    <string>__STATE_NAME__</string>
+    <string>--label</string>
+    <string>__LABEL__</string>
+    <string>--port</string>
+    <string>__PORT__</string>
   </array>
   <key>WorkingDirectory</key>
   <string>__REPOSITORY_ROOT__</string>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>LOCAL_TEXT_PROFILE</key>
-    <string>development</string>
-  </dict>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>

@@ -17,6 +17,7 @@ def test_health_reports_development_profile(initialized_settings: Settings) -> N
     assert response.json() == {
         "status": "ok",
         "profile": "development",
+        "development_state": None,
         "database": {
             "state": "current",
             "current_revision": "0001_gate2_prompt_core",
@@ -105,6 +106,24 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     )
 
 
+def test_development_page_identifies_selected_state(initialized_settings: Settings) -> None:
+    settings = Settings(
+        Profile.DEVELOPMENT,
+        development_state_name="workflow-parity-regroup",
+        database_path=initialized_settings.database_path,
+    )
+    client = TestClient(create_app(settings))
+
+    page = client.get("/").text
+
+    assert client.app.title == "Sayloom Development — workflow-parity-regroup"
+    assert "<title>Sayloom Development — workflow-parity-regroup</title>" in page
+    assert ">DEV · workflow-parity-regroup</span>" in page
+    assert 'aria-label="Development state workflow-parity-regroup"' in page
+    assert client.get("/api/config").json()["development_state"] == "workflow-parity-regroup"
+    assert client.get("/health").json()["development_state"] == "workflow-parity-regroup"
+
+
 def test_release_profile_uses_release_brand(initialized_settings: Settings) -> None:
     client = TestClient(
         create_app(Settings(Profile.RELEASE, database_path=initialized_settings.database_path))
@@ -130,6 +149,7 @@ def test_config_reports_cleanup_without_exposing_key(initialized_settings: Setti
     assert response.json() == {
         "display_name": "Sayloom Development",
         "profile": "development",
+        "development_state": None,
         "cleanup_enabled_by_default": True,
         "cleanup_available": True,
         "cleanup_model": "gemini-3.5-flash",
