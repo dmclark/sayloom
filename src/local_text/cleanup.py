@@ -21,6 +21,13 @@ class CleanupStatus(StrEnum):
 class CleanupRequest(BaseModel):
     raw_text: str = Field(max_length=100_000)
     enabled: bool = True
+    prompt_version_id: int | None = Field(default=None, ge=1)
+
+
+class SafeError(BaseModel):
+    code: str
+    message: str
+    retry_action: str
 
 
 class CleanupResult(BaseModel):
@@ -28,6 +35,7 @@ class CleanupResult(BaseModel):
     status: CleanupStatus
     provider: str = "gemini"
     model: str
+    error: SafeError | None = None
 
 
 class CleanupProvider(Protocol):
@@ -123,17 +131,40 @@ class CleanupService:
             )
             cleaned_text = _validate_output(raw_text, provider_output)
         except (TimeoutError, httpx.TimeoutException):
-            return self._result(raw_text, CleanupStatus.TIMEOUT)
+            return self._result(
+                raw_text,
+                CleanupStatus.TIMEOUT,
+                error=SafeError(
+                    code="cleanup_timeout",
+                    message="Cleanup did not finish before the time limit.",
+                    retry_action="Retry cleanup or continue with Original.",
+                ),
+            )
         except Exception:
-            return self._result(raw_text, CleanupStatus.PROVIDER_ERROR)
+            return self._result(
+                raw_text,
+                CleanupStatus.PROVIDER_ERROR,
+                error=SafeError(
+                    code="cleanup_provider_error",
+                    message="The cleanup provider could not produce a safe result.",
+                    retry_action="Retry cleanup or continue with Original.",
+                ),
+            )
 
         status = CleanupStatus.UNCHANGED if cleaned_text == raw_text else CleanupStatus.CLEANED
         return self._result(cleaned_text, status)
 
-    def _result(self, text: str, status: CleanupStatus) -> CleanupResult:
+    def _result(
+        self,
+        text: str,
+        status: CleanupStatus,
+        *,
+        error: SafeError | None = None,
+    ) -> CleanupResult:
         return CleanupResult(
             cleaned_text=text,
             status=status,
             provider="gemini",
             model=self.model,
+            error=error,
         )

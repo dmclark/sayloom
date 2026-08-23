@@ -85,6 +85,9 @@ def test_timeout_fails_open_to_raw_text() -> None:
 
     assert result.status is CleanupStatus.TIMEOUT
     assert result.cleaned_text == "synthetic raw"
+    assert result.error is not None
+    assert result.error.code == "cleanup_timeout"
+    assert "synthetic raw" not in result.error.message
 
 
 def test_provider_error_and_rejected_output_fail_open_to_raw_text() -> None:
@@ -107,6 +110,9 @@ def test_provider_error_and_rejected_output_fail_open_to_raw_text() -> None:
 
     assert broken.status is CleanupStatus.PROVIDER_ERROR
     assert broken.cleaned_text == "synthetic raw"
+    assert broken.error is not None
+    assert broken.error.code == "cleanup_provider_error"
+    assert "synthetic provider failure" not in broken.error.message
     assert expanded.status is CleanupStatus.PROVIDER_ERROR
     assert expanded.cleaned_text == "synthetic raw"
 

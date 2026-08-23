@@ -2,6 +2,7 @@
 
 from dataclasses import asdict
 from datetime import UTC
+from hashlib import sha256
 from html import escape
 from pathlib import Path
 
@@ -18,6 +19,9 @@ from local_text.state import OutgoingStateStore, OutgoingStateUpdate
 
 STATIC_DIRECTORY = Path(__file__).parent / "static"
 INDEX_TEMPLATE = (STATIC_DIRECTORY / "index.html").read_text()
+STATIC_VERSION = sha256(
+    b"".join((STATIC_DIRECTORY / filename).read_bytes() for filename in ("app.css", "app.js"))
+).hexdigest()[:12]
 
 
 class PromptCreateRequest(BaseModel):
@@ -124,6 +128,7 @@ def create_app(
             .replace("__DISPLAY_NAME__", escape(runtime.display_name))
             .replace("__PROFILE__", escape(runtime.profile.value))
             .replace("__DEVELOPMENT_BADGE__", development_badge)
+            .replace("__STATIC_VERSION__", STATIC_VERSION)
         )
 
     @application.get("/api/config")
@@ -141,7 +146,22 @@ def create_app(
     @application.post("/api/cleanup", response_model=CleanupResult)
     async def clean_text(request: CleanupRequest) -> CleanupResult:
         require_configuration()
-        return await cleanup.clean(request, prompts.active().system_text)
+        try:
+            prompt = (
+                prompts.get(request.prompt_version_id)
+                if request.prompt_version_id is not None
+                else prompts.active()
+            )
+        except PromptNotFoundError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "code": "prompt_version_not_found",
+                    "message": "The selected prompt version is no longer available.",
+                    "retry_action": "Reload prompt versions and retry cleanup.",
+                },
+            ) from exc
+        return await cleanup.clean(request, prompt.system_text)
 
     @application.get("/api/prompts")
     def prompt_history() -> dict[str, object]:

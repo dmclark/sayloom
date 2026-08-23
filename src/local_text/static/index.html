@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light">
     <title>__PAGE_TITLE__</title>
-    <link rel="stylesheet" href="/static/app.css">
-    <script src="/static/app.js" defer></script>
+    <link rel="stylesheet" href="/static/app.css?v=__STATIC_VERSION__">
+    <script src="/static/app.js?v=__STATIC_VERSION__" defer></script>
   </head>
   <body>
     <div class="page-grain" aria-hidden="true"></div>
@@ -41,18 +41,10 @@
 
       <div class="workspace-shell">
         <nav class="utility-rail" aria-label="Workspace sections">
-          <button id="show-canvas" class="utility-rail-item is-active" type="button" aria-current="page">
+          <span class="utility-rail-item is-active" aria-current="page">
             <span class="utility-rail-index" aria-hidden="true">01</span>
-            <span>Canvas</span>
-          </button>
-          <button id="show-prompts" class="utility-rail-item" type="button">
-            <span class="utility-rail-index" aria-hidden="true">02</span>
-            <span>Prompts</span>
-          </button>
-          <button class="utility-rail-item" type="button" disabled title="More tools are not available yet">
-            <span class="utility-rail-index" aria-hidden="true">03</span>
-            <span>More</span>
-          </button>
+            <span>Workspace</span>
+          </span>
         </nav>
 
         <section class="workspace" aria-label="Text cleanup workspace">
@@ -76,7 +68,13 @@
             <footer class="panel-footer original-panel-footer">
               <span><strong id="original-count">0</strong> characters</span>
               <div class="panel-footer-actions">
-                <button id="run-cleanup" class="button button-primary" type="button">
+                <button
+                  id="run-cleanup"
+                  class="button button-primary"
+                  type="button"
+                  aria-keyshortcuts="Meta+Enter Control+Enter"
+                  title="Run cleanup (⌘↵)"
+                >
                   <span aria-hidden="true">↻</span> Run cleanup
                 </button>
                 <button id="clear-text" class="button button-quiet" type="button">Clear</button>
@@ -107,7 +105,10 @@
               </div>
               <div class="panel-prompt-control">
                 <label for="active-prompt-selector">Prompt</label>
-                <select id="active-prompt-selector" aria-label="Active cleanup prompt"></select>
+                <select
+                  id="active-prompt-selector"
+                  aria-label="Cleanup prompt version for this page session"
+                ></select>
               </div>
             </header>
             <div class="editor-wrap">
@@ -128,65 +129,39 @@
         </section>
       </div>
 
-      <section class="outgoing-strip" aria-label="Outgoing text state">
-        <div class="outgoing-summary">
-          <span class="outgoing-label">Raycast will send</span>
-          <strong id="outgoing-kind">Nothing yet</strong>
-        </div>
-        <div class="outgoing-statuses">
-          <div id="cleanup-status" class="status-pill" data-state="unchanged" role="status" aria-live="polite">
-            <span class="status-light" aria-hidden="true"></span>
-            <span id="cleanup-status-text">Ready</span>
+      <section class="outgoing-region" aria-label="Outgoing text state">
+        <div class="outgoing-strip">
+          <div class="outgoing-summary">
+            <span class="outgoing-label">Outgoing</span>
+            <div class="outgoing-selector" role="group" aria-label="Outgoing text source">
+              <button id="select-cleaned" type="button" aria-pressed="false">Cleaned</button>
+              <button id="select-original" type="button" aria-pressed="true">Original</button>
+            </div>
+            <strong id="outgoing-kind">Nothing yet</strong>
           </div>
-          <div id="publication-state" class="publication-state" role="status" aria-live="polite">
-            <span aria-hidden="true"></span>
-            <span>State ready</span>
+          <div class="outgoing-statuses">
+            <button id="cleanup-status" class="status-pill" data-state="unchanged" type="button" aria-haspopup="dialog" aria-controls="error-details-dialog" disabled>
+              <span class="status-light" aria-hidden="true"></span>
+              <span id="cleanup-status-text" role="status" aria-live="polite">Ready</span>
+            </button>
+            <button id="publication-state" class="publication-state" type="button" aria-haspopup="dialog" aria-controls="error-details-dialog" disabled>
+              <span aria-hidden="true"></span>
+              <span role="status" aria-live="polite">State ready</span>
+            </button>
           </div>
         </div>
       </section>
     </main>
 
-    <dialog id="prompt-manager" class="prompt-manager-dialog" aria-labelledby="prompt-manager-title">
-      <div class="prompt-sheet">
-        <header class="prompt-sheet-header">
-          <div>
-            <span class="prompt-kicker">Durable configuration</span>
-            <h2 id="prompt-manager-title">Prompt versions</h2>
-          </div>
-          <button id="close-prompt-manager" class="dialog-close" type="button" aria-label="Close prompt manager">×</button>
+    <dialog id="error-details-dialog" class="error-details-dialog" aria-labelledby="error-details-title">
+      <div class="error-sheet">
+        <header class="error-sheet-header">
+          <h2 id="error-details-title">Error details</h2>
+          <button id="close-error-details" class="dialog-close" type="button" aria-label="Close error details">×</button>
         </header>
-        <p class="prompt-introduction">
-          Versions are immutable. Select any version as a starting point; saving creates and
-          activates a new version without changing its source.
-        </p>
-        <div class="prompt-manager">
-          <div class="prompt-history-column">
-            <label for="prompt-history">Version history</label>
-            <select id="prompt-history" size="8" aria-label="Prompt version history"></select>
-            <p id="prompt-version-meta" class="prompt-meta"></p>
-            <button id="activate-prompt" class="button" type="button">Make selected active</button>
-          </div>
-          <div class="prompt-editor-column">
-            <label for="prompt-title">New version title</label>
-            <input id="prompt-title" maxlength="120" autocomplete="off">
-            <label for="prompt-text">Cleanup instruction</label>
-            <textarea id="prompt-text" maxlength="100000" spellcheck="true"></textarea>
-            <div class="prompt-save-row">
-              <span id="prompt-save-status" role="status" aria-live="polite">
-                Ready to create an immutable version.
-              </span>
-              <button id="save-prompt" class="button button-primary" type="button">
-                Save new &amp; activate
-              </button>
-            </div>
-          </div>
-        </div>
+        <dl id="error-details-ledger"></dl>
+        <button id="copy-error-details" class="button" type="button">Copy details</button>
       </div>
     </dialog>
-
-    <footer class="page-footer">
-      <span>Sayloom keeps the raw text sendable when cleanup cannot finish.</span>
-      <span class="shortcut-hint"><kbd>⌘</kbd><kbd>↵</kbd> reruns cleanup</span>
-    </footer>
   </body>
 </html>

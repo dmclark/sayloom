@@ -135,6 +135,13 @@ class PromptStore:
                 raise SeedStateError("active prompt version is missing")
             return _record(prompt)
 
+    def get(self, prompt_version_id: int) -> PromptRecord:
+        with self.database.session_factory() as session:
+            prompt = session.get(PromptVersion, prompt_version_id)
+            if prompt is None:
+                raise PromptNotFoundError(f"prompt version {prompt_version_id} does not exist")
+            return _record(prompt)
+
     def create(self, *, title: str, system_text: str, activate: bool) -> PromptRecord:
         with self.database.session_factory.begin() as session:
             next_version = (session.scalar(select(func.max(PromptVersion.version))) or 0) + 1

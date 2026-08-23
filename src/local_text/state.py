@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field, model_validator
 class OutgoingKind(StrEnum):
     EMPTY = "empty"
     RAW = "raw"
-    EDITED = "edited"
     CLEANED = "cleaned"
 
 
@@ -23,7 +22,6 @@ class PublishedStatus(StrEnum):
     TIMEOUT = "timeout"
     ERROR = "error"
     STALE = "stale"
-    EDITED = "edited"
 
 
 class OutgoingStateUpdate(BaseModel):
@@ -36,12 +34,14 @@ class OutgoingStateUpdate(BaseModel):
 
     @model_validator(mode="after")
     def selected_text_is_current(self) -> "OutgoingStateUpdate":
-        if self.outgoing_text not in {self.raw_text, self.cleaned_text}:
-            raise ValueError("outgoing_text must be selected from the current editor text")
         if not self.outgoing_text and self.outgoing_kind is not OutgoingKind.EMPTY:
             raise ValueError("empty outgoing text must use the empty kind")
         if self.outgoing_text and self.outgoing_kind is OutgoingKind.EMPTY:
             raise ValueError("non-empty outgoing text cannot use the empty kind")
+        if self.outgoing_kind is OutgoingKind.RAW and self.outgoing_text != self.raw_text:
+            raise ValueError("raw outgoing text must match the current Original")
+        if self.outgoing_kind is OutgoingKind.CLEANED and self.outgoing_text != self.cleaned_text:
+            raise ValueError("cleaned outgoing text must match the current Cleaned result")
         return self
 
 

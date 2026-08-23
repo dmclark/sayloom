@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from local_text.app import create_app
+from local_text.app import STATIC_VERSION, create_app
 from local_text.cleanup import CleanupService
 from local_text.config import Profile, Settings
 
@@ -74,18 +74,23 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'aria-label="Development profile"' in response.text
     assert 'id="original-text"' in response.text
     assert 'id="cleaned-text"' in response.text
+    assert f'href="/static/app.css?v={STATIC_VERSION}"' in response.text
+    assert f'src="/static/app.js?v={STATIC_VERSION}"' in response.text
     assert 'id="cleanup-status"' in response.text
     assert 'class="status-label"' not in response.text
     assert 'id="cancel-cleanup"' not in response.text
-    assert 'id="prompt-history"' in response.text
     assert 'id="active-prompt-selector"' in response.text
-    assert 'id="prompt-manager"' in response.text
-    assert 'id="save-prompt"' in response.text
+    assert 'id="prompt-manager"' not in response.text
+    assert 'id="save-prompt"' not in response.text
     assert 'id="workspace-resizer"' in response.text
-    assert 'id="show-canvas"' in response.text
-    assert 'id="show-prompts"' in response.text
+    assert 'id="select-cleaned"' in response.text
+    assert 'id="select-original"' in response.text
     assert 'id="toggle-original"' in response.text
     assert "Type, paste, or dictate here" in response.text
+    assert 'aria-keyshortcuts="Meta+Enter Control+Enter"' in response.text
+    assert 'title="Run cleanup (⌘↵)"' in response.text
+    assert 'class="page-footer"' not in response.text
+    assert "keeps the raw text sendable" not in response.text
     control_rail = response.text.split('class="control-rail"', maxsplit=1)[1].split(
         "</section>", maxsplit=1
     )[0]
@@ -104,6 +109,49 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert response.text.index('class="outgoing-strip"') < response.text.index(
         'id="cleanup-status"'
     )
+
+
+def test_status_errors_use_one_accessible_privacy_safe_dialog(
+    initialized_settings: Settings,
+) -> None:
+    client = TestClient(create_app(initialized_settings))
+
+    page = client.get("/").text
+    script = client.get("/static/app.js").text
+    stylesheet = client.get("/static/app.css").text
+
+    assert '<button id="cleanup-status"' in page
+    assert '<button id="publication-state"' in page
+    assert page.count('<dialog id="error-details-dialog"') == 1
+    assert page.count('aria-controls="error-details-dialog"') == 2
+    assert 'id="cleanup-error"' not in page
+    assert 'id="publication-error"' not in page
+    assert "Copy details" in page
+    assert 'elements.status.addEventListener("click"' in script
+    assert 'elements.publication.addEventListener("click"' in script
+    assert "elements.errorDialog.showModal()" in script
+    assert "navigator.clipboard.writeText" in script
+
+    error_fields = script.split("function errorFields", maxsplit=1)[1].split(
+        "function errorTrigger", maxsplit=1
+    )[0]
+    assert all(
+        label in error_fields
+        for label in (
+            "Operation",
+            "Local time",
+            "HTTP status",
+            "Code",
+            "Sanitized message",
+            "Recovery action",
+        )
+    )
+    assert all(
+        forbidden not in error_fields
+        for forbidden in ("rawText", "cleanedText", "headers", "stack", "payload", "path")
+    )
+    assert "text-align: left" in stylesheet
+    assert ".outgoing-summary { flex: 0 1 auto" in stylesheet
 
 
 def test_development_page_identifies_selected_state(initialized_settings: Settings) -> None:
@@ -173,6 +221,7 @@ def test_cleanup_endpoint_fails_open_when_provider_is_unconfigured(
         "status": "disabled",
         "provider": "gemini",
         "model": "gemini-3.5-flash",
+        "error": None,
     }
 
 
@@ -262,6 +311,56 @@ def test_cleanup_uses_the_durable_active_prompt(initialized_settings: Settings) 
     assert observed == ["Use this exact synthetic instruction."]
 
 
+def test_cleanup_can_use_a_session_prompt_without_changing_the_durable_default(
+    initialized_settings: Settings,
+) -> None:
+    observed: list[str] = []
+
+    class Provider:
+        provider_id = "gemini"
+        model = "test-model"
+
+        async def clean(self, raw_text: str, system_prompt: str) -> str:
+            observed.append(system_prompt)
+            return raw_text
+
+    service = CleanupService(provider=Provider(), model="test-model", timeout_seconds=1)
+    client = TestClient(create_app(initialized_settings, service))
+    durable_prompt_id = client.get("/api/prompts").json()["active_prompt_version_id"]
+    session_prompt = client.post(
+        "/api/prompts",
+        json={
+            "title": "Synthetic session prompt",
+            "system_text": "Use this request-scoped synthetic instruction.",
+            "activate": False,
+        },
+    ).json()
+
+    response = client.post(
+        "/api/cleanup",
+        json={
+            "raw_text": "synthetic source text",
+            "enabled": True,
+            "prompt_version_id": session_prompt["id"],
+        },
+    )
+
+    assert response.status_code == 200
+    assert observed == ["Use this request-scoped synthetic instruction."]
+    assert client.get("/api/prompts").json()["active_prompt_version_id"] == durable_prompt_id
+
+    missing = client.post(
+        "/api/cleanup",
+        json={
+            "raw_text": "synthetic source text",
+            "enabled": True,
+            "prompt_version_id": 9999,
+        },
+    )
+    assert missing.status_code == 404
+    assert missing.json()["detail"]["code"] == "prompt_version_not_found"
+
+
 def test_cleanup_toggle_is_durable_configuration(initialized_settings: Settings) -> None:
     client = TestClient(create_app(initialized_settings))
     update = {
@@ -325,6 +424,19 @@ def test_outgoing_state_rejects_text_not_present_in_either_editor(
 
     assert response.status_code == 422
 
+    mismatched_source = client.put(
+        "/api/outgoing-state",
+        json={
+            "cleanup_enabled": True,
+            "raw_text": "current raw",
+            "cleaned_text": "current cleaned",
+            "outgoing_text": "current raw",
+            "outgoing_kind": "cleaned",
+            "status": "cleaned",
+        },
+    )
+    assert mismatched_source.status_code == 422
+
 
 def test_browser_script_supports_generic_input_and_dictation_compatibility(
     initialized_settings: Settings,
@@ -345,8 +457,15 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     assert "setSelectionRange" in script.text
     assert "fauxCaret" not in script.text
     assert 'elements.workspaceResizer.addEventListener("pointerdown"' in script.text
-    assert 'elements.promptsNav.addEventListener("click"' in script.text
-    assert "elements.promptManager.showModal()" in script.text
+    assert "promptManager" not in script.text
+    assert 'fetch(`/api/prompts/${prompt.id}/activate`' not in script.text
+    assert "prompt_version_id: selectedPromptVersionId" in script.text
+    assert "originalOutgoingOverride = true" in script.text
+    assert "originalOutgoingOverride = false" in script.text
+    assert "Original fallback · replacement Cleaned pending" in script.text
+    assert "setCleanupError" in script.text
+    assert "setPublicationError" in script.text
+    assert 'message: "The browser could not connect to the local API."' in script.text
     assert "cancelCleanup" not in script.text
     assert "setOriginalCollapsed" in script.text
     assert 'elements.cleaned.addEventListener("input"' not in script.text
@@ -358,7 +477,7 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     )[0]
     assert 'elements.cleaned.value = "";' not in run_cleanup
     assert 'elements.cleaned.value = "";' not in scheduled_cleanup
-    assert 'const cleanupInProgress = status === "waiting" || status === "cleaning";' in script.text
+    assert '(status === "cleaned" || status === "unchanged")' in script.text
     initialization = script.text.split("async function initialize()", maxsplit=1)[1].split(
         "initialize();", maxsplit=1
     )[0]
@@ -391,3 +510,27 @@ def test_stacked_workspace_uses_native_caret_and_accessible_resizer(
     assert 'aria-valuemin="45"' in page.text
     assert 'aria-valuemax="80"' in page.text
     assert 'class="panel-prompt-control"' in page.text
+
+
+def test_regular_desktop_workspace_uses_the_remaining_viewport_height(
+    initialized_settings: Settings,
+) -> None:
+    client = TestClient(create_app(initialized_settings))
+
+    stylesheet = client.get("/static/app.css").text
+    desktop_fit = stylesheet.split(
+        "@media (min-width: 761px)", maxsplit=1
+    )[1].split("@media (max-width: 920px)", maxsplit=1)[0]
+
+    assert "height: 100dvh" in desktop_fit
+    assert "overflow: hidden" in desktop_fit
+    assert "main {" in desktop_fit
+    assert "flex: 1 1 auto" in desktop_fit
+    assert ".workspace-shell" in desktop_fit
+    assert ".workspace {" in desktop_fit
+    assert "height: 100%" in desktop_fit
+    assert "min-height: 0" in desktop_fit
+    assert "minmax(0, var(--original-share))" in stylesheet
+    assert "minmax(0, var(--cleaned-share))" in stylesheet
+    assert "minmax(260px" not in stylesheet
+    assert "minmax(170px" not in stylesheet

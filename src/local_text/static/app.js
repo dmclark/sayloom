@@ -19,22 +19,17 @@
     originalCount: document.querySelector("#original-count"),
     cleanedCount: document.querySelector("#cleaned-count"),
     outgoingKind: document.querySelector("#outgoing-kind"),
+    selectCleaned: document.querySelector("#select-cleaned"),
+    selectOriginal: document.querySelector("#select-original"),
     publication: document.querySelector("#publication-state"),
     modelLabel: document.querySelector("#model-label"),
     workspace: document.querySelector(".workspace"),
     workspaceResizer: document.querySelector("#workspace-resizer"),
     activePromptSelector: document.querySelector("#active-prompt-selector"),
-    canvasNav: document.querySelector("#show-canvas"),
-    promptsNav: document.querySelector("#show-prompts"),
-    promptManager: document.querySelector("#prompt-manager"),
-    closePromptManager: document.querySelector("#close-prompt-manager"),
-    promptHistory: document.querySelector("#prompt-history"),
-    promptVersionMeta: document.querySelector("#prompt-version-meta"),
-    promptTitle: document.querySelector("#prompt-title"),
-    promptText: document.querySelector("#prompt-text"),
-    promptSaveStatus: document.querySelector("#prompt-save-status"),
-    savePrompt: document.querySelector("#save-prompt"),
-    activatePrompt: document.querySelector("#activate-prompt"),
+    errorDialog: document.querySelector("#error-details-dialog"),
+    errorLedger: document.querySelector("#error-details-ledger"),
+    closeErrorDialog: document.querySelector("#close-error-details"),
+    copyError: document.querySelector("#copy-error-details"),
   };
 
   const statusLabels = {
@@ -42,9 +37,9 @@
     waiting: "Waiting",
     cleaning: "Cleaning…",
     cleaned: "Cleaned",
-    disabled: "Disabled · raw",
-    timeout: "Timeout · raw",
-    error: "Error · raw",
+    disabled: "Disabled · Original",
+    timeout: "Timeout · Original",
+    error: "Error · Original",
   };
 
   let status = "unchanged";
@@ -59,22 +54,15 @@
   let syntheticPasteTimer = null;
   let returnSelectionPending = false;
   let promptVersions = [];
-  let activePromptVersionId = null;
+  let selectedPromptVersionId = null;
   let activeResizePointer = null;
+  let originalOutgoingOverride = false;
+  const errors = { cleanup: null, publication: null };
 
   function setStatus(nextStatus) {
     status = nextStatus;
     elements.status.dataset.state = nextStatus;
     elements.statusText.textContent = statusLabels[nextStatus] || nextStatus;
-  }
-
-  function setActiveSection(activeButton) {
-    [elements.canvasNav, elements.promptsNav].forEach((button) => {
-      const isActive = button === activeButton;
-      button.classList.toggle("is-active", isActive);
-      if (isActive) button.setAttribute("aria-current", "page");
-      else button.removeAttribute("aria-current");
-    });
   }
 
   function setOriginalCollapsed(collapsed) {
@@ -108,23 +96,34 @@
     setWorkspaceShare(((event.clientY - bounds.top) / bounds.height) * 100);
   }
 
+  function cleanedIsCurrent() {
+    return elements.cleanupEnabled.checked
+      && Boolean(elements.original.value)
+      && (status === "cleaned" || status === "unchanged")
+      && Boolean(elements.cleaned.value);
+  }
+
+  function fallbackLabel() {
+    if (!elements.original.value) return "Nothing yet";
+    if (originalOutgoingOverride) return "Original selected for this draft";
+    if (cleanedIsCurrent()) return status === "unchanged"
+      ? "Cleaned selected · result unchanged"
+      : "Cleaned selected · current result";
+    return {
+      waiting: "Original fallback · replacement Cleaned pending",
+      cleaning: "Original fallback · cleanup in progress",
+      disabled: "Original fallback · cleanup disabled",
+      timeout: "Original fallback · cleanup timed out",
+      error: "Original fallback · cleanup unavailable",
+    }[status] || "Original fallback · Cleaned unavailable";
+  }
+
   function selectedOutgoingState() {
     const rawText = elements.original.value;
     const cleanedText = elements.cleaned.value;
-    const cleanupInProgress = status === "waiting" || status === "cleaning";
-    const useCleaned = elements.cleanupEnabled.checked && !cleanupInProgress;
-    let outgoingText = useCleaned ? cleanedText : rawText;
-    let outgoingKind = useCleaned ? "cleaned" : "raw";
-
-    if (!outgoingText && rawText) {
-      outgoingText = rawText;
-      outgoingKind = "raw";
-    }
-    if (!outgoingText) {
-      outgoingKind = "empty";
-    } else if (outgoingText === rawText) {
-      outgoingKind = "raw";
-    }
+    const useCleaned = !originalOutgoingOverride && cleanedIsCurrent();
+    const outgoingText = useCleaned ? cleanedText : rawText;
+    const outgoingKind = outgoingText ? (useCleaned ? "cleaned" : "raw") : "empty";
 
     return {
       cleanup_enabled: elements.cleanupEnabled.checked,
@@ -139,13 +138,11 @@
   function renderCountsAndSelection() {
     elements.originalCount.textContent = String(elements.original.value.length);
     elements.cleanedCount.textContent = String(elements.cleaned.value.length);
-    const outgoing = selectedOutgoingState();
-    const labels = {
-      empty: "Nothing yet",
-      raw: "Original · raw fail-open",
-      cleaned: "Cleaned result",
-    };
-    elements.outgoingKind.textContent = labels[outgoing.outgoing_kind];
+    const useCleaned = selectedOutgoingState().outgoing_kind === "cleaned";
+    elements.selectCleaned.disabled = !cleanedIsCurrent();
+    elements.selectCleaned.setAttribute("aria-pressed", String(useCleaned));
+    elements.selectOriginal.setAttribute("aria-pressed", String(!useCleaned));
+    elements.outgoingKind.textContent = fallbackLabel();
   }
 
   function setPublicationState(nextState, label) {
@@ -153,10 +150,152 @@
     elements.publication.lastElementChild.textContent = label;
   }
 
+  function errorFields(error) {
+    return [
+      ["Operation", error.operation],
+      ["Local time", error.localTime],
+      ["HTTP status", error.httpStatus === null ? "Not available" : String(error.httpStatus)],
+      ["Code", error.code],
+      ["Sanitized message", error.message],
+      ["Recovery action", error.retryAction],
+    ];
+  }
+
+  function errorTrigger(kind) {
+    return kind === "cleanup" ? elements.status : elements.publication;
+  }
+
+  function makeError({ operation, summary, httpStatus = null, code, message, retryAction }) {
+    return {
+      operation,
+      summary,
+      localTime: new Date().toLocaleString(),
+      httpStatus,
+      code,
+      message,
+      retryAction,
+    };
+  }
+
+  function setError(kind, error) {
+    errors[kind] = error;
+    const trigger = errorTrigger(kind);
+    trigger.disabled = error === null;
+    trigger.classList.toggle("has-error-details", error !== null);
+    if (error === null) {
+      trigger.removeAttribute("aria-label");
+      if (elements.errorDialog.open && elements.errorDialog.dataset.kind === kind) {
+        elements.errorDialog.close();
+      }
+      return;
+    }
+    const statusText = trigger.lastElementChild.textContent;
+    trigger.setAttribute("aria-label", `${statusText}. View ${kind} error details`);
+  }
+
+  function setCleanupError(error) {
+    setError("cleanup", error);
+  }
+
+  function setPublicationError(error) {
+    setError("publication", error);
+  }
+
+  function openErrorDetails(kind) {
+    const error = errors[kind];
+    if (!error) return;
+    elements.errorDialog.dataset.kind = kind;
+    elements.errorLedger.textContent = "";
+    errorFields(error).forEach(([label, value]) => {
+      const term = document.createElement("dt");
+      const description = document.createElement("dd");
+      term.textContent = label;
+      description.textContent = value;
+      elements.errorLedger.append(term, description);
+    });
+    elements.copyError.textContent = "Copy details";
+    elements.errorDialog.showModal();
+  }
+
+  async function copyError() {
+    const error = errors[elements.errorDialog.dataset.kind];
+    if (!error) return;
+    const text = errorFields(error).map(([label, value]) => `${label}: ${value}`).join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      elements.copyError.textContent = "Copied";
+    } catch (_error) {
+      elements.copyError.textContent = "Copy unavailable";
+    }
+    window.setTimeout(() => { elements.copyError.textContent = "Copy details"; }, 1_500);
+  }
+
+  async function safeHttpError(response, operation) {
+    let detail = null;
+    try {
+      const payload = await response.json();
+      if (
+        payload && typeof payload.detail === "object"
+        && typeof payload.detail.code === "string"
+        && typeof payload.detail.message === "string"
+        && typeof payload.detail.retry_action === "string"
+      ) detail = payload.detail;
+    } catch (_error) {
+      detail = null;
+    }
+    return makeError({
+      operation,
+      summary: `${operation} was rejected by the server.`,
+      httpStatus: response.status,
+      code: detail?.code || "server_rejection",
+      message: detail?.message || "No additional safe detail is available.",
+      retryAction: detail?.retry_action || "Retry the operation.",
+    });
+  }
+
+  function networkError(operation) {
+    return makeError({
+      operation,
+      summary: `${operation} could not reach the local service.`,
+      code: "network_unavailable",
+      message: "The browser could not connect to the local API.",
+      retryAction: "Check the local service, then retry.",
+    });
+  }
+
+  function malformedResponseError(operation, httpStatus) {
+    return makeError({
+      operation,
+      summary: `${operation} returned an unreadable response.`,
+      httpStatus,
+      code: "malformed_response",
+      message: "The response did not match the expected safe API contract.",
+      retryAction: "Retry the operation. If it continues, restart through the controlled workflow.",
+    });
+  }
+
+  async function readJson(response, operation) {
+    try {
+      return await response.json();
+    } catch (_error) {
+      throw malformedResponseError(operation, response.status);
+    }
+  }
+
+  function schedulePublication() {
+    renderCountsAndSelection();
+    setPublicationError(null);
+    setPublicationState("pending", "Publishing…");
+    publicationSequence += 1;
+    window.clearTimeout(publicationTimer);
+    publicationTimer = window.setTimeout(publishNow, PUBLICATION_DEBOUNCE_MS);
+  }
+
   function publishNow() {
     window.clearTimeout(publicationTimer);
     publicationTimer = null;
     renderCountsAndSelection();
+    setPublicationError(null);
     const snapshot = selectedOutgoingState();
     const sequence = ++publicationSequence;
     publicationChain = publicationChain.then(async () => {
@@ -166,34 +305,70 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(snapshot),
         });
-        if (!response.ok) throw new Error(`Publication failed with ${response.status}`);
-        if (sequence === publicationSequence) setPublicationState("ready", "State published");
-      } catch (_error) {
-        if (sequence === publicationSequence) setPublicationState("error", "State unavailable");
+        if (!response.ok) {
+          const error = await safeHttpError(response, "Outgoing publication");
+          if (sequence === publicationSequence) {
+            setPublicationState("error", "State unavailable");
+            setPublicationError(error);
+          }
+          return;
+        }
+        const result = await readJson(response, "Outgoing publication");
+        if (!result || typeof result.revision !== "number") {
+          if (sequence === publicationSequence) {
+            setPublicationState("error", "State unavailable");
+            setPublicationError(malformedResponseError("Outgoing publication", response.status));
+          }
+          return;
+        }
+        if (sequence === publicationSequence) {
+          setPublicationError(null);
+          setPublicationState("ready", "State published");
+        }
+      } catch (error) {
+        if (sequence === publicationSequence) {
+          setPublicationState("error", "State unavailable");
+          setPublicationError(error?.code ? error : networkError("Outgoing publication"));
+        }
       }
     });
     return publicationChain;
   }
 
   function clearPublishedState() {
+    setPublicationError(null);
     const sequence = ++publicationSequence;
     publicationChain = publicationChain.then(async () => {
       try {
         const response = await fetch("/api/outgoing-state", { method: "DELETE" });
-        if (!response.ok) throw new Error(`Clear failed with ${response.status}`);
-        if (sequence === publicationSequence) setPublicationState("ready", "State cleared");
-      } catch (_error) {
-        if (sequence === publicationSequence) setPublicationState("error", "Clear not published");
+        if (!response.ok) {
+          const error = await safeHttpError(response, "Outgoing clear");
+          if (sequence === publicationSequence) {
+            setPublicationState("error", "Clear not published");
+            setPublicationError(error);
+          }
+          return;
+        }
+        const result = await readJson(response, "Outgoing clear");
+        if (!result || typeof result.revision !== "number") {
+          if (sequence === publicationSequence) {
+            setPublicationState("error", "Clear not published");
+            setPublicationError(malformedResponseError("Outgoing clear", response.status));
+          }
+          return;
+        }
+        if (sequence === publicationSequence) {
+          setPublicationError(null);
+          setPublicationState("ready", "State cleared");
+        }
+      } catch (error) {
+        if (sequence === publicationSequence) {
+          setPublicationState("error", "Clear not published");
+          setPublicationError(error?.code ? error : networkError("Outgoing clear"));
+        }
       }
     });
     return publicationChain;
-  }
-
-  function schedulePublication() {
-    renderCountsAndSelection();
-    setPublicationState("pending", "Publishing…");
-    window.clearTimeout(publicationTimer);
-    publicationTimer = window.setTimeout(publishNow, PUBLICATION_DEBOUNCE_MS);
   }
 
   function abortActiveRequest() {
@@ -215,6 +390,7 @@
     window.clearTimeout(cleanupTimer);
     cleanupTimer = null;
     abortActiveRequest();
+    setCleanupError(null);
 
     const rawText = elements.original.value;
     if (!rawText.trim()) {
@@ -245,16 +421,36 @@
       const response = await fetch("/api/cleanup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ raw_text: rawText, enabled: true }),
+        body: JSON.stringify({
+          raw_text: rawText,
+          enabled: true,
+          prompt_version_id: selectedPromptVersionId,
+        }),
         signal: controller.signal,
       });
-      if (!response.ok) throw new Error(`Cleanup failed with ${response.status}`);
-      const result = await response.json();
+      if (!response.ok) {
+        const error = await safeHttpError(response, "Cleanup");
+        if (sequence !== requestSequence || rawText !== elements.original.value) return;
+        elements.cleaned.value = rawText;
+        setStatus("error");
+        setCleanupError(error);
+        restoreOriginalSelection(selection);
+        return;
+      }
+      const result = await readJson(response, "Cleanup");
       if (sequence !== requestSequence || rawText !== elements.original.value) return;
+      if (
+        !result || typeof result.cleaned_text !== "string"
+        || !["cleaned", "unchanged", "empty_input", "disabled", "timeout", "provider_error"].includes(result.status)
+      ) {
+        elements.cleaned.value = rawText;
+        setStatus("error");
+        setCleanupError(malformedResponseError("Cleanup", response.status));
+        restoreOriginalSelection(selection);
+        return;
+      }
 
-      elements.cleaned.value = typeof result.cleaned_text === "string"
-        ? result.cleaned_text
-        : rawText;
+      elements.cleaned.value = result.cleaned_text;
       const statusMap = {
         cleaned: "cleaned",
         unchanged: "unchanged",
@@ -263,12 +459,33 @@
         timeout: "timeout",
         provider_error: "error",
       };
-      setStatus(statusMap[result.status] || "error");
+      setStatus(statusMap[result.status]);
+      if (result.status === "timeout" || result.status === "provider_error") {
+        const safe = result.error;
+        setCleanupError(makeError({
+          operation: "Cleanup",
+          summary: result.status === "timeout"
+            ? "Cleanup timed out; Outgoing is using Original."
+            : "Cleanup failed; Outgoing is using Original.",
+          code: typeof safe?.code === "string" ? safe.code : "cleanup_unavailable",
+          message: typeof safe?.message === "string"
+            ? safe.message
+            : "No additional safe detail is available.",
+          retryAction: typeof safe?.retry_action === "string"
+            ? safe.retry_action
+            : "Retry cleanup or continue with Original.",
+        }));
+      } else {
+        setCleanupError(null);
+      }
       restoreOriginalSelection(selection);
     } catch (error) {
       if (sequence !== requestSequence) return;
       elements.cleaned.value = rawText;
       setStatus("error");
+      if (error.name !== "AbortError") {
+        setCleanupError(error?.code ? error : networkError("Cleanup"));
+      }
       restoreOriginalSelection(selection);
     } finally {
       if (sequence === requestSequence) {
@@ -280,6 +497,7 @@
 
   function scheduleCleanup() {
     window.clearTimeout(cleanupTimer);
+    setCleanupError(null);
     if (!elements.cleanupEnabled.checked) {
       elements.cleaned.value = elements.original.value;
       setStatus("disabled");
@@ -334,6 +552,7 @@
     if (!elements.cleanupEnabled.checked) {
       window.clearTimeout(cleanupTimer);
       abortActiveRequest();
+      setCleanupError(null);
       elements.cleaned.value = elements.original.value;
       setStatus("disabled");
       publishNow();
@@ -346,18 +565,40 @@
     setOriginalCollapsed(!elements.workspace.classList.contains("is-original-collapsed"));
   });
   elements.runCleanup.addEventListener("click", runCleanup);
+  elements.selectOriginal.addEventListener("click", () => {
+    originalOutgoingOverride = true;
+    publishNow();
+  });
+  elements.selectCleaned.addEventListener("click", () => {
+    if (!cleanedIsCurrent()) return;
+    originalOutgoingOverride = false;
+    publishNow();
+  });
   elements.clear.addEventListener("click", () => {
     window.clearTimeout(cleanupTimer);
     window.clearTimeout(publicationTimer);
     abortActiveRequest();
     replaceAllPending = false;
+    originalOutgoingOverride = false;
     elements.original.value = "";
     elements.cleaned.value = "";
+    setCleanupError(null);
     setStatus("unchanged");
     renderCountsAndSelection();
     clearPublishedState();
     elements.original.focus();
   });
+
+  elements.status.addEventListener("click", () => openErrorDetails("cleanup"));
+  elements.publication.addEventListener("click", () => openErrorDetails("publication"));
+  elements.closeErrorDialog.addEventListener("click", () => elements.errorDialog.close());
+  elements.errorDialog.addEventListener("click", (event) => {
+    if (event.target === elements.errorDialog) elements.errorDialog.close();
+  });
+  elements.errorDialog.addEventListener("close", () => {
+    elements.errorDialog.dataset.kind = "";
+  });
+  elements.copyError.addEventListener("click", copyError);
 
   elements.workspaceResizer.addEventListener("pointerdown", (event) => {
     activeResizePointer = event.pointerId;
@@ -391,129 +632,33 @@
     setWorkspaceShare(nextShare);
   });
 
-  function selectedPrompt() {
-    const selectedId = Number(elements.promptHistory.value);
-    return promptVersions.find((prompt) => prompt.id === selectedId) || null;
-  }
-
-  function renderSelectedPrompt() {
-    const prompt = selectedPrompt();
-    if (!prompt) return;
-    elements.promptTitle.value = prompt.title;
-    elements.promptText.value = prompt.system_text;
-    elements.promptVersionMeta.textContent = [
-      `Version ${prompt.version}`,
-      prompt.source,
-      new Date(prompt.created_at).toLocaleString(),
-    ].join(" · ");
-    elements.activatePrompt.disabled = prompt.id === activePromptVersionId;
-  }
-
-  async function loadPromptHistory(selectId = null) {
+  async function loadPromptHistory() {
     const response = await fetch("/api/prompts");
-    if (!response.ok) throw new Error(`Prompt history failed with ${response.status}`);
-    const result = await response.json();
-    promptVersions = Array.isArray(result.versions) ? result.versions : [];
-    activePromptVersionId = result.active_prompt_version_id;
+    if (!response.ok) throw await safeHttpError(response, "Prompt version loading");
+    const result = await readJson(response, "Prompt version loading");
+    if (!result || !Array.isArray(result.versions)) {
+      throw malformedResponseError("Prompt version loading", response.status);
+    }
+    promptVersions = result.versions;
+    selectedPromptVersionId = result.active_prompt_version_id;
     elements.activePromptSelector.textContent = "";
-    elements.promptHistory.textContent = "";
     promptVersions.forEach((prompt) => {
-      const activeOption = document.createElement("option");
-      activeOption.value = String(prompt.id);
-      activeOption.textContent = `v${prompt.version} · ${prompt.title}`;
-      elements.activePromptSelector.append(activeOption);
-
-      const historyOption = document.createElement("option");
-      historyOption.value = String(prompt.id);
-      historyOption.textContent = `v${prompt.version} · ${prompt.title}${prompt.active ? " — active" : ""}`;
-      elements.promptHistory.append(historyOption);
+      const option = document.createElement("option");
+      option.value = String(prompt.id);
+      option.textContent = `v${prompt.version} · ${prompt.title}`;
+      elements.activePromptSelector.append(option);
     });
-    elements.activePromptSelector.value = String(activePromptVersionId ?? "");
-    elements.promptHistory.value = String(selectId ?? activePromptVersionId ?? "");
-    renderSelectedPrompt();
+    elements.activePromptSelector.value = String(selectedPromptVersionId ?? "");
   }
 
-  async function activatePromptVersion(prompt, successMessage) {
-    const response = await fetch(`/api/prompts/${prompt.id}/activate`, { method: "POST" });
-    if (!response.ok) throw new Error(`Activation failed with ${response.status}`);
-    await loadPromptHistory(prompt.id);
-    elements.promptSaveStatus.textContent = successMessage;
-    if (elements.original.value) scheduleCleanup();
-  }
-
-  elements.canvasNav.addEventListener("click", () => {
-    setActiveSection(elements.canvasNav);
-    elements.original.focus();
-  });
-  elements.promptsNav.addEventListener("click", () => {
-    elements.promptHistory.value = String(activePromptVersionId ?? "");
-    renderSelectedPrompt();
-    elements.promptSaveStatus.textContent = "Ready to create an immutable version.";
-    setActiveSection(elements.promptsNav);
-    elements.promptManager.showModal();
-  });
-  elements.closePromptManager.addEventListener("click", () => elements.promptManager.close());
-  elements.promptManager.addEventListener("click", (event) => {
-    if (event.target === elements.promptManager) elements.promptManager.close();
-  });
-  elements.promptManager.addEventListener("close", () => {
-    setActiveSection(elements.canvasNav);
-  });
-  elements.activePromptSelector.addEventListener("change", async () => {
+  elements.activePromptSelector.addEventListener("change", () => {
     const prompt = promptVersions.find(
       (candidate) => candidate.id === Number(elements.activePromptSelector.value),
     );
     if (!prompt) return;
-    elements.activePromptSelector.disabled = true;
-    setPublicationState("pending", "Changing prompt…");
-    try {
-      await activatePromptVersion(prompt, `Version ${prompt.version} is active.`);
-      setPublicationState("ready", `Prompt v${prompt.version} active`);
-    } catch (_error) {
-      elements.activePromptSelector.value = String(activePromptVersionId ?? "");
-      setPublicationState("error", "Prompt unchanged");
-    } finally {
-      elements.activePromptSelector.disabled = false;
-    }
-  });
-  elements.promptHistory.addEventListener("change", renderSelectedPrompt);
-  elements.activatePrompt.addEventListener("click", async () => {
-    const prompt = selectedPrompt();
-    if (!prompt) return;
-    elements.activatePrompt.disabled = true;
-    elements.promptSaveStatus.textContent = "Activating selected version…";
-    try {
-      await activatePromptVersion(prompt, `Version ${prompt.version} is active.`);
-    } catch (_error) {
-      elements.activatePrompt.disabled = false;
-      elements.promptSaveStatus.textContent = "Could not activate that version.";
-    }
-  });
-  elements.savePrompt.addEventListener("click", async () => {
-    const title = elements.promptTitle.value.trim();
-    const systemText = elements.promptText.value.trim();
-    if (!title || !systemText) {
-      elements.promptSaveStatus.textContent = "A title and cleanup instruction are required.";
-      return;
-    }
-    elements.savePrompt.disabled = true;
-    elements.promptSaveStatus.textContent = "Saving immutable version…";
-    try {
-      const response = await fetch("/api/prompts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, system_text: systemText, activate: true }),
-      });
-      if (!response.ok) throw new Error(`Save failed with ${response.status}`);
-      const prompt = await response.json();
-      await loadPromptHistory(prompt.id);
-      elements.promptSaveStatus.textContent = `Version ${prompt.version} saved and active.`;
-      if (elements.original.value) scheduleCleanup();
-    } catch (_error) {
-      elements.promptSaveStatus.textContent = "Could not save the new version.";
-    } finally {
-      elements.savePrompt.disabled = false;
-    }
+    selectedPromptVersionId = prompt.id;
+    setCleanupError(null);
+    if (elements.original.value) scheduleCleanup();
   });
 
   document.addEventListener("keydown", (event) => {
@@ -541,7 +686,8 @@
         fetch("/api/config"),
         clearPublishedState(),
       ]);
-      const config = configResponse.ok ? await configResponse.json() : {};
+      if (!configResponse.ok) throw await safeHttpError(configResponse, "Workspace configuration");
+      const config = await readJson(configResponse, "Workspace configuration");
 
       elements.cleanupEnabled.checked = config.cleanup_enabled_by_default ?? true;
       elements.modelLabel.textContent = config.cleanup_available
@@ -550,12 +696,15 @@
 
       elements.original.value = "";
       elements.cleaned.value = "";
+      originalOutgoingOverride = false;
       setStatus(elements.cleanupEnabled.checked ? "unchanged" : "disabled");
       renderCountsAndSelection();
       setWorkspaceShare(DEFAULT_ORIGINAL_SHARE);
       await loadPromptHistory();
-    } catch (_error) {
-      setPublicationState("error", "State unavailable");
+    } catch (error) {
+      const safe = error?.code ? error : networkError("Workspace configuration");
+      setStatus("error");
+      setCleanupError(safe);
     }
   }
 

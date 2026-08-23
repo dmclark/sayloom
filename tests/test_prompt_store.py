@@ -7,7 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DatabaseError
 
 from local_text.database import ApplicationDatabase, SchemaState
-from local_text.prompt_store import PromptStore
+from local_text.prompt_store import PromptNotFoundError, PromptStore
 from local_text.prompts import DEFAULT_SYSTEM_PROMPT
 
 
@@ -60,6 +60,7 @@ def test_prompt_versions_are_immutable_and_activation_selects_an_exact_version(
 
     assert custom.version == 2
     assert store.active().id == custom.id
+    assert store.get(seeded.id).system_text == DEFAULT_SYSTEM_PROMPT
     assert store.activate(seeded.id).id == seeded.id
     assert store.active().system_text == DEFAULT_SYSTEM_PROMPT
 
@@ -73,6 +74,9 @@ def test_prompt_versions_are_immutable_and_activation_selects_an_exact_version(
     history, active_id = store.history()
     assert [prompt.version for prompt in history] == [2, 1]
     assert active_id == seeded.id
+
+    with pytest.raises(PromptNotFoundError):
+        store.get(9999)
 
 
 def test_cleanup_setting_is_typed_and_durable(tmp_path: Path) -> None:
