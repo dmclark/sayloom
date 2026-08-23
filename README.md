@@ -12,7 +12,7 @@ Requirements: macOS, Python 3.12+, and [uv](https://docs.astral.sh/uv/).
 uv sync --locked
 scripts/dev.py create feature-workflow
 scripts/dev.py initialize --state feature-workflow
-scripts/dev.py status --state feature-workflow
+scripts/dev.py status
 ```
 
 Every development runtime must use an explicit named external state. `create`
@@ -26,6 +26,9 @@ the selected state-scoped service. State manifests bind the canonical checkout
 and state paths to a checkout-specific service label and the fixed loopback
 port. Missing, changed, cross-checkout, and path-escaping manifests are rejected
 before an operation can use them.
+
+`scripts/dev.py status` reports every registered development state in name order.
+Pass `--state NAME` to report only one state.
 
 Development always uses `127.0.0.1:7523`, so Raycast commands have one stable
 endpoint. A controlled restart stops any registered named development state on

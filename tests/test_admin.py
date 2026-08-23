@@ -143,6 +143,27 @@ def test_named_development_state_is_explicit_read_only_then_initialized(tmp_path
     assert "__" not in rendered
 
 
+def test_status_without_selection_reports_all_states(tmp_path: Path) -> None:
+    state_root = tmp_path / "states"
+    assert run_dev(state_root, "create", "second").returncode == 0
+    assert run_dev(state_root, "create", "first").returncode == 0
+
+    status = run_dev(state_root, "status")
+
+    assert status.returncode == 1
+    assert status.stdout.count('"state": "missing"') == 2
+    assert status.stdout.index("State: first") < status.stdout.index("State: second")
+
+
+def test_status_without_selection_reports_when_no_states_exist(tmp_path: Path) -> None:
+    state_root = tmp_path / "states"
+
+    status = run_dev(state_root, "status")
+
+    assert status.returncode == 0
+    assert status.stdout.strip() == f"No development states found in {state_root}"
+
+
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     [

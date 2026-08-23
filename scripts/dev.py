@@ -63,6 +63,18 @@ def print_configuration_status(state: State) -> None:
     )
 
 
+def print_status(state: State) -> int:
+    print_state(state)
+    print_configuration_status(state)
+    sys.stdout.flush()
+    return subprocess.run(
+        ["uv", "run", "python", "-m", "local_text.admin", "schema"],
+        cwd=repository_root(),
+        env=state_environment(state),
+        check=False,
+    ).returncode
+
+
 def restart(state: State) -> None:
     root = repository_root()
     clean_environment = {
@@ -180,17 +192,22 @@ def command(arguments: argparse.Namespace) -> int:
         print_state(state)
         return 0
 
+    if arguments.command == "status" and arguments.state is None:
+        states = sorted(states_on_port(root, DEVELOPMENT_PORT), key=lambda state: state.name)
+        if not states:
+            print(f"No development states found in {root}")
+            return 0
+        return_code = 0
+        for index, state in enumerate(states):
+            if index:
+                print()
+            return_code = max(return_code, print_status(state))
+        return return_code
+
     state = load_state(root, arguments.state)
-    print_state(state)
-    environment = state_environment(state)
     if arguments.command == "status":
-        print_configuration_status(state)
-        return subprocess.run(
-            ["uv", "run", "python", "-m", "local_text.admin", "schema"],
-            cwd=repository_root(),
-            env=environment,
-            check=False,
-        ).returncode
+        return print_status(state)
+    print_state(state)
     if arguments.command == "initialize":
         initialize(state)
         return 0
@@ -206,9 +223,11 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command", required=True)
     create = subparsers.add_parser("create", help="create an external state manifest")
     create.add_argument("name")
-    for name in ("initialize", "restart", "status"):
+    for name in ("initialize", "restart"):
         operation = subparsers.add_parser(name)
         operation.add_argument("--state", required=True)
+    status = subparsers.add_parser("status")
+    status.add_argument("--state")
     arguments = parser.parse_args()
     try:
         raise SystemExit(command(arguments))
