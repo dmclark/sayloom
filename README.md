@@ -83,6 +83,8 @@ SQLite in the external profile state directory is authoritative for the seeded p
 
 Original and Cleaned are vertically stacked and share an accessible draggable divider with a 65/35 default split and keyboard-adjustable 45–80% Original range. Original can collapse while retaining text-entry focus so Cleaned fills the canvas. Original uses the browser's native insertion point; Cleaned is read-only. The Outgoing strip explicitly selects Cleaned or Original. Cleaned becomes the default after a current successful cleanup; pending, stale, disabled, timed-out, and failed cleanup states fall back to Original, and an explicit per-draft Original selection survives reruns until Clear or reload. Cleanup and publication failures provide persistent, expandable, copyable safe details without including operating text, provider payloads, credentials, stack traces, or private paths.
 
+Cleanup details distinguish provider authentication/access rejection, quota or rate limits, provider service errors, other HTTP rejection, transport failure, timeout, malformed provider responses, and output rejected by provider or local safety checks. Provider HTTP status is included when available. Server logs record only structured provider/model, category/status, duration, and input-length metadata; they never record operating text, prompts, credentials, headers, or provider payloads.
+
 Normal startup only checks schema state. Development-state administration is explicit:
 
 ```sh

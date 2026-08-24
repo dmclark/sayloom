@@ -467,6 +467,7 @@
           summary: result.status === "timeout"
             ? "Cleanup timed out; Outgoing is using Original."
             : "Cleanup failed; Outgoing is using Original.",
+          httpStatus: Number.isInteger(safe?.http_status) ? safe.http_status : null,
           code: typeof safe?.code === "string" ? safe.code : "cleanup_unavailable",
           message: typeof safe?.message === "string"
             ? safe.message
