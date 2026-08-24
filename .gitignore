@@ -23,6 +23,10 @@ logs/
 *.sqlite
 *.sqlite3
 
+# Amp runtime output and review artifacts
+.amp/in/
+.amp/portals/
+
 # Packaging and editor output
 build/
 dist/
