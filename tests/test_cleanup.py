@@ -14,9 +14,11 @@ from local_text.cleanup import (
     GeminiProvider,
     ProviderHTTPError,
     ProviderMalformedResponseError,
+    ProviderOutput,
     ProviderRejectedOutputError,
     ProviderTransportError,
     _extract_text,
+    _thinking_config,
 )
 
 
@@ -178,6 +180,141 @@ def test_provider_failures_have_specific_safe_classifications() -> None:
         assert "synthetic source" not in serialized
 
 
+@pytest.mark.parametrize("status_code", [429, 503])
+def test_transient_http_failure_uses_fallback_and_cools_primary(
+    monkeypatch, status_code: int
+) -> None:
+    provider = GeminiProvider(
+        "synthetic-key",
+        "primary-model",
+        fallback_models=("fallback-model",),
+    )
+    calls: list[str] = []
+
+    async def clean_model(model: str, raw_text: str, system_prompt: str) -> str:
+        calls.append(model)
+        if model == "primary-model":
+            raise ProviderHTTPError(status_code, model=model)
+        return "Synthetic clean text."
+
+    monkeypatch.setattr(provider, "_clean_model", clean_model)
+    service = CleanupService(provider=provider, model=provider.model, timeout_seconds=1)
+
+    first = run_cleanup(service, "synthetic source")
+    second = run_cleanup(service, "synthetic source")
+
+    assert first.status is CleanupStatus.CLEANED
+    assert first.model == "fallback-model"
+    assert second.status is CleanupStatus.CLEANED
+    assert second.model == "fallback-model"
+    assert calls == ["primary-model", "fallback-model", "fallback-model"]
+
+
+def test_non_transient_http_failure_does_not_use_fallback(monkeypatch) -> None:
+    provider = GeminiProvider(
+        "synthetic-key",
+        "primary-model",
+        fallback_models=("fallback-model",),
+    )
+    calls: list[str] = []
+
+    async def clean_model(model: str, raw_text: str, system_prompt: str) -> str:
+        calls.append(model)
+        raise ProviderHTTPError(500, model=model)
+
+    monkeypatch.setattr(provider, "_clean_model", clean_model)
+    result = run_cleanup(
+        CleanupService(provider=provider, model=provider.model, timeout_seconds=1),
+        "synthetic source",
+    )
+
+    assert result.status is CleanupStatus.PROVIDER_ERROR
+    assert result.model == "primary-model"
+    assert result.error is not None
+    assert result.error.http_status == 500
+    assert calls == ["primary-model"]
+
+
+def test_exhausted_fallbacks_fail_open_and_cool_down(monkeypatch) -> None:
+    provider = GeminiProvider(
+        "synthetic-key",
+        "primary-model",
+        fallback_models=("fallback-model",),
+    )
+    calls: list[str] = []
+
+    async def clean_model(model: str, raw_text: str, system_prompt: str) -> str:
+        calls.append(model)
+        raise ProviderHTTPError(429, model=model)
+
+    monkeypatch.setattr(provider, "_clean_model", clean_model)
+    service = CleanupService(provider=provider, model=provider.model, timeout_seconds=1)
+
+    exhausted = run_cleanup(service, "synthetic source")
+    cooling_down = run_cleanup(service, "synthetic source")
+
+    assert exhausted.status is CleanupStatus.PROVIDER_ERROR
+    assert exhausted.cleaned_text == "synthetic source"
+    assert exhausted.model == "fallback-model"
+    assert exhausted.error is not None
+    assert exhausted.error.code == "cleanup_provider_quota_error"
+    assert cooling_down.status is CleanupStatus.PROVIDER_ERROR
+    assert cooling_down.cleaned_text == "synthetic source"
+    assert cooling_down.model == "fallback-model"
+    assert cooling_down.error is not None
+    assert cooling_down.error.code == "cleanup_provider_temporarily_unavailable"
+    assert calls == ["primary-model", "fallback-model"]
+
+
+def test_duplicate_fallback_models_are_not_retried(monkeypatch) -> None:
+    provider = GeminiProvider(
+        "synthetic-key",
+        "primary-model",
+        fallback_models=("primary-model", "fallback-model", "fallback-model"),
+    )
+    calls: list[str] = []
+
+    async def clean_model(model: str, raw_text: str, system_prompt: str) -> str:
+        calls.append(model)
+        raise ProviderHTTPError(429, model=model)
+
+    monkeypatch.setattr(provider, "_clean_model", clean_model)
+
+    with pytest.raises(ProviderHTTPError):
+        asyncio.run(provider.clean("synthetic source", "Synthetic cleanup instruction"))
+
+    assert provider.fallback_models == ("fallback-model",)
+    assert calls == ["primary-model", "fallback-model"]
+
+
+def test_primary_model_is_retried_after_cooldown_expires(monkeypatch) -> None:
+    provider = GeminiProvider(
+        "synthetic-key",
+        "primary-model",
+        fallback_models=("fallback-model",),
+        cooldown_seconds=300,
+    )
+    now = 100.0
+    calls: list[str] = []
+
+    async def clean_model(model: str, raw_text: str, system_prompt: str) -> str:
+        calls.append(model)
+        if calls == ["primary-model"]:
+            raise ProviderHTTPError(503, model=model)
+        return "Synthetic clean text."
+
+    monkeypatch.setattr(provider, "_clean_model", clean_model)
+    monkeypatch.setattr(cleanup_module.time, "monotonic", lambda: now)
+
+    first = asyncio.run(provider.clean("synthetic source", "Synthetic cleanup instruction"))
+    now += 301
+    second = asyncio.run(provider.clean("synthetic source", "Synthetic cleanup instruction"))
+
+    assert first.model == "fallback-model"
+    assert second.model == "primary-model"
+    assert calls == ["primary-model", "fallback-model", "primary-model"]
+
+
 def test_cleanup_log_contains_only_allowlisted_diagnostics(monkeypatch) -> None:
     class FailingProvider:
         provider_id = "gemini"
@@ -250,6 +387,11 @@ def test_gemini_response_requires_text_parts() -> None:
         _extract_text({"candidates": [{"content": {"parts": [{"text": "Clean text."}]}}]})
         == "Clean text."
     )
+
+
+def test_thinking_configuration_matches_model_generation() -> None:
+    assert _thinking_config("gemini-3.5-flash") == {"thinkingLevel": "minimal"}
+    assert _thinking_config("gemini-2.5-flash") == {"thinkingBudget": 0}
 
 
 def test_gemini_response_distinguishes_rejection_from_malformed_output() -> None:
@@ -343,7 +485,7 @@ def test_gemini_provider_separately_frames_prompt_and_untrusted_source_text() ->
 
     request_url = urlparse(str(observed["url"]))
     request_body = observed["body"]
-    assert result == "Synthetic clean text."
+    assert result == ProviderOutput(text="Synthetic clean text.", model="test-model")
     assert request_url.path == "/models/test-model:generateContent"
     assert parse_qs(request_url.query) == {"key": ["synthetic-key"]}
     assert request_body["system_instruction"]["parts"][0]["text"] == "Synthetic system prompt"

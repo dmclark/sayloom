@@ -72,6 +72,7 @@ def create_app(
             runtime.gemini_api_key,
             runtime.gemini_model,
             timeout_seconds=runtime.cleanup_timeout_seconds,
+            fallback_models=("gemini-2.5-flash",),
         )
         if runtime.gemini_api_key
         else None

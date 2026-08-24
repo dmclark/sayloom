@@ -154,6 +154,7 @@
     return [
       ["Operation", error.operation],
       ["Local time", error.localTime],
+      ["Model", error.model === null ? "Not available" : error.model],
       ["HTTP status", error.httpStatus === null ? "Not available" : String(error.httpStatus)],
       ["Code", error.code],
       ["Sanitized message", error.message],
@@ -165,11 +166,12 @@
     return kind === "cleanup" ? elements.status : elements.publication;
   }
 
-  function makeError({ operation, summary, httpStatus = null, code, message, retryAction }) {
+  function makeError({ operation, summary, model = null, httpStatus = null, code, message, retryAction }) {
     return {
       operation,
       summary,
       localTime: new Date().toLocaleString(),
+      model,
       httpStatus,
       code,
       message,
@@ -467,6 +469,7 @@
           summary: result.status === "timeout"
             ? "Cleanup timed out; Outgoing is using Original."
             : "Cleanup failed; Outgoing is using Original.",
+          model: typeof result.model === "string" ? result.model : null,
           httpStatus: Number.isInteger(safe?.http_status) ? safe.http_status : null,
           code: typeof safe?.code === "string" ? safe.code : "cleanup_unavailable",
           message: typeof safe?.message === "string"

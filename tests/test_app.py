@@ -140,6 +140,7 @@ def test_status_errors_use_one_accessible_privacy_safe_dialog(
         for label in (
             "Operation",
             "Local time",
+            "Model",
             "HTTP status",
             "Code",
             "Sanitized message",

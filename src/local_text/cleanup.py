@@ -1,11 +1,13 @@
 """Fail-open source-text cleanup using Gemini."""
 
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Protocol
 
@@ -14,6 +16,7 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger("uvicorn.error.local_text.cleanup")
 MODEL_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+TRANSIENT_FALLBACK_STATUSES = {429, 503}
 
 
 class CleanupStatus(StrEnum):
@@ -50,39 +53,100 @@ class CleanupProvider(Protocol):
     provider_id: str
     model: str
 
-    async def clean(self, raw_text: str, system_prompt: str) -> str: ...
-
-
-class ProviderHTTPError(RuntimeError):
-    """The provider rejected a request with an HTTP response."""
-
-    def __init__(self, status_code: int) -> None:
-        super().__init__("provider HTTP error")
-        self.status_code = status_code
-
-
-class ProviderTransportError(RuntimeError):
-    """The provider could not be reached."""
-
-
-class ProviderMalformedResponseError(ValueError):
-    """The provider returned a response that could not be interpreted."""
-
-
-class ProviderRejectedOutputError(ValueError):
-    """The provider returned a response that is unsafe to use as outgoing text."""
+    async def clean(self, raw_text: str, system_prompt: str) -> str | ProviderOutput: ...
 
 
 @dataclass(frozen=True)
+class ProviderOutput:
+    text: str
+    model: str
+
+
+class ProviderError(RuntimeError):
+    """A provider failure associated with one safe model identifier."""
+
+    def __init__(self, message: str, *, model: str | None = None) -> None:
+        super().__init__(message)
+        self.model = model
+
+
+class ProviderHTTPError(ProviderError):
+    """The provider rejected a request with an HTTP response."""
+
+    def __init__(self, status_code: int, *, model: str | None = None) -> None:
+        super().__init__("provider HTTP error", model=model)
+        self.status_code = status_code
+
+
+class ProviderTransportError(ProviderError):
+    """The provider could not be reached."""
+
+
+class ProviderTimeoutError(ProviderError):
+    """One provider model exceeded its request timeout."""
+
+
+class ProviderMalformedResponseError(ProviderError):
+    """The provider returned a response that could not be interpreted."""
+
+
+class ProviderRejectedOutputError(ProviderError):
+    """The provider returned a response that is unsafe to use as outgoing text."""
+
+
+class ProviderCoolingDownError(ProviderError):
+    """Every configured provider model is in transient-error cooldown."""
+
+
+@dataclass
 class GeminiProvider:
     api_key: str
     model: str
     timeout_seconds: float = 8.0
     endpoint: str = "https://generativelanguage.googleapis.com/v1beta"
     provider_id: str = "gemini"
+    fallback_models: tuple[str, ...] = ()
+    cooldown_seconds: float = 300.0
+    _cooldowns: dict[str, float] = field(default_factory=dict, init=False, repr=False)
 
-    async def clean(self, raw_text: str, system_prompt: str) -> str:
-        url = f"{self.endpoint}/models/{self.model}:generateContent"
+    def __post_init__(self) -> None:
+        for model in (self.model, *self.fallback_models):
+            if not MODEL_IDENTIFIER.fullmatch(model):
+                raise ValueError("provider model identifier is invalid")
+        self.fallback_models = tuple(
+            dict.fromkeys(model for model in self.fallback_models if model != self.model)
+        )
+
+    async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
+        now = time.monotonic()
+        models = tuple(
+            model
+            for model in (self.model, *self.fallback_models)
+            if self._cooldowns.get(model, 0) <= now
+        )
+        if not models:
+            raise ProviderCoolingDownError(
+                "provider models are cooling down",
+                model=self.fallback_models[-1] if self.fallback_models else self.model,
+            )
+
+        for index, model in enumerate(models):
+            try:
+                return ProviderOutput(
+                    text=await self._clean_model(model, raw_text, system_prompt),
+                    model=model,
+                )
+            except ProviderHTTPError as error:
+                has_fallback = index + 1 < len(models)
+                if error.status_code not in TRANSIENT_FALLBACK_STATUSES:
+                    raise
+                self._cooldowns[model] = time.monotonic() + self.cooldown_seconds
+                if not has_fallback:
+                    raise
+        raise AssertionError("provider model selection was empty")
+
+    async def _clean_model(self, model: str, raw_text: str, system_prompt: str) -> str:
+        url = f"{self.endpoint}/models/{model}:generateContent"
         payload = {
             "system_instruction": {"parts": [{"text": system_prompt}]},
             "contents": [
@@ -93,7 +157,7 @@ class GeminiProvider:
             ],
             "generationConfig": {
                 "temperature": 0.2,
-                "thinkingConfig": {"thinkingLevel": "minimal"},
+                "thinkingConfig": _thinking_config(model),
             },
         }
         try:
@@ -103,17 +167,29 @@ class GeminiProvider:
                     params={"key": self.api_key},
                     json=payload,
                 )
-        except httpx.TimeoutException:
-            raise
+        except httpx.TimeoutException as error:
+            raise ProviderTimeoutError("provider request timed out", model=model) from error
         except httpx.TransportError as error:
-            raise ProviderTransportError("provider transport failure") from error
+            raise ProviderTransportError("provider transport failure", model=model) from error
         if response.is_error:
-            raise ProviderHTTPError(response.status_code)
+            raise ProviderHTTPError(response.status_code, model=model)
         try:
             response_payload = response.json()
         except json.JSONDecodeError as error:
-            raise ProviderMalformedResponseError("provider returned invalid JSON") from error
-        return _extract_text(response_payload)
+            raise ProviderMalformedResponseError(
+                "provider returned invalid JSON", model=model
+            ) from error
+        try:
+            return _extract_text(response_payload)
+        except (ProviderMalformedResponseError, ProviderRejectedOutputError) as error:
+            error.model = model
+            raise
+
+
+def _thinking_config(model: str) -> dict[str, str | int]:
+    if model.startswith("gemini-2.5-"):
+        return {"thinkingBudget": 0}
+    return {"thinkingLevel": "minimal"}
 
 
 def _extract_text(payload: Any) -> str:
@@ -181,12 +257,31 @@ class CleanupService:
         started = time.monotonic()
         category = "success"
         http_status: int | None = None
+        selected_model = self.model
         try:
             provider_output = await asyncio.wait_for(
                 self.provider.clean(raw_text, system_prompt),
                 timeout=self.timeout_seconds,
             )
-            cleaned_text = _validate_output(raw_text, provider_output)
+            if isinstance(provider_output, ProviderOutput):
+                selected_model = provider_output.model
+                output_text = provider_output.text
+            else:
+                output_text = provider_output
+            cleaned_text = _validate_output(raw_text, output_text)
+        except ProviderTimeoutError as error:
+            selected_model = error.model or selected_model
+            category = "timeout"
+            result = self._result(
+                raw_text,
+                CleanupStatus.TIMEOUT,
+                error=SafeError(
+                    code="cleanup_timeout",
+                    message="Cleanup did not finish before the time limit.",
+                    retry_action="Retry cleanup or continue with Original.",
+                ),
+                model=selected_model,
+            )
         except (TimeoutError, httpx.TimeoutException):
             category = "timeout"
             result = self._result(
@@ -199,14 +294,17 @@ class CleanupService:
                 ),
             )
         except ProviderHTTPError as error:
+            selected_model = error.model or selected_model
             http_status = error.status_code
             category, safe_error = _http_failure(error.status_code)
             result = self._result(
                 raw_text,
                 CleanupStatus.PROVIDER_ERROR,
                 error=safe_error,
+                model=selected_model,
             )
-        except ProviderTransportError:
+        except ProviderTransportError as error:
+            selected_model = error.model or selected_model
             category = "transport"
             result = self._result(
                 raw_text,
@@ -218,8 +316,10 @@ class CleanupService:
                         "Check the network connection, retry cleanup, or continue with Original."
                     ),
                 ),
+                model=selected_model,
             )
-        except ProviderMalformedResponseError:
+        except ProviderMalformedResponseError as error:
+            selected_model = error.model or selected_model
             category = "malformed_response"
             result = self._result(
                 raw_text,
@@ -229,8 +329,10 @@ class CleanupService:
                     message="The cleanup provider returned an unreadable response.",
                     retry_action="Retry cleanup or continue with Original.",
                 ),
+                model=selected_model,
             )
-        except ProviderRejectedOutputError:
+        except ProviderRejectedOutputError as error:
+            selected_model = error.model or selected_model
             category = "rejected_output"
             result = self._result(
                 raw_text,
@@ -240,6 +342,20 @@ class CleanupService:
                     message="The cleanup result was rejected by safety checks.",
                     retry_action="Revise the Original, retry cleanup, or continue with Original.",
                 ),
+                model=selected_model,
+            )
+        except ProviderCoolingDownError as error:
+            selected_model = error.model or selected_model
+            category = "models_cooling_down"
+            result = self._result(
+                raw_text,
+                CleanupStatus.PROVIDER_ERROR,
+                error=SafeError(
+                    code="cleanup_provider_temporarily_unavailable",
+                    message="The cleanup provider models are temporarily unavailable.",
+                    retry_action="Wait for provider cooldown, then retry cleanup.",
+                ),
+                model=selected_model,
             )
         except Exception:
             category = "unexpected_provider_error"
@@ -254,11 +370,11 @@ class CleanupService:
             )
         else:
             status = CleanupStatus.UNCHANGED if cleaned_text == raw_text else CleanupStatus.CLEANED
-            result = self._result(cleaned_text, status)
+            result = self._result(cleaned_text, status, model=selected_model)
         finally:
             _log_cleanup(
                 provider=self.provider.provider_id,
-                model=self.model,
+                model=selected_model,
                 category=category,
                 http_status=http_status,
                 duration_ms=round((time.monotonic() - started) * 1_000),
@@ -272,12 +388,13 @@ class CleanupService:
         status: CleanupStatus,
         *,
         error: SafeError | None = None,
+        model: str | None = None,
     ) -> CleanupResult:
         return CleanupResult(
             cleaned_text=text,
             status=status,
             provider="gemini",
-            model=self.model,
+            model=_safe_model(model or self.model),
             error=error,
         )
 
@@ -326,7 +443,7 @@ def _log_cleanup(
         json.dumps(
             {
                 "provider": provider,
-                "model": model if MODEL_IDENTIFIER.fullmatch(model) else "invalid",
+                "model": _safe_model(model),
                 "category": category,
                 "http_status": http_status,
                 "duration_ms": duration_ms,
@@ -336,3 +453,7 @@ def _log_cleanup(
             sort_keys=True,
         ),
     )
+
+
+def _safe_model(model: str) -> str:
+    return model if MODEL_IDENTIFIER.fullmatch(model) else "invalid"
