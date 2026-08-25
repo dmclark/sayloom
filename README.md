@@ -143,13 +143,23 @@ this developer-safety gate intentionally provides no Preferences or Keychain UI.
 
 ## Raycast commands
 
-Add this repository's `raycast/` directory as a Raycast Script Commands directory. It contains exactly five user-facing commands:
+Install development-prefixed aliases in Raycast's default Script Commands directory:
 
-- **Open Sayloom Development**
-- **Send to Amp — Sayloom Development**
-- **Send to iTerm — Sayloom Development**
-- **Send to Supacode — Sayloom Development**
-- **Send to VS Code — Sayloom Development**
+```sh
+scripts/install-raycast.py
+```
+
+Pass `--directory PATH` to select another directory. The installer links the five
+Raycast commands rather than copying them, prefixes their filenames with `dev-`,
+is safe to run again, and refuses to replace an existing file or unrelated link.
+The aliases remain independent of named development state and target the fixed
+development endpoint on port 7523. They provide exactly five user-facing commands:
+
+- **Dev: Open Sayloom**
+- **Dev: Send to Amp**
+- **Dev: Send to iTerm**
+- **Dev: Send to Supacode**
+- **Dev: Send to VS Code**
 
 Raycast owns global hotkeys; no hotkey values are committed. Assign the familiar hotkeys to these development-branded commands in Raycast settings. Send commands refuse empty, malformed, or unavailable outgoing state and never press Return. Amp, Supacode, and VS Code use a Sticky-Keys-safe synthetic paste and restore the prior text clipboard. iTerm inserts multiline text directly without using the clipboard.
 

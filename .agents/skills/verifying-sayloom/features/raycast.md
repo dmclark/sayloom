@@ -5,6 +5,9 @@ Amp, iTerm, Supacode, and VS Code without submitting it.
 
 ## Sub-features
 
+- `RAYCAST.INSTALL`: the standalone installer creates idempotent `dev-*` aliases in
+  `~/.config/raycast/scripts` by default, accepts an explicit directory, and refuses to replace
+  existing files or unrelated links.
 - `RAYCAST.OPEN`: Open Sayloom raises an existing matching development window or creates one only
   after development health and profile checks pass.
 - `RAYCAST.AMP`, `RAYCAST.SUPACODE`, `RAYCAST.VSCODE`: safe synthetic paste inserts without Return,
@@ -14,7 +17,8 @@ Amp, iTerm, Supacode, and VS Code without submitting it.
 
 ## How to get to it (user POV)
 
-- Invoke each of the five **Sayloom Development** commands from Raycast on a dedicated
+- Run `scripts/install-raycast.py` or pass `--directory PATH` to install the command aliases.
+- Invoke each of the five **Dev: …** commands from Raycast on a dedicated
   verification-only macOS host.
 - For destination commands, first publish synthetic outgoing text through the isolated workspace,
   focus a disposable destination input, and preserve a synthetic clipboard sentinel.
@@ -23,7 +27,8 @@ Amp, iTerm, Supacode, and VS Code without submitting it.
 
 Portable lane:
 
-- Run shell syntax and `tests/test_raycast.py`; record exactly which command contracts those tests
+- Run the installer twice against a temporary directory, shell syntax, and
+  `tests/test_raycast.py`; record exactly which installation and command contracts those tests
   exercise. This does not prove macOS interaction.
 
 macOS integration lane:

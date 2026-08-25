@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # @raycast.schemaVersion 1
-# @raycast.title Send to iTerm — Sayloom Development
+# @raycast.title Dev: Send to iTerm
 # @raycast.mode compact
 # @raycast.packageName Sayloom Development
 # @raycast.icon 🧵
@@ -9,7 +9,11 @@
 
 set -eu
 
-script_directory=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+script_path=$0
+if [ -L "$script_path" ]; then
+  script_path=$(/usr/bin/readlink "$script_path")
+fi
+script_directory=$(CDPATH= cd -- "$(dirname -- "$script_path")" && pwd)
 . "$script_directory/lib.sh"
 
 prepare_command

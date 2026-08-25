@@ -1,18 +1,34 @@
 import json
+import os
 import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import pytest
+
 REPOSITORY_ROOT = Path(__file__).parent.parent
 RAYCAST_DIRECTORY = REPOSITORY_ROOT / "raycast"
 COMMANDS = {
-    "open-sayloom.sh": "Open Sayloom Development",
-    "send-to-amp.sh": "Send to Amp — Sayloom Development",
-    "send-to-iterm.sh": "Send to iTerm — Sayloom Development",
-    "send-to-supacode.sh": "Send to Supacode — Sayloom Development",
-    "send-to-vs-code.sh": "Send to VS Code — Sayloom Development",
+    "open-sayloom.sh": "Dev: Open Sayloom",
+    "send-to-amp.sh": "Dev: Send to Amp",
+    "send-to-iterm.sh": "Dev: Send to iTerm",
+    "send-to-supacode.sh": "Dev: Send to Supacode",
+    "send-to-vs-code.sh": "Dev: Send to VS Code",
 }
+
+
+def run_installer(
+    *arguments: str, environment: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [str(REPOSITORY_ROOT / "scripts/install-raycast.py"), *arguments],
+        cwd=REPOSITORY_ROOT,
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
 
 
 def test_exactly_five_development_branded_script_commands() -> None:
@@ -24,11 +40,82 @@ def test_exactly_five_development_branded_script_commands() -> None:
 
     assert set(command_files) == set(COMMANDS)
     for name, title in COMMANDS.items():
-        assert "Sayloom Development" in title
+        assert title.startswith("Dev: ")
         content = command_files[name].read_text()
         assert f"# @raycast.title {title}" in content
         assert "# @raycast.packageName Sayloom Development" in content
         assert "# @raycast.icon 🧵" in content
+
+
+def test_installer_defaults_to_development_prefixed_aliases(tmp_path: Path) -> None:
+    environment = {**os.environ, "HOME": str(tmp_path)}
+
+    installed = run_installer(environment=environment)
+
+    assert installed.returncode == 0
+    directory = tmp_path / ".config/raycast/scripts"
+    assert sorted(path.name for path in directory.iterdir()) == [
+        f"dev-{name}" for name in sorted(COMMANDS)
+    ]
+    for name in COMMANDS:
+        alias = directory / f"dev-{name}"
+        assert alias.is_symlink()
+        assert alias.resolve() == (RAYCAST_DIRECTORY / name).resolve()
+
+
+def test_installer_is_idempotent_with_an_explicit_directory(tmp_path: Path) -> None:
+    directory = tmp_path / "commands"
+    first = run_installer("--directory", str(directory))
+    links = {path.name: path.readlink() for path in directory.iterdir()}
+
+    second = run_installer("--directory", str(directory))
+
+    assert first.returncode == 0
+    assert second.returncode == 0
+    assert {path.name: path.readlink() for path in directory.iterdir()} == links
+
+
+def test_installed_alias_resolves_the_repository_library(tmp_path: Path) -> None:
+    directory = tmp_path / "commands"
+    assert run_installer("--directory", str(directory)).returncode == 0
+
+    opened = subprocess.run(
+        [str(directory / "dev-open-sayloom.sh")],
+        env={**os.environ, "LOCAL_TEXT_BASE_URL": "http://127.0.0.1:1"},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert opened.returncode != 0
+    assert "development is not healthy" in opened.stderr
+    assert "lib.sh" not in opened.stderr
+
+
+@pytest.mark.parametrize("conflict", ["file", "broken-link", "unrelated-link", "other-source"])
+def test_installer_refuses_to_replace_existing_entries(tmp_path: Path, conflict: str) -> None:
+    directory = tmp_path / "commands"
+    directory.mkdir()
+    destination = directory / "dev-open-sayloom.sh"
+    if conflict == "file":
+        destination.write_text("existing local command\n")
+    elif conflict == "broken-link":
+        destination.symlink_to(tmp_path / "missing.sh")
+    elif conflict == "unrelated-link":
+        unrelated = tmp_path / "unrelated.sh"
+        unrelated.write_text("#!/bin/sh\n")
+        destination.symlink_to(unrelated)
+    else:
+        destination.symlink_to(RAYCAST_DIRECTORY / "send-to-amp.sh")
+    original = destination.readlink() if destination.is_symlink() else destination.read_text()
+
+    rejected = run_installer("--directory", str(directory))
+
+    assert rejected.returncode != 0
+    assert "refusing to replace" in rejected.stderr
+    current = destination.readlink() if destination.is_symlink() else destination.read_text()
+    assert current == original
+    assert sorted(path.name for path in directory.iterdir()) == ["dev-open-sayloom.sh"]
 
 
 def test_send_commands_target_expected_apps_without_submitting() -> None:
