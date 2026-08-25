@@ -54,6 +54,10 @@ def test_installer_defaults_to_development_prefixed_aliases(tmp_path: Path) -> N
 
     assert installed.returncode == 0
     directory = tmp_path / ".config/raycast/scripts"
+    assert (
+        installed.stdout
+        == f"Installed 5; verified 0 existing development Raycast aliases in {directory}\n"
+    )
     assert sorted(path.name for path in directory.iterdir()) == [
         f"dev-{name}" for name in sorted(COMMANDS)
     ]
@@ -72,6 +76,14 @@ def test_installer_is_idempotent_with_an_explicit_directory(tmp_path: Path) -> N
 
     assert first.returncode == 0
     assert second.returncode == 0
+    assert (
+        first.stdout
+        == f"Installed 5; verified 0 existing development Raycast aliases in {directory}\n"
+    )
+    assert (
+        second.stdout
+        == f"Installed 0; verified 5 existing development Raycast aliases in {directory}\n"
+    )
     assert {path.name: path.readlink() for path in directory.iterdir()} == links
 
 

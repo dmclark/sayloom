@@ -42,10 +42,16 @@ def install(directory: Path) -> None:
             fail(f"refusing to replace existing entry: {destination}")
 
     directory.mkdir(parents=True, exist_ok=True)
+    installed = 0
     for source, destination in aliases:
         if not destination.is_symlink():
             destination.symlink_to(source.resolve())
-    print(f"Installed {len(aliases)} development Raycast aliases in {directory}")
+            installed += 1
+    verified = len(aliases) - installed
+    print(
+        f"Installed {installed}; verified {verified} existing development "
+        f"Raycast aliases in {directory}"
+    )
 
 
 def main() -> None:
