@@ -151,7 +151,8 @@ scripts/install-raycast.py
 
 Pass `--directory PATH` to select another directory. The installer links the five
 Raycast commands rather than copying them, prefixes their filenames with `dev-`,
-is safe to run again, and refuses to replace an existing file or unrelated link.
+is safe to run again, recovers its broken managed aliases after a disposable
+checkout is removed, and refuses to replace an existing file or unrelated link.
 The aliases remain independent of named development state and target the fixed
 development endpoint on port 7523. They provide exactly five user-facing commands:
 

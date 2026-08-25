@@ -6,8 +6,9 @@ Amp, iTerm, Supacode, and VS Code without submitting it.
 ## Sub-features
 
 - `RAYCAST.INSTALL`: the standalone installer creates idempotent `dev-*` aliases in
-  `~/.config/raycast/scripts` by default, accepts an explicit directory, and refuses to replace
-  existing files or unrelated links.
+  `~/.config/raycast/scripts` by default, accepts an explicit directory, recovers broken managed
+  aliases after a disposable checkout is removed, and refuses to replace existing files or
+  unrelated links.
 - `RAYCAST.OPEN`: Open Sayloom raises an existing matching development window or creates one only
   after development health and profile checks pass.
 - `RAYCAST.AMP`, `RAYCAST.SUPACODE`, `RAYCAST.VSCODE`: safe synthetic paste inserts without Return,
@@ -27,8 +28,9 @@ Amp, iTerm, Supacode, and VS Code without submitting it.
 
 Portable lane:
 
-- Run the installer twice against a temporary directory, shell syntax, and
-  `tests/test_raycast.py`; record exactly which installation and command contracts those tests
+- Run the installer twice, recover a broken managed alias, and prove a conflicting destination
+  leaves all broken managed aliases intact against a temporary directory; also run shell syntax
+  and `tests/test_raycast.py`. Record exactly which installation and command contracts those tests
   exercise. This does not prove macOS interaction.
 
 macOS integration lane:

@@ -30,18 +30,22 @@ def install(directory: Path) -> None:
 
     sources = command_sources()
     aliases = [(source, directory / f"dev-{source.name}") for source in sources]
+    broken_destinations: list[Path] = []
     for source, destination in aliases:
         if destination.is_symlink():
             try:
                 linked_source = destination.resolve(strict=True)
             except OSError:
-                fail(f"refusing to replace broken symlink: {destination}")
+                broken_destinations.append(destination)
+                continue
             if linked_source != source.resolve():
                 fail(f"refusing to replace symlink to another source: {destination}")
         elif destination.exists():
             fail(f"refusing to replace existing entry: {destination}")
 
     directory.mkdir(parents=True, exist_ok=True)
+    for destination in broken_destinations:
+        destination.unlink()
     installed = 0
     for source, destination in aliases:
         if not destination.is_symlink():

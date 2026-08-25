@@ -87,6 +87,38 @@ def test_installer_is_idempotent_with_an_explicit_directory(tmp_path: Path) -> N
     assert {path.name: path.readlink() for path in directory.iterdir()} == links
 
 
+def test_installer_replaces_managed_broken_symlinks_after_preflight(tmp_path: Path) -> None:
+    directory = tmp_path / "commands"
+    directory.mkdir()
+    destination = directory / "dev-open-sayloom.sh"
+    destination.symlink_to(tmp_path / "deleted-worktree" / "open-sayloom.sh")
+
+    installed = run_installer("--directory", str(directory))
+
+    assert installed.returncode == 0
+    assert destination.is_symlink()
+    assert destination.resolve() == (RAYCAST_DIRECTORY / "open-sayloom.sh").resolve()
+
+
+def test_installer_preserves_broken_managed_link_when_another_alias_conflicts(
+    tmp_path: Path,
+) -> None:
+    directory = tmp_path / "commands"
+    directory.mkdir()
+    broken = directory / "dev-open-sayloom.sh"
+    broken.symlink_to(tmp_path / "deleted-worktree" / "open-sayloom.sh")
+    conflict = directory / "dev-send-to-amp.sh"
+    conflict.write_text("existing local command\n")
+
+    rejected = run_installer("--directory", str(directory))
+
+    assert rejected.returncode != 0
+    assert "refusing to replace" in rejected.stderr
+    assert broken.is_symlink()
+    assert broken.readlink() == tmp_path / "deleted-worktree" / "open-sayloom.sh"
+    assert conflict.read_text() == "existing local command\n"
+
+
 def test_installed_alias_resolves_the_repository_library(tmp_path: Path) -> None:
     directory = tmp_path / "commands"
     assert run_installer("--directory", str(directory)).returncode == 0
@@ -104,15 +136,13 @@ def test_installed_alias_resolves_the_repository_library(tmp_path: Path) -> None
     assert "lib.sh" not in opened.stderr
 
 
-@pytest.mark.parametrize("conflict", ["file", "broken-link", "unrelated-link", "other-source"])
+@pytest.mark.parametrize("conflict", ["file", "unrelated-link", "other-source"])
 def test_installer_refuses_to_replace_existing_entries(tmp_path: Path, conflict: str) -> None:
     directory = tmp_path / "commands"
     directory.mkdir()
     destination = directory / "dev-open-sayloom.sh"
     if conflict == "file":
         destination.write_text("existing local command\n")
-    elif conflict == "broken-link":
-        destination.symlink_to(tmp_path / "missing.sh")
     elif conflict == "unrelated-link":
         unrelated = tmp_path / "unrelated.sh"
         unrelated.write_text("#!/bin/sh\n")
