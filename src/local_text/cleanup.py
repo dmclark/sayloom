@@ -1,4 +1,4 @@
-"""Fail-open source-text cleanup using Gemini."""
+"""Fail-open source-text cleanup with provider-neutral HTTP adapters."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import json
 import logging
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from email.utils import parsedate_to_datetime
 from enum import StrEnum
 from typing import Any, Literal, Protocol
@@ -19,6 +19,29 @@ logger = logging.getLogger("uvicorn.error.local_text.cleanup")
 MODEL_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 SAFE_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 TRANSIENT_FALLBACK_STATUSES = {429, 503}
+GEMINI_37_FLASH = "gemini-3.7-flash"
+OPENAI_GPT_56_LUNA = "gpt-5.6-luna"
+MAX_CLEANED_TEXT_CHARACTERS = 100_000
+GEMINI_MAX_OUTPUT_TOKENS = 65_536
+OPENAI_MAX_OUTPUT_TOKENS = 128_000
+CLEANED_TEXT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "cleaned_text": {
+            "type": "string",
+            "description": "The cleaned version of the supplied source text.",
+            "maxLength": MAX_CLEANED_TEXT_CHARACTERS,
+        }
+    },
+    "required": ["cleaned_text"],
+    "additionalProperties": False,
+}
+OPENAI_PERMANENT_QUOTA_CODES = {
+    "credit_balance_exhausted",
+    "organization_spend_limit_exceeded",
+    "organization_usage_limit_exceeded",
+    "project_spend_limit_exceeded",
+}
 
 
 class CleanupStatus(StrEnum):
@@ -177,6 +200,18 @@ class ProviderTimeoutError(ProviderError):
         )
 
 
+class ProviderConfigurationError(ProviderError):
+    """The adapter is missing required local configuration."""
+
+    def __init__(self, message: str, *, model: str | None = None) -> None:
+        super().__init__(
+            message,
+            failure_class=ProviderFailureClass.PERMANENT_CONFIGURATION,
+            model=model,
+            provider_code="missing_api_key",
+        )
+
+
 class ProviderMalformedResponseError(ProviderError):
     """The provider returned a response that could not be interpreted."""
 
@@ -223,36 +258,243 @@ class ProviderCoolingDownError(ProviderError):
         )
 
 
-@dataclass
-class GeminiProvider:
+@dataclass(frozen=True)
+class GeminiAdapter:
+    """One Gemini model and one HTTP request per cleanup call."""
+
     api_key: str
     model: str
-    timeout_seconds: float = 8.0
+    client: httpx.AsyncClient
     endpoint: str = "https://generativelanguage.googleapis.com/v1beta"
     provider_id: str = "gemini"
-    fallback_models: tuple[str, ...] = ()
     quota_group_id: str | None = None
-    cooldown_seconds: float = 300.0
-    _cooldowns: dict[str, float] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
-        for model in (self.model, *self.fallback_models):
-            if not MODEL_IDENTIFIER.fullmatch(model):
-                raise ValueError("provider model identifier is invalid")
+        if not MODEL_IDENTIFIER.fullmatch(self.model):
+            raise ValueError("provider model identifier is invalid")
         if self.quota_group_id is not None and not SAFE_IDENTIFIER.fullmatch(self.quota_group_id):
             raise ValueError("provider quota group identifier is invalid")
-        self.fallback_models = tuple(
-            dict.fromkeys(model for model in self.fallback_models if model != self.model)
+
+    async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
+        started = time.monotonic()
+        if not self.api_key:
+            error = ProviderConfigurationError(
+                "provider API key is not configured", model=self.model
+            )
+            _attribute_failure(error, self, started)
+            raise error
+        url = f"{self.endpoint}/models/{self.model}:generateContent"
+        generation_config = {
+            "thinkingConfig": _thinking_config(self.model),
+            "maxOutputTokens": _output_token_cap(
+                raw_text,
+                provider_max=GEMINI_MAX_OUTPUT_TOKENS,
+                thinking_headroom=2_048,
+            ),
+            "responseMimeType": "application/json",
+            "responseJsonSchema": CLEANED_TEXT_SCHEMA,
+        }
+        if self.model != GEMINI_37_FLASH:
+            generation_config["temperature"] = 0.2
+        payload = {
+            "system_instruction": {"parts": [{"text": system_prompt}]},
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [{"text": f"<SOURCE_TEXT>\n{raw_text}\n</SOURCE_TEXT>"}],
+                }
+            ],
+            "generationConfig": generation_config,
+        }
+        try:
+            response = await self.client.post(
+                url,
+                headers={"x-goog-api-key": self.api_key},
+                json=payload,
+            )
+        except httpx.TimeoutException as error:
+            failure = ProviderTimeoutError("provider request timed out", model=self.model)
+            _attribute_failure(failure, self, started)
+            raise failure from error
+        except httpx.TransportError as error:
+            failure = ProviderTransportError("provider transport failure", model=self.model)
+            _attribute_failure(failure, self, started)
+            raise failure from error
+        if response.is_error:
+            error = ProviderHTTPError(
+                response.status_code,
+                model=self.model,
+                provider_code=_provider_error_code(response),
+                retry_after_seconds=_parse_retry_after(response.headers.get("Retry-After")),
+            )
+            _attribute_failure(error, self, started)
+            raise error
+        try:
+            response_payload = response.json()
+        except json.JSONDecodeError as error:
+            failure = ProviderMalformedResponseError(
+                "provider returned invalid JSON", model=self.model
+            )
+            _attribute_failure(failure, self, started)
+            raise failure from error
+        try:
+            text = _extract_gemini_text(response_payload)
+            cleaned_text = _parse_cleaned_text(text)
+        except (ProviderMalformedResponseError, ProviderRejectedOutputError) as error:
+            _attribute_failure(error, self, started)
+            raise
+        input_tokens, output_tokens = _gemini_usage(response_payload)
+        return ProviderOutput(
+            text=cleaned_text,
+            provider_id=self.provider_id,
+            model_id=self.model,
+            elapsed_ms=_elapsed_ms(started),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+
+
+@dataclass(frozen=True)
+class OpenAIAdapter:
+    """One OpenAI model and one HTTP request per cleanup call."""
+
+    api_key: str
+    client: httpx.AsyncClient
+    model: str = OPENAI_GPT_56_LUNA
+    endpoint: str = "https://api.openai.com/v1/responses"
+    provider_id: str = "openai"
+    quota_group_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.model != OPENAI_GPT_56_LUNA:
+            raise ValueError("OpenAI adapter supports only gpt-5.6-luna")
+        if self.quota_group_id is not None and not SAFE_IDENTIFIER.fullmatch(self.quota_group_id):
+            raise ValueError("provider quota group identifier is invalid")
+
+    async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
+        started = time.monotonic()
+        if not self.api_key:
+            error = ProviderConfigurationError(
+                "provider API key is not configured", model=self.model
+            )
+            _attribute_failure(error, self, started)
+            raise error
+        payload = {
+            "model": self.model,
+            "input": [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": f"<SOURCE_TEXT>\n{raw_text}\n</SOURCE_TEXT>",
+                },
+            ],
+            "max_output_tokens": _output_token_cap(
+                raw_text,
+                provider_max=OPENAI_MAX_OUTPUT_TOKENS,
+            ),
+            "reasoning": {"effort": "none"},
+            "store": False,
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": "cleanup_result",
+                    "strict": True,
+                    "schema": CLEANED_TEXT_SCHEMA,
+                }
+            },
+        }
+        try:
+            response = await self.client.post(
+                self.endpoint,
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json=payload,
+            )
+        except httpx.TimeoutException as error:
+            failure = ProviderTimeoutError("provider request timed out", model=self.model)
+            _attribute_failure(failure, self, started)
+            raise failure from error
+        except httpx.TransportError as error:
+            failure = ProviderTransportError("provider transport failure", model=self.model)
+            _attribute_failure(failure, self, started)
+            raise failure from error
+        if response.is_error:
+            provider_code = _provider_error_code(response)
+            error = ProviderHTTPError(
+                response.status_code,
+                model=self.model,
+                provider_code=provider_code,
+                retry_after_seconds=_parse_retry_after(response.headers.get("Retry-After")),
+            )
+            if provider_code in OPENAI_PERMANENT_QUOTA_CODES:
+                error.failure_class = ProviderFailureClass.PERMANENT_QUOTA
+            _attribute_failure(error, self, started)
+            raise error
+        try:
+            response_payload = response.json()
+        except json.JSONDecodeError as error:
+            failure = ProviderMalformedResponseError(
+                "provider returned invalid JSON", model=self.model
+            )
+            _attribute_failure(failure, self, started)
+            raise failure from error
+        try:
+            text = _extract_openai_text(response_payload)
+            cleaned_text = _parse_cleaned_text(text)
+        except (ProviderMalformedResponseError, ProviderRejectedOutputError) as error:
+            _attribute_failure(error, self, started)
+            raise
+        input_tokens, output_tokens = _openai_usage(response_payload)
+        return ProviderOutput(
+            text=cleaned_text,
+            provider_id=self.provider_id,
+            model_id=self.model,
+            elapsed_ms=_elapsed_ms(started),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+
+
+class GeminiProvider:
+    """Temporary same-provider compatibility facade retained until Gate 3."""
+
+    provider_id = "gemini"
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        *,
+        client: httpx.AsyncClient,
+        endpoint: str = "https://generativelanguage.googleapis.com/v1beta",
+        fallback_models: tuple[str, ...] = (),
+        quota_group_id: str | None = None,
+        cooldown_seconds: float = 300.0,
+    ) -> None:
+        models = tuple(dict.fromkeys((model, *fallback_models)))
+        self.model = model
+        self.fallback_models = tuple(candidate for candidate in models if candidate != model)
+        self.quota_group_id = quota_group_id
+        self.cooldown_seconds = cooldown_seconds
+        self._cooldowns: dict[str, float] = {}
+        self._adapters = tuple(
+            GeminiAdapter(
+                api_key=api_key,
+                model=candidate,
+                client=client,
+                endpoint=endpoint,
+                quota_group_id=quota_group_id,
+            )
+            for candidate in models
         )
 
     async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
         now = time.monotonic()
-        models = tuple(
-            model
-            for model in (self.model, *self.fallback_models)
-            if self._cooldowns.get(model, 0) <= now
+        adapters = tuple(
+            adapter
+            for adapter in self._adapters
+            if self._cooldowns.get(adapter.model, 0) <= now
         )
-        if not models:
+        if not adapters:
             error = ProviderCoolingDownError(
                 "provider models are cooling down",
                 model=self.fallback_models[-1] if self.fallback_models else self.model,
@@ -262,89 +504,44 @@ class GeminiProvider:
             raise error
 
         failures: list[ProviderFailure] = []
-        for index, model in enumerate(models):
-            started = time.monotonic()
+        for index, adapter in enumerate(adapters):
             try:
-                text = await self._clean_model(model, raw_text, system_prompt)
+                output = await adapter.clean(raw_text, system_prompt)
             except ProviderError as error:
-                error.provider_id = self.provider_id
-                error.model = model
-                error.quota_group_id = self.quota_group_id
-                error.elapsed_ms = round((time.monotonic() - started) * 1_000)
                 error.route_index = index
                 error.prior_failures = tuple(failures)
-                has_fallback = index + 1 < len(models)
+                has_fallback = index + 1 < len(adapters)
                 if not isinstance(error, ProviderHTTPError) or (
                     error.status_code not in TRANSIENT_FALLBACK_STATUSES
                 ):
                     raise
-                self._cooldowns[model] = time.monotonic() + self.cooldown_seconds
+                self._cooldowns[adapter.model] = time.monotonic() + self.cooldown_seconds
                 if not has_fallback:
                     raise
                 failures.append(error)
             else:
                 return ProviderOutput(
-                    text=text,
-                    provider_id=self.provider_id,
-                    model_id=model,
-                    elapsed_ms=round((time.monotonic() - started) * 1_000),
+                    text=output.text,
+                    provider_id=output.provider_id,
+                    model_id=output.model_id,
+                    elapsed_ms=output.elapsed_ms,
                     route_index=index,
+                    input_tokens=output.input_tokens,
+                    output_tokens=output.output_tokens,
                     prior_failures=tuple(failures),
                 )
         raise AssertionError("provider model selection was empty")
-
-    async def _clean_model(self, model: str, raw_text: str, system_prompt: str) -> str:
-        url = f"{self.endpoint}/models/{model}:generateContent"
-        payload = {
-            "system_instruction": {"parts": [{"text": system_prompt}]},
-            "contents": [
-                {
-                    "role": "user",
-                    "parts": [{"text": f"<SOURCE_TEXT>\n{raw_text}\n</SOURCE_TEXT>"}],
-                }
-            ],
-            "generationConfig": {
-                "temperature": 0.2,
-                "thinkingConfig": _thinking_config(model),
-            },
-        }
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-                response = await client.post(
-                    url,
-                    params={"key": self.api_key},
-                    json=payload,
-                )
-        except httpx.TimeoutException as error:
-            raise ProviderTimeoutError("provider request timed out", model=model) from error
-        except httpx.TransportError as error:
-            raise ProviderTransportError("provider transport failure", model=model) from error
-        if response.is_error:
-            raise ProviderHTTPError(
-                response.status_code,
-                model=model,
-                retry_after_seconds=_parse_retry_after(response.headers.get("Retry-After")),
-            )
-        try:
-            response_payload = response.json()
-        except json.JSONDecodeError as error:
-            raise ProviderMalformedResponseError(
-                "provider returned invalid JSON", model=model
-            ) from error
-        try:
-            return _extract_text(response_payload)
-        except (ProviderMalformedResponseError, ProviderRejectedOutputError) as error:
-            error.model = model
-            raise
 
 
 def _thinking_config(model: str) -> dict[str, str | int]:
     if model.startswith("gemini-2.5-"):
         return {"thinkingBudget": 0}
+    if model == GEMINI_37_FLASH:
+        return {"thinkingLevel": "low"}
     return {"thinkingLevel": "minimal"}
 
 
-def _extract_text(payload: Any) -> str:
+def _extract_gemini_text(payload: Any) -> str:
     if _response_was_rejected(payload):
         raise ProviderRejectedOutputError("provider rejected unsafe output", safety_policy=True)
     try:
@@ -361,6 +558,138 @@ def _extract_text(payload: Any) -> str:
     if not text.strip():
         raise ProviderMalformedResponseError("Gemini returned empty output")
     return text
+
+
+_extract_text = _extract_gemini_text
+
+
+def _extract_openai_text(payload: Any) -> str:
+    if not isinstance(payload, dict):
+        raise ProviderMalformedResponseError("OpenAI returned malformed output")
+    output = payload.get("output")
+    if not isinstance(output, list):
+        raise ProviderMalformedResponseError("OpenAI returned malformed output")
+    for item in output:
+        if not isinstance(item, dict) or item.get("type") != "message":
+            continue
+        content = item.get("content")
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "refusal":
+                raise ProviderRejectedOutputError(
+                    "provider rejected unsafe output", safety_policy=True
+                )
+    if payload.get("status") == "incomplete":
+        details = payload.get("incomplete_details")
+        reason = details.get("reason") if isinstance(details, dict) else None
+        raise ProviderRejectedOutputError(
+            "provider did not complete structured output",
+            safety_policy=reason == "content_filter",
+        )
+    if payload.get("status") != "completed":
+        raise ProviderMalformedResponseError("OpenAI returned incomplete output")
+    text_parts: list[str] = []
+    for item in output:
+        if not isinstance(item, dict) or item.get("type") != "message":
+            continue
+        content = item.get("content")
+        if not isinstance(content, list):
+            continue
+        text_parts.extend(
+            part["text"]
+            for part in content
+            if isinstance(part, dict)
+            and part.get("type") == "output_text"
+            and isinstance(part.get("text"), str)
+        )
+    text = "".join(text_parts)
+    if not text.strip():
+        raise ProviderMalformedResponseError("OpenAI returned empty output")
+    return text
+
+
+def _parse_cleaned_text(text: str) -> str:
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise ProviderMalformedResponseError(
+            "provider returned invalid structured output"
+        ) from error
+    if (
+        not isinstance(payload, dict)
+        or set(payload) != {"cleaned_text"}
+        or not isinstance(payload.get("cleaned_text"), str)
+        or not payload["cleaned_text"].strip()
+        or len(payload["cleaned_text"]) > MAX_CLEANED_TEXT_CHARACTERS
+    ):
+        raise ProviderMalformedResponseError("provider returned malformed structured output")
+    return payload["cleaned_text"]
+
+
+def _output_token_cap(
+    raw_text: str,
+    *,
+    provider_max: int,
+    thinking_headroom: int = 0,
+) -> int:
+    """Bound cleanup cost while allowing JSON framing and provider reasoning tokens.
+
+    Cleanup may expand to the smaller of its semantic expansion limit and the absolute
+    100,000-character contract. Two output characters per token is conservative for ordinary
+    prose; 256 tokens cover JSON escaping/framing. Gemini low thinking receives a separate 2,048
+    token allowance at its call site. Truncation is intentionally handled as invalid output.
+    """
+    allowed_characters = min(
+        MAX_CLEANED_TEXT_CHARACTERS,
+        max(len(raw_text) * 4, len(raw_text) + 1_000),
+    )
+    estimated_text_tokens = (allowed_characters + 1) // 2
+    return min(provider_max, estimated_text_tokens + 256 + thinking_headroom)
+
+
+def _gemini_usage(payload: Any) -> tuple[int | None, int | None]:
+    usage = payload.get("usageMetadata") if isinstance(payload, dict) else None
+    if not isinstance(usage, dict):
+        return None, None
+    return _optional_token_count(usage.get("promptTokenCount")), _optional_token_count(
+        usage.get("candidatesTokenCount")
+    )
+
+
+def _openai_usage(payload: Any) -> tuple[int | None, int | None]:
+    usage = payload.get("usage") if isinstance(payload, dict) else None
+    if not isinstance(usage, dict):
+        return None, None
+    return _optional_token_count(usage.get("input_tokens")), _optional_token_count(
+        usage.get("output_tokens")
+    )
+
+
+def _optional_token_count(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
+def _provider_error_code(response: httpx.Response) -> str:
+    fallback = f"http_{response.status_code}"
+    try:
+        payload = response.json()
+    except json.JSONDecodeError:
+        return fallback
+    error = payload.get("error") if isinstance(payload, dict) else None
+    code = error.get("code") if isinstance(error, dict) else None
+    return code if isinstance(code, str) and SAFE_IDENTIFIER.fullmatch(code) else fallback
+
+
+def _attribute_failure(error: ProviderFailure, adapter: Any, started: float) -> None:
+    error.provider_id = adapter.provider_id
+    error.model = adapter.model
+    error.quota_group_id = adapter.quota_group_id
+    error.elapsed_ms = _elapsed_ms(started)
+
+
+def _elapsed_ms(started: float) -> int:
+    return max(0, round((time.monotonic() - started) * 1_000))
 
 
 def _response_was_rejected(payload: Any) -> bool:
@@ -387,6 +716,8 @@ def _validate_output(raw_text: str, cleaned_text: str) -> str:
         raise ProviderRejectedOutputError("The cleanup result was empty")
     if any(ord(character) < 32 and character not in "\n\r\t" for character in cleaned):
         raise ProviderRejectedOutputError("The cleanup result contained control characters")
+    if len(cleaned) > MAX_CLEANED_TEXT_CHARACTERS:
+        raise ProviderRejectedOutputError("The cleanup result exceeded the character limit")
     maximum_length = max(len(raw_text) * 4, len(raw_text) + 1_000)
     if len(cleaned) > maximum_length:
         raise ProviderRejectedOutputError("The cleanup result expanded beyond the safety limit")

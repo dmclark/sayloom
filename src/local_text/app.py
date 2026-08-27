@@ -1,11 +1,13 @@
 """FastAPI application entry point."""
 
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import UTC
 from hashlib import sha256
 from html import escape
 from pathlib import Path
 
+import httpx
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -54,7 +56,6 @@ def create_app(
     cleanup_service: CleanupService | None = None,
 ) -> FastAPI:
     runtime = settings or load_settings()
-    application = FastAPI(title=runtime.page_title)
     database = ApplicationDatabase(runtime.resolved_database_path)
     schema = database.schema_status()
     prompts = PromptStore(database)
@@ -67,22 +68,41 @@ def create_app(
         except SeedStateError as exc:
             configuration_error = str(exc)
     state = OutgoingStateStore(cleanup_enabled=cleanup_enabled)
-    provider = (
-        GeminiProvider(
-            runtime.gemini_api_key,
-            runtime.gemini_model,
-            timeout_seconds=runtime.cleanup_timeout_seconds,
-            fallback_models=("gemini-2.5-flash",),
-        )
-        if runtime.gemini_api_key
-        else None
-    )
-    cleanup = cleanup_service or CleanupService(
-        provider=provider,
+    disabled_cleanup = CleanupService(
+        provider=None,
         model=runtime.gemini_model,
         timeout_seconds=runtime.cleanup_timeout_seconds,
         provider_id="gemini",
     )
+    cleanup_available = bool(runtime.gemini_api_key) or cleanup_service is not None
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI):
+        if cleanup_service is not None or not runtime.gemini_api_key:
+            application.state.cleanup_service = cleanup_service or disabled_cleanup
+            yield
+            return
+        client = _new_provider_client(runtime.cleanup_timeout_seconds)
+        try:
+            provider = GeminiProvider(
+                runtime.gemini_api_key,
+                runtime.gemini_model,
+                client=client,
+                fallback_models=("gemini-2.5-flash",),
+            )
+            application.state.cleanup_service = CleanupService(
+                provider=provider,
+                model=runtime.gemini_model,
+                timeout_seconds=runtime.cleanup_timeout_seconds,
+                provider_id="gemini",
+            )
+            yield
+        finally:
+            application.state.cleanup_service = disabled_cleanup
+            await client.aclose()
+
+    application = FastAPI(title=runtime.page_title, lifespan=lifespan)
+    application.state.cleanup_service = cleanup_service or disabled_cleanup
     application.mount("/static", StaticFiles(directory=STATIC_DIRECTORY), name="static")
 
     @application.get("/health")
@@ -141,7 +161,7 @@ def create_app(
             "profile": runtime.profile,
             "development_state": runtime.development_state_name,
             "cleanup_enabled_by_default": prompts.cleanup_enabled_by_default(),
-            "cleanup_available": provider is not None or cleanup_service is not None,
+            "cleanup_available": cleanup_available,
             "cleanup_model": runtime.gemini_model,
         }
 
@@ -163,7 +183,7 @@ def create_app(
                     "retry_action": "Reload prompt versions and retry cleanup.",
                 },
             ) from exc
-        return await cleanup.clean(request, prompt.system_text)
+        return await application.state.cleanup_service.clean(request, prompt.system_text)
 
     @application.get("/api/prompts")
     def prompt_history() -> dict[str, object]:
@@ -213,6 +233,17 @@ def create_app(
         return asdict(state.clear())
 
     return application
+
+
+def _new_provider_client(timeout_seconds: float) -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        timeout=httpx.Timeout(
+            connect=min(5.0, timeout_seconds),
+            read=timeout_seconds,
+            write=min(5.0, timeout_seconds),
+            pool=min(5.0, timeout_seconds),
+        )
+    )
 
 
 app = create_app()

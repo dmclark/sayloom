@@ -1,8 +1,10 @@
 import sqlite3
 from pathlib import Path
 
+import httpx
 from fastapi.testclient import TestClient
 
+import local_text.app as app_module
 from local_text.app import STATIC_VERSION, create_app
 from local_text.cleanup import CleanupService, ProviderOutput
 from local_text.config import Profile, Settings
@@ -204,6 +206,52 @@ def test_config_reports_cleanup_without_exposing_key(initialized_settings: Setti
         "cleanup_model": "gemini-3.5-flash",
     }
     assert "not-a-real-key" not in response.text
+
+
+def test_app_lifespan_reuses_and_closes_the_gemini_client(
+    initialized_settings: Settings, monkeypatch
+) -> None:
+    calls = 0
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {"text": '{"cleaned_text":"Synthetic clean text."}'}
+                            ]
+                        }
+                    }
+                ]
+            },
+        )
+
+    provider_client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    monkeypatch.setattr(
+        app_module,
+        "_new_provider_client",
+        lambda timeout_seconds: provider_client,
+    )
+    settings = Settings(
+        Profile.DEVELOPMENT,
+        gemini_api_key="synthetic-key",
+        database_path=initialized_settings.database_path,
+    )
+
+    with TestClient(create_app(settings)) as client:
+        for source in ("synthetic source one", "synthetic source two"):
+            response = client.post("/api/cleanup", json={"raw_text": source, "enabled": True})
+            assert response.status_code == 200
+            assert response.json()["status"] == "cleaned"
+        assert not provider_client.is_closed
+
+    assert calls == 2
+    assert provider_client.is_closed
 
 
 def test_cleanup_endpoint_fails_open_when_provider_is_unconfigured(

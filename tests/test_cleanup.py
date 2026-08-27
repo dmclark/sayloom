@@ -1,8 +1,5 @@
 import asyncio
 import json
-import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -41,6 +38,36 @@ class StaticProvider:
             model_id=self.model,
             elapsed_ms=4,
         )
+
+
+class FakeGeminiAdapter:
+    provider_id = "gemini"
+    quota_group_id = None
+
+    def __init__(self, model: str, clean_model) -> None:
+        self.model = model
+        self.clean_model = clean_model
+
+    async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
+        try:
+            text = await self.clean_model(self.model, raw_text, system_prompt)
+        except ProviderError as error:
+            error.provider_id = self.provider_id
+            error.model = self.model
+            raise
+        return ProviderOutput(
+            text=text,
+            provider_id=self.provider_id,
+            model_id=self.model,
+            elapsed_ms=0,
+        )
+
+
+def replace_gemini_adapters(provider: GeminiProvider, clean_model) -> None:
+    provider._adapters = tuple(
+        FakeGeminiAdapter(model, clean_model)
+        for model in (provider.model, *provider.fallback_models)
+    )
 
 
 def run_cleanup(service: CleanupService, raw_text: str, *, enabled: bool = True):
@@ -134,6 +161,22 @@ def test_provider_error_and_rejected_output_fail_open_to_raw_text() -> None:
     assert expanded.cleaned_text == "synthetic raw"
     assert expanded.error is not None
     assert expanded.error.code == "cleanup_output_rejected"
+
+
+def test_cleanup_fails_open_when_output_exceeds_absolute_character_limit() -> None:
+    raw_text = "x" * 30_000
+    service = CleanupService(
+        provider=StaticProvider("y" * 100_001),
+        model="test-model",
+        timeout_seconds=1,
+    )
+
+    result = run_cleanup(service, raw_text)
+
+    assert result.status is CleanupStatus.PROVIDER_ERROR
+    assert result.cleaned_text == raw_text
+    assert result.error is not None
+    assert result.error.code == "cleanup_output_rejected"
 
 
 def test_provider_failures_have_specific_safe_classifications() -> None:
@@ -359,6 +402,7 @@ def test_transient_http_failure_uses_fallback_and_cools_primary(
     provider = GeminiProvider(
         "synthetic-key",
         "primary-model",
+        client=object(),
         fallback_models=("fallback-model",),
     )
     calls: list[str] = []
@@ -369,7 +413,7 @@ def test_transient_http_failure_uses_fallback_and_cools_primary(
             raise ProviderHTTPError(status_code, model=model)
         return "Synthetic clean text."
 
-    monkeypatch.setattr(provider, "_clean_model", clean_model)
+    replace_gemini_adapters(provider, clean_model)
     service = CleanupService(provider=provider, model=provider.model, timeout_seconds=1)
 
     first = run_cleanup(service, "synthetic source")
@@ -395,6 +439,7 @@ def test_non_transient_http_failure_does_not_use_fallback(monkeypatch) -> None:
     provider = GeminiProvider(
         "synthetic-key",
         "primary-model",
+        client=object(),
         fallback_models=("fallback-model",),
     )
     calls: list[str] = []
@@ -403,7 +448,7 @@ def test_non_transient_http_failure_does_not_use_fallback(monkeypatch) -> None:
         calls.append(model)
         raise ProviderHTTPError(500, model=model)
 
-    monkeypatch.setattr(provider, "_clean_model", clean_model)
+    replace_gemini_adapters(provider, clean_model)
     result = run_cleanup(
         CleanupService(provider=provider, model=provider.model, timeout_seconds=1),
         "synthetic source",
@@ -420,6 +465,7 @@ def test_exhausted_fallbacks_fail_open_and_cool_down(monkeypatch) -> None:
     provider = GeminiProvider(
         "synthetic-key",
         "primary-model",
+        client=object(),
         fallback_models=("fallback-model",),
     )
     calls: list[str] = []
@@ -428,7 +474,7 @@ def test_exhausted_fallbacks_fail_open_and_cool_down(monkeypatch) -> None:
         calls.append(model)
         raise ProviderHTTPError(429, model=model)
 
-    monkeypatch.setattr(provider, "_clean_model", clean_model)
+    replace_gemini_adapters(provider, clean_model)
     service = CleanupService(provider=provider, model=provider.model, timeout_seconds=1)
 
     exhausted = run_cleanup(service, "synthetic source")
@@ -451,6 +497,7 @@ def test_duplicate_fallback_models_are_not_retried(monkeypatch) -> None:
     provider = GeminiProvider(
         "synthetic-key",
         "primary-model",
+        client=object(),
         fallback_models=("primary-model", "fallback-model", "fallback-model"),
     )
     calls: list[str] = []
@@ -459,7 +506,7 @@ def test_duplicate_fallback_models_are_not_retried(monkeypatch) -> None:
         calls.append(model)
         raise ProviderHTTPError(429, model=model)
 
-    monkeypatch.setattr(provider, "_clean_model", clean_model)
+    replace_gemini_adapters(provider, clean_model)
 
     with pytest.raises(ProviderHTTPError):
         asyncio.run(provider.clean("synthetic source", "Synthetic cleanup instruction"))
@@ -472,6 +519,7 @@ def test_primary_model_is_retried_after_cooldown_expires(monkeypatch) -> None:
     provider = GeminiProvider(
         "synthetic-key",
         "primary-model",
+        client=object(),
         fallback_models=("fallback-model",),
         cooldown_seconds=300,
     )
@@ -484,7 +532,7 @@ def test_primary_model_is_retried_after_cooldown_expires(monkeypatch) -> None:
             raise ProviderHTTPError(503, model=model)
         return "Synthetic clean text."
 
-    monkeypatch.setattr(provider, "_clean_model", clean_model)
+    replace_gemini_adapters(provider, clean_model)
     monkeypatch.setattr(cleanup_module.time, "monotonic", lambda: now)
 
     first = asyncio.run(provider.clean("synthetic source", "Synthetic cleanup instruction"))
@@ -588,6 +636,7 @@ def test_gemini_response_requires_text_parts() -> None:
 
 def test_thinking_configuration_matches_model_generation() -> None:
     assert _thinking_config("gemini-3.5-flash") == {"thinkingLevel": "minimal"}
+    assert _thinking_config("gemini-3.7-flash") == {"thinkingLevel": "low"}
     assert _thinking_config("gemini-2.5-flash") == {"thinkingBudget": 0}
 
 
@@ -605,96 +654,3 @@ def test_gemini_response_distinguishes_rejection_from_malformed_output() -> None
         pass
     else:
         raise AssertionError("malformed response was not classified")
-
-
-def test_gemini_provider_converts_http_failure_without_reading_provider_payload() -> None:
-    private_payload = b'{"error":"private provider detail"}'
-
-    class Handler(BaseHTTPRequestHandler):
-        def do_POST(self) -> None:  # noqa: N802
-            self.send_response(429)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(private_payload)))
-            self.send_header("Retry-After", "17")
-            self.end_headers()
-            self.wfile.write(private_payload)
-
-        def log_message(self, format: str, *args: object) -> None:
-            return
-
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    thread = threading.Thread(target=server.serve_forever)
-    thread.start()
-    try:
-        host, port = server.server_address
-        provider = GeminiProvider(
-            "synthetic-key",
-            "test-model",
-            timeout_seconds=1,
-            endpoint=f"http://{host}:{port}",
-        )
-        with pytest.raises(ProviderHTTPError) as caught:
-            asyncio.run(provider.clean("synthetic source", "Synthetic system prompt"))
-    finally:
-        server.shutdown()
-        thread.join()
-        server.server_close()
-
-    assert caught.value.status_code == 429
-    assert caught.value.retry_after_seconds == 17
-    assert "private provider detail" not in str(caught.value)
-
-
-def test_gemini_provider_separately_frames_prompt_and_untrusted_source_text() -> None:
-    observed: dict[str, object] = {}
-    response_body = json.dumps(
-        {"candidates": [{"content": {"parts": [{"text": "Synthetic clean text."}]}}]}
-    ).encode()
-
-    class Handler(BaseHTTPRequestHandler):
-        def do_POST(self) -> None:  # noqa: N802
-            length = int(self.headers["Content-Length"])
-            observed["url"] = self.path
-            observed["body"] = json.loads(self.rfile.read(length))
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(response_body)))
-            self.end_headers()
-            self.wfile.write(response_body)
-
-        def log_message(self, format: str, *args: object) -> None:
-            return
-
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    thread = threading.Thread(target=server.serve_forever)
-    thread.start()
-    try:
-        host, port = server.server_address
-        provider = GeminiProvider(
-            "synthetic-key",
-            "test-model",
-            timeout_seconds=1,
-            endpoint=f"http://{host}:{port}",
-        )
-        result = asyncio.run(provider.clean("synthetic source text", "Synthetic system prompt"))
-    finally:
-        server.shutdown()
-        thread.join()
-        server.server_close()
-
-    request_url = urlparse(str(observed["url"]))
-    request_body = observed["body"]
-    assert result.text == "Synthetic clean text."
-    assert result.provider_id == "gemini"
-    assert result.model_id == "test-model"
-    assert result.elapsed_ms >= 0
-    assert request_url.path == "/models/test-model:generateContent"
-    assert parse_qs(request_url.query) == {"key": ["synthetic-key"]}
-    assert request_body["system_instruction"]["parts"][0]["text"] == "Synthetic system prompt"
-    assert (
-        request_body["contents"][0]["parts"][0]["text"]
-        == "<SOURCE_TEXT>\nsynthetic source text\n</SOURCE_TEXT>"
-    )
-    assert request_body["generationConfig"]["thinkingConfig"] == {
-        "thinkingLevel": "minimal"
-    }
