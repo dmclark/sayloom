@@ -348,7 +348,7 @@ def test_list_prune_and_remove_manage_only_registered_state_data(tmp_path: Path)
     assert not (current_root / "legacy-two").exists()
 
 
-def test_activate_swaps_the_raycast_port_without_changing_raycast(
+def test_activate_swaps_the_raycast_port_and_repoints_installed_aliases(
     tmp_path: Path, monkeypatch
 ) -> None:
     state_root = tmp_path / "states"
@@ -379,14 +379,54 @@ def test_activate_swaps_the_raycast_port_without_changing_raycast(
     monkeypatch.setattr(
         module, "restart", lambda state, **_arguments: restarted.append(state)
     )
+    raycast_directory = tmp_path / "raycast-commands"
+    raycast_directory.mkdir()
+    old_checkout = tmp_path / "old-checkout" / "raycast"
+    for source in (REPOSITORY_ROOT / "raycast").glob("*.sh"):
+        if "# @raycast.schemaVersion" in source.read_text():
+            (raycast_directory / f"dev-{source.name}").symlink_to(old_checkout / source.name)
 
     selected = module.load_state(state_root, "selected")
-    module.activate(state_root, selected)
+    module.activate(state_root, selected, raycast_directory=raycast_directory)
 
     assert module.load_state(state_root, "selected").port == 7523
     foreign = json.loads((state_root / "raycast-owner/state.json").read_text())
     assert foreign["port"] == selected_port
     assert [state.name for state in restarted] == ["selected"]
+    for alias in raycast_directory.iterdir():
+        source = REPOSITORY_ROOT / "raycast" / alias.name.removeprefix("dev-")
+        assert alias.resolve() == source.resolve()
+
+
+def test_activate_rejects_alias_conflicts_before_changing_state(tmp_path: Path) -> None:
+    state_root = tmp_path / "states"
+    selected_port = unused_port()
+    assert (
+        run_dev(state_root, "create", "selected", "--port", str(selected_port)).returncode == 0
+    )
+    raycast_directory = tmp_path / "raycast-commands"
+    raycast_directory.mkdir()
+    conflict = raycast_directory / "dev-open-sayloom.sh"
+    conflict.write_text("unrelated command\n")
+
+    scripts = str(REPOSITORY_ROOT / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        specification = importlib.util.spec_from_file_location(
+            "sayloom_dev_conflict_script", REPOSITORY_ROOT / "scripts/dev.py"
+        )
+        assert specification is not None and specification.loader is not None
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+    finally:
+        sys.path.remove(scripts)
+
+    selected = module.load_state(state_root, "selected")
+    with pytest.raises(SystemExit, match="refusing to replace existing entry"):
+        module.activate(state_root, selected, raycast_directory=raycast_directory)
+
+    assert module.load_state(state_root, "selected").port == selected_port
+    assert conflict.read_text() == "unrelated command\n"
 
 
 def test_help_lists_checkout_service_database_and_cleanup_commands() -> None:

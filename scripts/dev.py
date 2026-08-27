@@ -38,6 +38,8 @@ from development_state import (
     states_on_port,
     write_state,
 )
+from raycast_aliases import DEFAULT_DIRECTORY as RAYCAST_DIRECTORY
+from raycast_aliases import AliasPlan, apply_plan, plan_install
 
 
 class HelpFormatter(argparse.RawDescriptionHelpFormatter):
@@ -333,7 +335,16 @@ def restart(state: State, *, run_checks: bool = True) -> None:
     verify_service(state)
 
 
-def activate(root: Path, state: State) -> None:
+def activate(root: Path, state: State, *, raycast_directory: Path = RAYCAST_DIRECTORY) -> None:
+    try:
+        alias_plan = plan_install(
+            raycast_directory,
+            repository_root(),
+            repoint_managed=True,
+            installed_only=True,
+        )
+    except ValueError as error:
+        fail(str(error))
     previous_owners = [
         candidate
         for candidate in states_on_port(root, DEVELOPMENT_PORT)
@@ -341,9 +352,11 @@ def activate(root: Path, state: State) -> None:
     ]
     if state.port == DEVELOPMENT_PORT and not previous_owners:
         if service_is_loaded(state):
+            repoint_raycast_aliases(alias_plan)
             print(f"State {state.name!r} already owns the Raycast port {DEVELOPMENT_PORT}")
             return
         restart(state)
+        repoint_raycast_aliases(alias_plan)
         return
 
     verify_repository()
@@ -381,6 +394,13 @@ def activate(root: Path, state: State) -> None:
         if owner.name in loaded_names and Path(owner.repository_root).is_dir():
             install_service(owner)
             verify_service(owner)
+    repoint_raycast_aliases(alias_plan)
+
+
+def repoint_raycast_aliases(plan: AliasPlan) -> None:
+    updated, _verified = apply_plan(plan)
+    if updated:
+        print(f"Repointed {updated} Raycast aliases to {repository_root()}")
 
 
 def remove_state(root: Path, state: State, *, confirmed: bool) -> None:
