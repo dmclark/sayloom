@@ -1,3 +1,3 @@
 #!/bin/sh
-echo "Use scripts/dev.py restart --state NAME; implicit development state is no longer supported." >&2
+echo "Use scripts/dev.py restart; the development state is inferred from this checkout." >&2
 exit 2

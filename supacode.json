@@ -1,0 +1,5 @@
+{
+  "setupScript": "scripts/dev.py init",
+  "runScript": "scripts/dev.py restart",
+  "deleteScript": "scripts/dev.py remove --all --yes"
+}

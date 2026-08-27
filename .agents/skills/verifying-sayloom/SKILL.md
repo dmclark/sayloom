@@ -15,8 +15,8 @@ Use this contract to make verification claims that another engineer can reproduc
 - Use synthetic text and a new disposable database and service for every live run. Unset
   `LOCAL_TEXT_*`, `GEMINI_API_KEY`, and `GOOGLE_API_KEY` unless a dedicated provider lane is
   intentionally being tested. Never print credential values.
-- Do not use `scripts/dev.py restart` for verification: it owns the fixed development port and
-  can stop a registered development service. Cover that workflow with tests or on a dedicated
+- Do not use `scripts/dev.py restart` for verification: it owns the current checkout's registered
+  development service and assigned port. Cover that workflow with tests or on a dedicated
   verification host that has no stable application.
 - Normal application startup must not migrate or seed. Run administration commands explicitly.
 - Keep databases, logs, run notes, and evidence out of Git. Evidence shown to the user belongs

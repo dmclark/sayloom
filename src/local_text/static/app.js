@@ -698,13 +698,13 @@
         ? `Gemini · ${config.cleanup_model}`
         : "Gemini · configuration needed";
 
-      elements.original.value = "";
       elements.cleaned.value = "";
       originalOutgoingOverride = false;
       setStatus(elements.cleanupEnabled.checked ? "unchanged" : "disabled");
       renderCountsAndSelection();
       setWorkspaceShare(DEFAULT_ORIGINAL_SHARE);
       await loadPromptHistory();
+      if (!elements.original.value) elements.original.focus({ preventScroll: true });
     } catch (error) {
       const safe = error?.code ? error : networkError("Workspace configuration");
       setStatus("error");
