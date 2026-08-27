@@ -12,10 +12,9 @@ This repository is local-first and public-safe from its first commit.
 
 ## Local worktree workflow
 
-- Keep the primary `main` worktree clean for integration and its configured runtime, not feature editing. Local-state diagnosis there is read-only.
-- Before code-changing work: (1) create or select the dedicated Supacode worktree and named development state; (2) start an Amp runner whose actual process cwd is that exact worktree (or start interactive `amp` there); (3) create or continue the implementation thread on that exact runner; (4) verify its repository, branch, recent commits, and expected status; (5) only then edit files.
+- Use an orb by default. Use a runner attached to the exact dedicated worktree when a task changes code, depends on uncommitted or machine-local state, or exercises local runtime integrations.
+- Read-only research, planning, and review may run in an orb when all required inputs are available there; documentation-only changes may also run in an orb when they do not depend on local or uncommitted state.
+- Create or select a named development state only when the task needs isolated application runtime or database data.
+- Keep the primary `main` worktree clean for integration and its configured runtime, not feature editing; local-state diagnosis there is read-only. Preserve manager-owned locks; never force-unlock or manually remove managed worktrees. Integrate to `main` only after review and explicit authorization.
+- Before code-changing work: (1) create or select the dedicated Supacode worktree; (2) start an Amp runner whose actual process cwd is that exact worktree (or start interactive `amp` there); (3) create or continue the implementation thread on that exact runner; (4) verify its repository, branch, recent commits, and expected status; (5) only then edit files. Create or select a named development state as part of this only when the task needs isolated application runtime or database data.
 - Creating a worktree does not move or reattach the current Amp thread, executor, or Changes panel. Never edit a new worktree from a thread or runner attached to the parent, `main`, or another directory, even when shell commands can pass that worktree as their working directory.
-- Read-only coordination may remain on the primary runner, but hand code-changing implementation off to the runner attached to the exact worktree.
-- Preserve manager-owned locks; never force-unlock or manually remove managed worktrees.
-- Integrate to `main` only after review and explicit authorization.
-- Use controlled verify-then-restart; normal startup must never run migrations.
