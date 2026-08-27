@@ -5,8 +5,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
+import random
 import re
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from email.utils import parsedate_to_datetime
 from enum import StrEnum
@@ -18,12 +21,19 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger("uvicorn.error.local_text.cleanup")
 MODEL_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 SAFE_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
-TRANSIENT_FALLBACK_STATUSES = {429, 503}
 GEMINI_37_FLASH = "gemini-3.7-flash"
 OPENAI_GPT_56_LUNA = "gpt-5.6-luna"
 MAX_CLEANED_TEXT_CHARACTERS = 100_000
 GEMINI_MAX_OUTPUT_TOKENS = 65_536
 OPENAI_MAX_OUTPUT_TOKENS = 128_000
+EVALUATION_TOTAL_BUDGET_SECONDS = 20.0
+EVALUATION_PRIMARY_ATTEMPT_SECONDS = 12.0
+EVALUATION_FALLBACK_ATTEMPT_SECONDS = 8.0
+MINIMUM_ATTEMPT_SECONDS = 0.5
+ROUTE_BREAKER_BASE_SECONDS = 15.0
+ROUTE_BREAKER_MAX_SECONDS = 300.0
+QUOTA_BREAKER_BASE_SECONDS = 60.0
+QUOTA_BREAKER_MAX_SECONDS = 900.0
 CLEANED_TEXT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -75,6 +85,23 @@ class ProviderFailureClass(StrEnum):
     INVALID_OUTPUT = "invalid_output"
     INVALID_LOCAL_REQUEST = "invalid_local_request"
     UNKNOWN = "unknown"
+
+
+class RouteFailureAction(StrEnum):
+    ADVANCE = "advance"
+    TERMINAL = "terminal"
+
+
+ROUTE_FAILURE_ACTIONS = {
+    ProviderFailureClass.TRANSIENT_ROUTE: RouteFailureAction.ADVANCE,
+    ProviderFailureClass.TEMPORARY_QUOTA: RouteFailureAction.ADVANCE,
+    ProviderFailureClass.PERMANENT_QUOTA: RouteFailureAction.ADVANCE,
+    ProviderFailureClass.PERMANENT_CONFIGURATION: RouteFailureAction.ADVANCE,
+    ProviderFailureClass.INVALID_OUTPUT: RouteFailureAction.ADVANCE,
+    ProviderFailureClass.SAFETY_POLICY: RouteFailureAction.TERMINAL,
+    ProviderFailureClass.INVALID_LOCAL_REQUEST: RouteFailureAction.TERMINAL,
+    ProviderFailureClass.UNKNOWN: RouteFailureAction.TERMINAL,
+}
 
 
 class CleanupAttempt(BaseModel):
@@ -137,6 +164,9 @@ class ProviderFailure(RuntimeError):
         quota_group_id: str | None = None,
         route_index: int = 0,
         prior_failures: tuple[ProviderFailure, ...] = (),
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        attempted: bool = True,
     ) -> None:
         super().__init__(message)
         self.failure_class = failure_class
@@ -149,6 +179,9 @@ class ProviderFailure(RuntimeError):
         self.quota_group_id = quota_group_id
         self.route_index = route_index
         self.prior_failures = prior_failures
+        self.input_tokens = input_tokens
+        self.output_tokens = output_tokens
+        self.attempted = attempted
 
 
 ProviderError = ProviderFailure
@@ -252,9 +285,23 @@ class ProviderCoolingDownError(ProviderError):
     def __init__(self, message: str, *, model: str | None = None) -> None:
         super().__init__(
             message,
-            failure_class=ProviderFailureClass.TEMPORARY_QUOTA,
+            failure_class=ProviderFailureClass.TRANSIENT_ROUTE,
             model=model,
-            provider_code="cooldown",
+            provider_code="circuit_open",
+            attempted=False,
+        )
+
+
+class ProviderBusyError(ProviderError):
+    """The local no-queue cleanup bulkhead has no capacity."""
+
+    def __init__(self, message: str, *, model: str | None = None) -> None:
+        super().__init__(
+            message,
+            failure_class=ProviderFailureClass.TRANSIENT_ROUTE,
+            model=model,
+            provider_code="bulkhead_full",
+            attempted=False,
         )
 
 
@@ -337,13 +384,15 @@ class GeminiAdapter:
             )
             _attribute_failure(failure, self, started)
             raise failure from error
+        input_tokens, output_tokens = _gemini_usage(response_payload)
         try:
             text = _extract_gemini_text(response_payload)
             cleaned_text = _parse_cleaned_text(text)
         except (ProviderMalformedResponseError, ProviderRejectedOutputError) as error:
             _attribute_failure(error, self, started)
+            error.input_tokens = input_tokens
+            error.output_tokens = output_tokens
             raise
-        input_tokens, output_tokens = _gemini_usage(response_payload)
         return ProviderOutput(
             text=cleaned_text,
             provider_id=self.provider_id,
@@ -437,13 +486,15 @@ class OpenAIAdapter:
             )
             _attribute_failure(failure, self, started)
             raise failure from error
+        input_tokens, output_tokens = _openai_usage(response_payload)
         try:
             text = _extract_openai_text(response_payload)
             cleaned_text = _parse_cleaned_text(text)
         except (ProviderMalformedResponseError, ProviderRejectedOutputError) as error:
             _attribute_failure(error, self, started)
+            error.input_tokens = input_tokens
+            error.output_tokens = output_tokens
             raise
-        input_tokens, output_tokens = _openai_usage(response_payload)
         return ProviderOutput(
             text=cleaned_text,
             provider_id=self.provider_id,
@@ -454,83 +505,323 @@ class OpenAIAdapter:
         )
 
 
-class GeminiProvider:
-    """Temporary same-provider compatibility facade retained until Gate 3."""
+@dataclass(frozen=True)
+class CleanupRoute:
+    """One configured adapter/model attempt in a sequential route."""
 
-    provider_id = "gemini"
+    adapter: CleanupProvider
+    attempt_budget_seconds: float
+    quota_group_id: str
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.attempt_budget_seconds) or self.attempt_budget_seconds <= 0:
+            raise ValueError("route attempt budget must be positive and finite")
+        if not SAFE_IDENTIFIER.fullmatch(self.quota_group_id):
+            raise ValueError("provider quota group identifier is invalid")
+        if not SAFE_IDENTIFIER.fullmatch(self.adapter.provider_id):
+            raise ValueError("provider identifier is invalid")
+        if not MODEL_IDENTIFIER.fullmatch(self.adapter.model):
+            raise ValueError("provider model identifier is invalid")
+        adapter_quota_group = getattr(self.adapter, "quota_group_id", None)
+        if adapter_quota_group is not None and adapter_quota_group != self.quota_group_id:
+            raise ValueError("route and adapter quota groups must match")
+
+    @property
+    def provider_id(self) -> str:
+        return self.adapter.provider_id
+
+    @property
+    def model(self) -> str:
+        return self.adapter.model
+
+
+@dataclass
+class _BreakerState:
+    open_until: float = 0.0
+    failure_count: int = 0
+    probe_in_flight: bool = False
+    permanently_disabled: bool = False
+    base_delay_seconds: float = 0.0
+
+
+class SequentialCleanupProvider:
+    """Route one cleanup through bounded, breaker-aware single-request adapters."""
 
     def __init__(
         self,
-        api_key: str,
-        model: str,
+        routes: tuple[CleanupRoute, ...],
         *,
-        client: httpx.AsyncClient,
-        endpoint: str = "https://generativelanguage.googleapis.com/v1beta",
-        fallback_models: tuple[str, ...] = (),
-        quota_group_id: str | None = None,
-        cooldown_seconds: float = 300.0,
+        total_budget_seconds: float,
+        minimum_attempt_seconds: float = MINIMUM_ATTEMPT_SECONDS,
+        max_active_cleanups: int = 2,
+        clock: Callable[[], float] = time.monotonic,
+        jitter: Callable[[float], float] | None = None,
+        timeout_runner: Callable[
+            [Awaitable[ProviderOutput], float], Awaitable[ProviderOutput]
+        ] = asyncio.wait_for,
+        output_validator: Callable[[str, str], str] | None = None,
     ) -> None:
-        models = tuple(dict.fromkeys((model, *fallback_models)))
-        self.model = model
-        self.fallback_models = tuple(candidate for candidate in models if candidate != model)
-        self.quota_group_id = quota_group_id
-        self.cooldown_seconds = cooldown_seconds
-        self._cooldowns: dict[str, float] = {}
-        self._adapters = tuple(
-            GeminiAdapter(
-                api_key=api_key,
-                model=candidate,
-                client=client,
-                endpoint=endpoint,
-                quota_group_id=quota_group_id,
-            )
-            for candidate in models
-        )
+        if not routes:
+            raise ValueError("at least one cleanup route is required")
+        if not math.isfinite(total_budget_seconds) or total_budget_seconds <= 0:
+            raise ValueError("total budget must be positive and finite")
+        if not math.isfinite(minimum_attempt_seconds) or minimum_attempt_seconds <= 0:
+            raise ValueError("minimum attempt budget must be positive and finite")
+        if max_active_cleanups < 1:
+            raise ValueError("cleanup capacity must be at least one")
+        self.routes = routes
+        self.provider_id = routes[0].provider_id
+        self.model = routes[0].model
+        self.total_budget_seconds = total_budget_seconds
+        self.minimum_attempt_seconds = minimum_attempt_seconds
+        self.max_active_cleanups = max_active_cleanups
+        self._clock = clock
+        self._jitter = jitter or _jitter_delay
+        self._timeout_runner = timeout_runner
+        self._output_validator = output_validator or _validate_output
+        self._route_breakers = [_BreakerState() for _route in routes]
+        self._quota_breakers = {
+            route.quota_group_id: _BreakerState() for route in routes
+        }
+        self._active_cleanups = 0
 
     async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
-        now = time.monotonic()
-        adapters = tuple(
-            adapter
-            for adapter in self._adapters
-            if self._cooldowns.get(adapter.model, 0) <= now
-        )
-        if not adapters:
-            error = ProviderCoolingDownError(
-                "provider models are cooling down",
-                model=self.fallback_models[-1] if self.fallback_models else self.model,
-            )
+        if self._active_cleanups >= self.max_active_cleanups:
+            error = ProviderBusyError("local cleanup capacity is full", model=self.model)
             error.provider_id = self.provider_id
-            error.quota_group_id = self.quota_group_id
             raise error
+        self._active_cleanups += 1
+        try:
+            return await self._clean_with_routes(raw_text, system_prompt)
+        finally:
+            self._active_cleanups -= 1
 
+    async def _clean_with_routes(self, raw_text: str, system_prompt: str) -> ProviderOutput:
+        deadline = self._clock() + self.total_budget_seconds
         failures: list[ProviderFailure] = []
-        for index, adapter in enumerate(adapters):
+        last_failure: ProviderFailure | None = None
+        for route_index, route in enumerate(self.routes):
+            now = self._clock()
+            remaining = deadline - now
+            attempt_budget = min(route.attempt_budget_seconds, remaining)
+            if attempt_budget < self.minimum_attempt_seconds:
+                raise self._deadline_failure(route, route_index, failures)
+
+            route_breaker = self._route_breakers[route_index]
+            quota_breaker = self._quota_breakers[route.quota_group_id]
+            route_half_open = _acquire_breaker(route_breaker, now)
+            if route_half_open is None:
+                continue
+            quota_half_open = _acquire_breaker(quota_breaker, now)
+            if quota_half_open is None:
+                _release_probe(route_breaker, route_half_open)
+                continue
+
+            attempt_started = self._clock()
             try:
-                output = await adapter.clean(raw_text, system_prompt)
-            except ProviderError as error:
-                error.route_index = index
-                error.prior_failures = tuple(failures)
-                has_fallback = index + 1 < len(adapters)
-                if not isinstance(error, ProviderHTTPError) or (
-                    error.status_code not in TRANSIENT_FALLBACK_STATUSES
-                ):
-                    raise
-                self._cooldowns[adapter.model] = time.monotonic() + self.cooldown_seconds
-                if not has_fallback:
-                    raise
-                failures.append(error)
-            else:
-                return ProviderOutput(
-                    text=output.text,
-                    provider_id=output.provider_id,
-                    model_id=output.model_id,
-                    elapsed_ms=output.elapsed_ms,
-                    route_index=index,
-                    input_tokens=output.input_tokens,
-                    output_tokens=output.output_tokens,
+                output = await self._timeout_runner(
+                    route.adapter.clean(raw_text, system_prompt), attempt_budget
+                )
+            except asyncio.CancelledError:
+                _release_probe(route_breaker, route_half_open)
+                _release_probe(quota_breaker, quota_half_open)
+                raise
+            except TimeoutError:
+                failure = ProviderTimeoutError("provider request timed out", model=route.model)
+                self._attribute_route_failure(failure, route, route_index, attempt_started)
+            except ProviderFailure as error:
+                failure = error
+                self._attribute_route_failure(failure, route, route_index, attempt_started)
+            except Exception as error:
+                _release_probe(route_breaker, route_half_open)
+                _release_probe(quota_breaker, quota_half_open)
+                failure = ProviderFailure(
+                    "unexpected provider route error",
+                    provider_id=route.provider_id,
+                    model=route.model,
+                    elapsed_ms=_clock_elapsed_ms(self._clock, attempt_started),
+                    quota_group_id=route.quota_group_id,
+                    route_index=route_index,
                     prior_failures=tuple(failures),
                 )
-        raise AssertionError("provider model selection was empty")
+                raise failure from error
+            else:
+                try:
+                    cleaned_text = self._output_validator(raw_text, output.text)
+                except ProviderRejectedOutputError as error:
+                    failure = error
+                    self._attribute_route_failure(failure, route, route_index, attempt_started)
+                    failure.input_tokens = output.input_tokens
+                    failure.output_tokens = output.output_tokens
+                else:
+                    _record_breaker_success(route_breaker, route_half_open)
+                    _record_breaker_success(quota_breaker, quota_half_open)
+                    return ProviderOutput(
+                        text=cleaned_text,
+                        provider_id=route.provider_id,
+                        model_id=route.model,
+                        elapsed_ms=_clock_elapsed_ms(self._clock, attempt_started),
+                        route_index=route_index,
+                        input_tokens=output.input_tokens,
+                        output_tokens=output.output_tokens,
+                        prior_failures=tuple(failures),
+                    )
+
+            _release_probe(route_breaker, route_half_open)
+            _release_probe(quota_breaker, quota_half_open)
+            self._apply_failure_to_breakers(
+                failure,
+                route_breaker,
+                quota_breaker,
+                route_half_open=route_half_open,
+                quota_half_open=quota_half_open,
+            )
+            failure.prior_failures = tuple(failures)
+            last_failure = failure
+            if ROUTE_FAILURE_ACTIONS[failure.failure_class] is RouteFailureAction.TERMINAL:
+                raise failure
+            failures.append(failure)
+            if deadline - self._clock() < self.minimum_attempt_seconds:
+                next_route = self.routes[min(route_index + 1, len(self.routes) - 1)]
+                raise self._deadline_failure(next_route, route_index + 1, failures)
+
+        if last_failure is not None:
+            raise last_failure
+        route = self.routes[-1]
+        error = ProviderCoolingDownError("all cleanup routes are unavailable", model=route.model)
+        error.provider_id = route.provider_id
+        error.quota_group_id = route.quota_group_id
+        error.route_index = len(self.routes) - 1
+        raise error
+
+    def _attribute_route_failure(
+        self,
+        failure: ProviderFailure,
+        route: CleanupRoute,
+        route_index: int,
+        attempt_started: float,
+    ) -> None:
+        failure.provider_id = route.provider_id
+        failure.model = route.model
+        failure.elapsed_ms = _clock_elapsed_ms(self._clock, attempt_started)
+        failure.quota_group_id = route.quota_group_id
+        failure.route_index = route_index
+
+    def _apply_failure_to_breakers(
+        self,
+        failure: ProviderFailure,
+        route_breaker: _BreakerState,
+        quota_breaker: _BreakerState,
+        *,
+        route_half_open: bool,
+        quota_half_open: bool,
+    ) -> None:
+        now = self._clock()
+        if failure.failure_class is ProviderFailureClass.TRANSIENT_ROUTE:
+            self._open_breaker(
+                route_breaker,
+                now,
+                base_seconds=ROUTE_BREAKER_BASE_SECONDS,
+                max_seconds=ROUTE_BREAKER_MAX_SECONDS,
+                half_open_failure=route_half_open,
+            )
+        elif failure.failure_class is ProviderFailureClass.TEMPORARY_QUOTA:
+            retry_after = failure.retry_after_seconds
+            self._open_breaker(
+                quota_breaker,
+                now,
+                base_seconds=float(retry_after or QUOTA_BREAKER_BASE_SECONDS),
+                max_seconds=QUOTA_BREAKER_MAX_SECONDS,
+                half_open_failure=quota_half_open,
+                minimum_seconds=float(retry_after or 0),
+            )
+        elif failure.failure_class is ProviderFailureClass.PERMANENT_CONFIGURATION:
+            route_breaker.permanently_disabled = True
+            if failure.http_status in {401, 403} or failure.provider_code == "missing_api_key":
+                quota_breaker.permanently_disabled = True
+        elif failure.failure_class is ProviderFailureClass.PERMANENT_QUOTA:
+            quota_breaker.permanently_disabled = True
+
+    def _open_breaker(
+        self,
+        state: _BreakerState,
+        now: float,
+        *,
+        base_seconds: float,
+        max_seconds: float,
+        half_open_failure: bool,
+        minimum_seconds: float = 0.0,
+    ) -> None:
+        if half_open_failure:
+            state.failure_count += 1
+        elif state.failure_count == 0:
+            state.failure_count = 1
+            state.base_delay_seconds = base_seconds
+        else:
+            return
+        if state.base_delay_seconds == 0:
+            state.base_delay_seconds = base_seconds
+        exponential_delay = min(state.base_delay_seconds, max_seconds)
+        remaining_failures = state.failure_count - 1
+        while remaining_failures > 0 and exponential_delay < max_seconds:
+            exponential_delay = min(exponential_delay * 2, max_seconds)
+            remaining_failures -= 1
+        backoff_delay = min(max(self._jitter(exponential_delay), 0.0), max_seconds)
+        delay = max(backoff_delay, minimum_seconds)
+        state.open_until = now + delay
+
+    def _deadline_failure(
+        self,
+        route: CleanupRoute,
+        route_index: int,
+        failures: list[ProviderFailure],
+    ) -> ProviderTimeoutError:
+        error = ProviderTimeoutError("cleanup total deadline exhausted", model=route.model)
+        error.provider_id = route.provider_id
+        error.provider_code = "total_deadline"
+        error.quota_group_id = route.quota_group_id
+        error.route_index = min(route_index, len(self.routes) - 1)
+        error.prior_failures = tuple(failures)
+        error.attempted = False
+        return error
+
+
+def _acquire_breaker(state: _BreakerState, now: float) -> bool | None:
+    if state.permanently_disabled or state.open_until > now:
+        return None
+    if state.failure_count == 0:
+        return False
+    if state.probe_in_flight:
+        return None
+    state.probe_in_flight = True
+    return True
+
+
+def _release_probe(state: _BreakerState, was_half_open: bool) -> None:
+    if was_half_open:
+        state.probe_in_flight = False
+
+
+def _reset_breaker(state: _BreakerState) -> None:
+    state.open_until = 0.0
+    state.failure_count = 0
+    state.probe_in_flight = False
+    state.base_delay_seconds = 0.0
+
+
+def _record_breaker_success(state: _BreakerState, was_half_open: bool) -> None:
+    if not state.permanently_disabled and (was_half_open or state.failure_count == 0):
+        _reset_breaker(state)
+    else:
+        _release_probe(state, was_half_open)
+
+
+def _jitter_delay(delay: float) -> float:
+    return random.uniform(delay * 0.9, delay * 1.1)
+
+
+def _clock_elapsed_ms(clock: Callable[[], float], started: float) -> int:
+    return max(0, round((clock() - started) * 1_000))
 
 
 def _thinking_config(model: str) -> dict[str, str | int]:
@@ -745,10 +1036,13 @@ class CleanupService:
         selected_model = self.model
         attempts: list[CleanupAttempt] = []
         try:
-            provider_output = await asyncio.wait_for(
-                self.provider.clean(raw_text, system_prompt),
-                timeout=self.timeout_seconds,
-            )
+            if isinstance(self.provider, SequentialCleanupProvider):
+                provider_output = await self.provider.clean(raw_text, system_prompt)
+            else:
+                provider_output = await asyncio.wait_for(
+                    self.provider.clean(raw_text, system_prompt),
+                    timeout=self.timeout_seconds,
+                )
             selected_provider = provider_output.provider_id
             selected_model = provider_output.model_id
             attempts.extend(_failure_attempt(failure) for failure in provider_output.prior_failures)
@@ -759,6 +1053,8 @@ class CleanupService:
                 error.model = selected_model
                 error.elapsed_ms = provider_output.elapsed_ms
                 error.route_index = provider_output.route_index
+                error.input_tokens = provider_output.input_tokens
+                error.output_tokens = provider_output.output_tokens
                 raise
             attempts.append(_success_attempt(provider_output))
         except asyncio.CancelledError:
@@ -788,7 +1084,8 @@ class CleanupService:
             error.model = selected_model
             http_status = error.http_status
             attempts.extend(_failure_attempt(failure) for failure in error.prior_failures)
-            attempts.append(_failure_attempt(error))
+            if error.attempted:
+                attempts.append(_failure_attempt(error))
             category = error.failure_class
             status = (
                 CleanupStatus.TIMEOUT
@@ -895,6 +1192,12 @@ def _safe_error(error: ProviderError) -> SafeError:
             code="cleanup_provider_temporarily_unavailable",
             message="The cleanup provider models are temporarily unavailable.",
             retry_action="Wait for provider cooldown, then retry cleanup.",
+        )
+    if isinstance(error, ProviderBusyError):
+        return SafeError(
+            code="cleanup_provider_temporarily_unavailable",
+            message="Cleanup is temporarily unavailable.",
+            retry_action="Retry cleanup shortly or continue with Original.",
         )
     if error.failure_class in {
         ProviderFailureClass.TEMPORARY_QUOTA,
@@ -1013,6 +1316,8 @@ def _failure_attempt(error: ProviderFailure) -> CleanupAttempt:
         outcome="failure",
         elapsed_ms=max(0, error.elapsed_ms),
         route_index=max(0, error.route_index),
+        input_tokens=error.input_tokens,
+        output_tokens=error.output_tokens,
         failure_class=error.failure_class,
         provider_code=_safe_identifier(error.provider_code),
         http_status=error.http_status,

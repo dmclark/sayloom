@@ -356,12 +356,17 @@ def test_malformed_or_empty_structured_output_is_rejected(
             response["output"][0]["content"][0]["text"] = encoded
         return httpx.Response(200, json=response)
 
-    async def exercise() -> None:
+    async def exercise() -> ProviderMalformedResponseError:
         async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
-            with pytest.raises(ProviderMalformedResponseError):
+            with pytest.raises(ProviderMalformedResponseError) as caught:
                 await factory("synthetic-key", client).clean("source", "instruction")
+        return caught.value
 
-    asyncio.run(exercise())
+    error = asyncio.run(exercise())
+    expected_usage = (None, None) if payload_kind == "invalid_json" else (
+        (11, 7) if "gemini" in error.provider_id else (13, 5)
+    )
+    assert (error.input_tokens, error.output_tokens) == expected_usage
 
 
 def test_provider_safety_refusals_are_normalized(adapter_case) -> None:

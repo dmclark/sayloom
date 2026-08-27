@@ -8,7 +8,8 @@ from local_text.cleanup import (
     CleanupRequest,
     CleanupService,
     CleanupStatus,
-    GeminiProvider,
+    ProviderBusyError,
+    ProviderCoolingDownError,
     ProviderError,
     ProviderFailureClass,
     ProviderHTTPError,
@@ -18,6 +19,7 @@ from local_text.cleanup import (
     ProviderTransportError,
     _extract_text,
     _parse_retry_after,
+    _safe_error,
     _thinking_config,
 )
 
@@ -38,36 +40,6 @@ class StaticProvider:
             model_id=self.model,
             elapsed_ms=4,
         )
-
-
-class FakeGeminiAdapter:
-    provider_id = "gemini"
-    quota_group_id = None
-
-    def __init__(self, model: str, clean_model) -> None:
-        self.model = model
-        self.clean_model = clean_model
-
-    async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
-        try:
-            text = await self.clean_model(self.model, raw_text, system_prompt)
-        except ProviderError as error:
-            error.provider_id = self.provider_id
-            error.model = self.model
-            raise
-        return ProviderOutput(
-            text=text,
-            provider_id=self.provider_id,
-            model_id=self.model,
-            elapsed_ms=0,
-        )
-
-
-def replace_gemini_adapters(provider: GeminiProvider, clean_model) -> None:
-    provider._adapters = tuple(
-        FakeGeminiAdapter(model, clean_model)
-        for model in (provider.model, *provider.fallback_models)
-    )
 
 
 def run_cleanup(service: CleanupService, raw_text: str, *, enabled: bool = True):
@@ -395,153 +367,22 @@ def test_retry_after_parsing_accepts_only_safe_bounded_values(
     assert _parse_retry_after(value) == expected
 
 
-@pytest.mark.parametrize("status_code", [429, 503])
-def test_transient_http_failure_uses_fallback_and_cools_primary(
-    monkeypatch, status_code: int
-) -> None:
-    provider = GeminiProvider(
-        "synthetic-key",
-        "primary-model",
-        client=object(),
-        fallback_models=("fallback-model",),
-    )
-    calls: list[str] = []
+def test_cooldown_safe_error_remains_compatible_and_distinct_from_bulkhead() -> None:
+    cooldown = _safe_error(ProviderCoolingDownError("private state", model="test-model"))
+    busy = _safe_error(ProviderBusyError("private capacity", model="test-model"))
 
-    async def clean_model(model: str, raw_text: str, system_prompt: str) -> str:
-        calls.append(model)
-        if model == "primary-model":
-            raise ProviderHTTPError(status_code, model=model)
-        return "Synthetic clean text."
-
-    replace_gemini_adapters(provider, clean_model)
-    service = CleanupService(provider=provider, model=provider.model, timeout_seconds=1)
-
-    first = run_cleanup(service, "synthetic source")
-    second = run_cleanup(service, "synthetic source")
-
-    assert first.status is CleanupStatus.CLEANED
-    assert first.model == "fallback-model"
-    assert [(attempt.outcome, attempt.model) for attempt in first.attempts] == [
-        ("failure", "primary-model"),
-        ("success", "fallback-model"),
-    ]
-    assert first.attempts[0].failure_class is (
-        ProviderFailureClass.TEMPORARY_QUOTA
-        if status_code == 429
-        else ProviderFailureClass.TRANSIENT_ROUTE
-    )
-    assert second.status is CleanupStatus.CLEANED
-    assert second.model == "fallback-model"
-    assert calls == ["primary-model", "fallback-model", "fallback-model"]
-
-
-def test_non_transient_http_failure_does_not_use_fallback(monkeypatch) -> None:
-    provider = GeminiProvider(
-        "synthetic-key",
-        "primary-model",
-        client=object(),
-        fallback_models=("fallback-model",),
-    )
-    calls: list[str] = []
-
-    async def clean_model(model: str, raw_text: str, system_prompt: str) -> str:
-        calls.append(model)
-        raise ProviderHTTPError(500, model=model)
-
-    replace_gemini_adapters(provider, clean_model)
-    result = run_cleanup(
-        CleanupService(provider=provider, model=provider.model, timeout_seconds=1),
-        "synthetic source",
-    )
-
-    assert result.status is CleanupStatus.PROVIDER_ERROR
-    assert result.model == "primary-model"
-    assert result.error is not None
-    assert result.error.http_status == 500
-    assert calls == ["primary-model"]
-
-
-def test_exhausted_fallbacks_fail_open_and_cool_down(monkeypatch) -> None:
-    provider = GeminiProvider(
-        "synthetic-key",
-        "primary-model",
-        client=object(),
-        fallback_models=("fallback-model",),
-    )
-    calls: list[str] = []
-
-    async def clean_model(model: str, raw_text: str, system_prompt: str) -> str:
-        calls.append(model)
-        raise ProviderHTTPError(429, model=model)
-
-    replace_gemini_adapters(provider, clean_model)
-    service = CleanupService(provider=provider, model=provider.model, timeout_seconds=1)
-
-    exhausted = run_cleanup(service, "synthetic source")
-    cooling_down = run_cleanup(service, "synthetic source")
-
-    assert exhausted.status is CleanupStatus.PROVIDER_ERROR
-    assert exhausted.cleaned_text == "synthetic source"
-    assert exhausted.model == "fallback-model"
-    assert exhausted.error is not None
-    assert exhausted.error.code == "cleanup_provider_quota_error"
-    assert cooling_down.status is CleanupStatus.PROVIDER_ERROR
-    assert cooling_down.cleaned_text == "synthetic source"
-    assert cooling_down.model == "fallback-model"
-    assert cooling_down.error is not None
-    assert cooling_down.error.code == "cleanup_provider_temporarily_unavailable"
-    assert calls == ["primary-model", "fallback-model"]
-
-
-def test_duplicate_fallback_models_are_not_retried(monkeypatch) -> None:
-    provider = GeminiProvider(
-        "synthetic-key",
-        "primary-model",
-        client=object(),
-        fallback_models=("primary-model", "fallback-model", "fallback-model"),
-    )
-    calls: list[str] = []
-
-    async def clean_model(model: str, raw_text: str, system_prompt: str) -> str:
-        calls.append(model)
-        raise ProviderHTTPError(429, model=model)
-
-    replace_gemini_adapters(provider, clean_model)
-
-    with pytest.raises(ProviderHTTPError):
-        asyncio.run(provider.clean("synthetic source", "Synthetic cleanup instruction"))
-
-    assert provider.fallback_models == ("fallback-model",)
-    assert calls == ["primary-model", "fallback-model"]
-
-
-def test_primary_model_is_retried_after_cooldown_expires(monkeypatch) -> None:
-    provider = GeminiProvider(
-        "synthetic-key",
-        "primary-model",
-        client=object(),
-        fallback_models=("fallback-model",),
-        cooldown_seconds=300,
-    )
-    now = 100.0
-    calls: list[str] = []
-
-    async def clean_model(model: str, raw_text: str, system_prompt: str) -> str:
-        calls.append(model)
-        if calls == ["primary-model"]:
-            raise ProviderHTTPError(503, model=model)
-        return "Synthetic clean text."
-
-    replace_gemini_adapters(provider, clean_model)
-    monkeypatch.setattr(cleanup_module.time, "monotonic", lambda: now)
-
-    first = asyncio.run(provider.clean("synthetic source", "Synthetic cleanup instruction"))
-    now += 301
-    second = asyncio.run(provider.clean("synthetic source", "Synthetic cleanup instruction"))
-
-    assert first.model_id == "fallback-model"
-    assert second.model_id == "primary-model"
-    assert calls == ["primary-model", "fallback-model", "primary-model"]
+    assert cooldown.model_dump() == {
+        "code": "cleanup_provider_temporarily_unavailable",
+        "message": "The cleanup provider models are temporarily unavailable.",
+        "retry_action": "Wait for provider cooldown, then retry cleanup.",
+        "http_status": None,
+    }
+    assert busy.model_dump() == {
+        "code": "cleanup_provider_temporarily_unavailable",
+        "message": "Cleanup is temporarily unavailable.",
+        "retry_action": "Retry cleanup shortly or continue with Original.",
+        "http_status": None,
+    }
 
 
 def test_cleanup_log_contains_only_allowlisted_diagnostics(monkeypatch) -> None:

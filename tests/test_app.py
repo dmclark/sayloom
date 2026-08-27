@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 import local_text.app as app_module
 from local_text.app import STATIC_VERSION, create_app
-from local_text.cleanup import CleanupService, ProviderOutput
+from local_text.cleanup import CleanupService, ProviderOutput, SequentialCleanupProvider
 from local_text.config import Profile, Settings
 
 
@@ -244,6 +244,15 @@ def test_app_lifespan_reuses_and_closes_the_gemini_client(
     )
 
     with TestClient(create_app(settings)) as client:
+        provider = client.app.state.cleanup_service.provider
+        assert isinstance(provider, SequentialCleanupProvider)
+        assert provider.total_budget_seconds == 30
+        assert [route.model for route in provider.routes] == [
+            "gemini-3.5-flash",
+            "gemini-2.5-flash",
+        ]
+        assert [route.attempt_budget_seconds for route in provider.routes] == [30, 30]
+        assert {route.quota_group_id for route in provider.routes} == {"gemini-default"}
         for source in ("synthetic source one", "synthetic source two"):
             response = client.post("/api/cleanup", json={"raw_text": source, "enabled": True})
             assert response.status_code == 200
@@ -251,6 +260,83 @@ def test_app_lifespan_reuses_and_closes_the_gemini_client(
         assert not provider_client.is_closed
 
     assert calls == 2
+    assert provider_client.is_closed
+
+
+def test_active_gemini_router_falls_back_once_on_route_transient_failure(
+    initialized_settings: Settings, monkeypatch
+) -> None:
+    requested_models: list[str] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        model = request.url.path.split("/")[-1].split(":", maxsplit=1)[0]
+        requested_models.append(model)
+        if model == "gemini-3.5-flash":
+            return httpx.Response(503, json={"error": {"code": "service_unavailable"}})
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {"content": {"parts": [{"text": '{"cleaned_text":"Synthetic clean text."}'}]}}
+                ]
+            },
+        )
+
+    provider_client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    monkeypatch.setattr(app_module, "_new_provider_client", lambda _timeout: provider_client)
+    settings = Settings(
+        Profile.DEVELOPMENT,
+        gemini_api_key="synthetic-key",
+        database_path=initialized_settings.database_path,
+    )
+
+    with TestClient(create_app(settings)) as client:
+        response = client.post(
+            "/api/cleanup", json={"raw_text": "synthetic source", "enabled": True}
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "cleaned"
+    assert response.json()["model"] == "gemini-2.5-flash"
+    assert [
+        (attempt["route_index"], attempt["outcome"]) for attempt in response.json()["attempts"]
+    ] == [
+        (0, "failure"),
+        (1, "success"),
+    ]
+    assert requested_models == ["gemini-3.5-flash", "gemini-2.5-flash"]
+    assert provider_client.is_closed
+
+
+def test_active_gemini_shared_quota_failure_fails_open_without_replayed_call(
+    initialized_settings: Settings, monkeypatch
+) -> None:
+    calls = 0
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(429, json={"error": {"code": "rate_limited"}})
+
+    provider_client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    monkeypatch.setattr(app_module, "_new_provider_client", lambda _timeout: provider_client)
+    settings = Settings(
+        Profile.DEVELOPMENT,
+        gemini_api_key="synthetic-key",
+        database_path=initialized_settings.database_path,
+    )
+
+    with TestClient(create_app(settings)) as client:
+        response = client.post(
+            "/api/cleanup", json={"raw_text": "synthetic source", "enabled": True}
+        )
+
+    assert response.status_code == 200
+    assert response.json()["cleaned_text"] == "synthetic source"
+    assert response.json()["status"] == "provider_error"
+    assert response.json()["error"]["code"] == "cleanup_provider_quota_error"
+    assert len(response.json()["attempts"]) == 1
+    assert calls == 1
     assert provider_client.is_closed
 
 

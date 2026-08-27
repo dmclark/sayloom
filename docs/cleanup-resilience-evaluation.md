@@ -137,24 +137,23 @@ Use one internal result for both success and failure attribution:
 - Browser abort, client disconnect, task cancellation, or application shutdown cancels the active
   HTTP request and prevents later routes. Never convert `CancelledError` into provider failure.
 - Preserve the current browser debounce and latest-response sequence guard. Add a process-local
-  capacity limit of one active automatic cleanup plus one manual cleanup; reject excess automatic
-  work immediately to Original rather than queueing stale text. Manual cleanup may replace the
-  current browser-owned request but must not create an unbounded queue.
-- Breakers and the total deadline apply equally to manual and automatic requests. Automatic cleanup
-  never probes an open breaker; one manual request may be the half-open probe after cooldown.
+  capacity limit of two active routed cleanups; reject a third operation immediately to Original
+  rather than queueing stale text.
+- Breakers and the total deadline apply to every routed cleanup. After cooldown, one eligible caller
+  may own the half-open probe; concurrent callers skip that in-progress probe.
 
 ### Failure and breaker policy
 
-| Class | Examples | Try next provider? | Breaker effect |
+| Class | Examples | Try next route? | Breaker effect |
 | --- | --- | --- | --- |
-| Transient route | connection reset, timeout, 408, 500, 502, 503, 504 | Yes, if budget remains | Open model route after 3 consecutive failures for 60 s; successful half-open probe closes |
-| Temporary quota | 429 rate/capacity with retry-after or retryable provider code | Yes | Open the configured quota group until retry-after, otherwise 60 s |
-| Permanent quota | exhausted credits, project/org spend or usage limit | Yes once, if a separately funded provider exists | Open quota group until configuration changes or an explicit manual reset |
-| Permanent configuration | 400 schema/model error, 401/403 credential/access, 404 model | Yes once only when the next provider has independent configuration | Open that provider route until configuration changes |
+| Transient route | connection reset, timeout, 408, 500, 502, 503, 504 | Yes, if budget remains | First failure opens the model route for about 15 s; failed half-open probes use jittered exponential backoff capped at 5 min; a successful owned probe closes |
+| Temporary quota | 429 rate/capacity with a valid retry-after or retryable provider code | Yes | Open the configured quota group for at least a valid retry-after; otherwise use jittered exponential backoff from about 60 s, capped at 15 min |
+| Permanent quota | exhausted credits, project/org spend or usage limit | Yes, if an independently funded group exists | Disable the quota group until settings reconstruction or configuration reset |
+| Permanent configuration | 400 schema/model error, 401/403 credential/access, 404 model | Yes only when an independent configured route may help | Disable 401/403/missing-key credential quota groups; disable other permanent model/config failures only on the affected route, until settings reconstruction or configuration reset |
 | Safety/policy | safety block, refusal, recitation, prohibited content, SPII | **No** | No breaker; fail open to Original |
-| Invalid output | missing schema field, empty/control text, excessive expansion, truncation | Yes once | Count against model route; never publish rejected output |
+| Invalid output | missing schema field, empty/control text, excessive expansion, truncation | Yes, if budget remains | No breaker for content-dependent invalid output; never publish rejected output |
 | Invalid local request | input/prompt validation | No | No breaker |
-| Unknown | unclassified exception | No | Count against route and fail open |
+| Unknown | unclassified or programming exception | No | No breaker; fail open to Original |
 
 `quota_group` is explicit configuration, not inferred from credentials. Gemini models using the same
 Cloud project normally share one group; OpenAI models using the same project use another. Never hash

@@ -13,7 +13,14 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from local_text.cleanup import CleanupRequest, CleanupResult, CleanupService, GeminiProvider
+from local_text.cleanup import (
+    CleanupRequest,
+    CleanupResult,
+    CleanupRoute,
+    CleanupService,
+    GeminiAdapter,
+    SequentialCleanupProvider,
+)
 from local_text.config import Profile, Settings, load_settings
 from local_text.database import ApplicationDatabase
 from local_text.prompt_store import PromptNotFoundError, PromptRecord, PromptStore, SeedStateError
@@ -84,11 +91,25 @@ def create_app(
             return
         client = _new_provider_client(runtime.cleanup_timeout_seconds)
         try:
-            provider = GeminiProvider(
-                runtime.gemini_api_key,
-                runtime.gemini_model,
-                client=client,
-                fallback_models=("gemini-2.5-flash",),
+            quota_group_id = "gemini-default"
+            routes = tuple(
+                CleanupRoute(
+                    adapter=GeminiAdapter(
+                        runtime.gemini_api_key,
+                        model,
+                        client,
+                        quota_group_id=quota_group_id,
+                    ),
+                    # Keep the active 30-second product deadline unchanged. The evaluated
+                    # 20/12/8 policy remains deferred until benchmark evidence owns activation.
+                    attempt_budget_seconds=runtime.cleanup_timeout_seconds,
+                    quota_group_id=quota_group_id,
+                )
+                for model in (runtime.gemini_model, "gemini-2.5-flash")
+            )
+            provider = SequentialCleanupProvider(
+                routes,
+                total_budget_seconds=runtime.cleanup_timeout_seconds,
             )
             application.state.cleanup_service = CleanupService(
                 provider=provider,
