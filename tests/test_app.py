@@ -1,4 +1,5 @@
 import sqlite3
+import subprocess
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -483,10 +484,107 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
         "initialize();", maxsplit=1
     )[0]
     assert "clearPublishedState()" in initialization
-    assert 'elements.original.value = "";' in initialization
+    assert 'elements.original.value = "";' not in initialization
     assert 'elements.cleaned.value = "";' in initialization
     assert 'fetch("/api/outgoing-state")' not in initialization
     assert "publishNow();" not in initialization
+
+
+def test_workspace_initialization_focuses_only_an_empty_original_editor(
+    initialized_settings: Settings,
+) -> None:
+    script = TestClient(create_app(initialized_settings)).get("/static/app.js").text
+    harness = r"""
+const vm = require("vm");
+
+async function run(originalValue) {
+  let focusCalls = 0;
+  let resolvePrompts;
+  const promptResponse = new Promise((resolve) => { resolvePrompts = resolve; });
+  class Element {
+    constructor(value = "") {
+      this.value = value;
+      this.checked = true;
+      this.dataset = {};
+      this.open = false;
+      this.style = { setProperty() {} };
+      this.classList = { add() {}, remove() {}, toggle() {}, contains() { return false; } };
+      this.lastElementChild = new ElementText();
+    }
+    addEventListener() {}
+    setAttribute() {}
+    getAttribute() { return "65"; }
+    removeAttribute() {}
+    append() {}
+    setPointerCapture() {}
+    setSelectionRange() {}
+    close() {}
+    focus() { focusCalls += 1; }
+  }
+  class ElementText { constructor() { this.textContent = ""; } }
+  const original = new Element(originalValue);
+  const selectors = {
+    "#original-text": original,
+    "#cleaned-text": new Element(), "#cleanup-enabled": new Element(),
+    "#run-cleanup": new Element(), "#clear-text": new Element(),
+    "#toggle-original": new Element(), "#cleanup-status": new Element(),
+    "#cleanup-status-text": new Element(), "#original-count": new Element(),
+    "#cleaned-count": new Element(), "#outgoing-kind": new Element(),
+    "#select-cleaned": new Element(), "#select-original": new Element(),
+    "#publication-state": new Element(), "#model-label": new Element(),
+    ".workspace": new Element(), "#workspace-resizer": new Element(),
+    "#active-prompt-selector": new Element(), "#error-details-dialog": new Element(),
+    "#error-details-ledger": new Element(), "#close-error-details": new Element(),
+    "#copy-error-details": new Element(),
+  };
+  const querySelector = (selector) => selectors[selector];
+  const createElement = () => new Element();
+  const document = { querySelector, createElement, addEventListener() {} };
+  const clearTimeout = () => {};
+  const setTimeout = () => 1;
+  const requestAnimationFrame = (callback) => { callback(); };
+  const addEventListener = () => {};
+  const window = { clearTimeout, setTimeout, requestAnimationFrame, addEventListener };
+  const fetch = (url) => {
+    if (url === "/api/prompts") return promptResponse;
+    const configBody = {
+      cleanup_enabled_by_default: true,
+      cleanup_available: false,
+    };
+    const body = url === "/api/config" ? configBody : { revision: 1 };
+    return Promise.resolve({ ok: true, status: 200, json: async () => body });
+  };
+  const context = {
+    document, window, fetch, AbortController, Promise, console,
+  };
+  vm.runInNewContext(process.argv[1], context);
+  await new Promise((resolve) => setImmediate(resolve));
+  const focusBeforePromptHistory = focusCalls;
+  const promptBody = { versions: [], active_prompt_version_id: null };
+  resolvePrompts({ ok: true, status: 200, json: async () => promptBody });
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  return { focusBeforePromptHistory, focusCalls, originalValue: original.value };
+}
+
+const runs = [run(""), run("synthetic existing entry")];
+Promise.all(runs).then(
+  (result) => process.stdout.write(JSON.stringify(result)),
+);
+"""
+
+    result = subprocess.run(
+        ["node", "-e", harness, script],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.stdout == (
+        '[{"focusBeforePromptHistory":0,"focusCalls":1,"originalValue":""},'
+        '{"focusBeforePromptHistory":0,"focusCalls":0,'
+        '"originalValue":"synthetic existing entry"}]'
+    )
 
 
 def test_stacked_workspace_uses_native_caret_and_accessible_resizer(
