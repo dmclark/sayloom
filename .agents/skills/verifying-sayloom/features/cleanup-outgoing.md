@@ -14,6 +14,9 @@ publishes the explicitly selected current value for downstream commands.
 - `CLEANUP.PUBLISH`: visible outgoing state matches a read-only `/api/outgoing-state` response.
 - `CLEANUP.ERRORS`: cleanup and publication errors open persistent, accessible, copyable,
   privacy-safe details.
+- `CLEANUP.ROUTING`: the configured provider/model order and external-processing behavior are
+  visible, expandable, and credential-free; invalid cross-provider configuration activates no
+  provider and preserves Original fail-open.
 
 ## How to get to it (user POV)
 
@@ -21,6 +24,8 @@ publishes the explicitly selected current value for downstream commands.
 - Activate **Run cleanup** or press Ctrl/Command+Enter.
 - Choose **Original** or **Cleaned** in the **Outgoing text source** group.
 - When enabled by a failure, open the cleanup/publication status button and use **Copy details**.
+- Expand **Cleanup route** below Outgoing to inspect provider order, conditional fallback, paid
+  external processing, and the no-evaluation-corpus statement.
 
 ## Driving and proof
 
@@ -38,6 +43,9 @@ fail-open proof and the Provider lane for successful-clean, timeout, and provide
 - For errors, prove dialog role/name, focus movement and return, safe ledger fields, copied safe
   text, and absence of operating text, provider payload, credentials, stack traces, database
   contents, and private paths.
+- For routing disclosure, separately prove unavailable, legacy Gemini-only, invalid or
+  unacknowledged cross-provider, and acknowledged Gemini → OpenAI states. Confirm route order,
+  disclosure text, keyboard expansion, and absence of credential values in API and DOM output.
 - Record an ARIA snapshot, decisive DOM/API facts, console output, and an inspected screenshot for
   each state claimed.
 

@@ -542,8 +542,16 @@ def test_shared_configuration_is_overridden_by_checkout_state_without_printing_s
     shared.parent.mkdir(parents=True)
     legacy.parent.mkdir(parents=True)
     secret = "synthetic-secret-not-for-output"
+    openai_secret = "synthetic-openai-secret-not-for-output"
     shared.write_text(
-        f"LOCAL_TEXT_GEMINI_API_KEY={secret}\nLOCAL_TEXT_GEMINI_MODEL=shared-model\n"
+        f"LOCAL_TEXT_GEMINI_API_KEY={secret}\n"
+        "LOCAL_TEXT_GEMINI_MODEL=shared-model\n"
+        "LOCAL_TEXT_GEMINI_QUOTA_GROUP_ID=gemini-paid-project\n"
+        f"LOCAL_TEXT_OPENAI_API_KEY={openai_secret}\n"
+        "LOCAL_TEXT_OPENAI_MODEL=gpt-5.6-luna\n"
+        "LOCAL_TEXT_OPENAI_QUOTA_GROUP_ID=openai-paid-project\n"
+        "LOCAL_TEXT_CLEANUP_ROUTE_ORDER=gemini,openai\n"
+        "LOCAL_TEXT_CLEANUP_PAID_DATA_ACKNOWLEDGEMENT=paid-external-cleanup-v1\n"
     )
     legacy.write_text("LOCAL_TEXT_GEMINI_MODEL=selected-model\n")
     shared.chmod(0o600)
@@ -562,8 +570,16 @@ def test_shared_configuration_is_overridden_by_checkout_state_without_printing_s
     assert f"State configuration: {legacy} (present; moves on init or restart)" in status.stdout
     assert "Gemini credential: configured" in status.stdout
     assert "Gemini model: selected-model" in status.stdout
+    assert "Cleanup route order: gemini,openai" in status.stdout
+    assert "Gemini quota group: configured" in status.stdout
+    assert "OpenAI credential: configured" in status.stdout
+    assert "OpenAI model: gpt-5.6-luna" in status.stdout
+    assert "OpenAI quota group: configured" in status.stdout
+    assert "Paid-data acknowledgement: configured" in status.stdout
     assert secret not in status.stdout
     assert secret not in status.stderr
+    assert openai_secret not in status.stdout
+    assert openai_secret not in status.stderr
 
     initialized = run_dev(
         state_root,

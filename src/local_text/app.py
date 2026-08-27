@@ -1,7 +1,8 @@
 """FastAPI application entry point."""
 
+import re
 from contextlib import asynccontextmanager
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import UTC
 from hashlib import sha256
 from html import escape
@@ -14,11 +15,14 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 from local_text.cleanup import (
+    GEMINI_37_FLASH,
+    OPENAI_GPT_56_LUNA,
     CleanupRequest,
     CleanupResult,
     CleanupRoute,
     CleanupService,
     GeminiAdapter,
+    OpenAIAdapter,
     SequentialCleanupProvider,
 )
 from local_text.config import Profile, Settings, load_settings
@@ -31,6 +35,134 @@ INDEX_TEMPLATE = (STATIC_DIRECTORY / "index.html").read_text()
 STATIC_VERSION = sha256(
     b"".join((STATIC_DIRECTORY / filename).read_bytes() for filename in ("app.css", "app.js"))
 ).hexdigest()[:12]
+PAID_DATA_ACKNOWLEDGEMENT = "paid-external-cleanup-v1"
+CROSS_PROVIDER_ROUTE_ORDER = "gemini,openai"
+SAFE_CONFIGURATION_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
+
+
+@dataclass(frozen=True)
+class CleanupRuntimeConfiguration:
+    status: str
+    routes: tuple[tuple[str, str, str], ...] = ()
+    validation_error: str | None = None
+
+    @property
+    def available(self) -> bool:
+        return bool(self.routes)
+
+    def public(self) -> dict[str, object]:
+        if self.status == "cross_provider":
+            disclosure = {
+                "summary": "Paid Gemini → OpenAI fallback",
+                "processing": (
+                    "Cleanup sends the current text and cleanup instruction to paid Gemini "
+                    "for external processing."
+                ),
+                "fallback": (
+                    "Only after a qualifying Gemini failure, the same current text and cleanup "
+                    "instruction may be sent to paid OpenAI."
+                ),
+                "corpus": "This does not save an evaluation corpus.",
+            }
+        elif self.status == "gemini_only":
+            disclosure = {
+                "summary": "Gemini-only cleanup",
+                "processing": (
+                    "Cleanup sends the current text and cleanup instruction to Gemini for "
+                    "external processing."
+                ),
+                "fallback": "Fallback stays within the configured Gemini route.",
+                "corpus": "This does not save an evaluation corpus.",
+            }
+        elif self.status == "invalid":
+            disclosure = {
+                "summary": "Cleanup configuration is invalid",
+                "processing": "No cleanup provider client is active.",
+                "fallback": "Cleanup remains available as Original fail-open only.",
+                "corpus": "This does not save an evaluation corpus.",
+            }
+        else:
+            disclosure = {
+                "summary": "Cleanup provider is not configured",
+                "processing": "No cleanup provider client is active.",
+                "fallback": "Cleanup remains available as Original fail-open only.",
+                "corpus": "This does not save an evaluation corpus.",
+            }
+        return {
+            "status": self.status,
+            "available": self.available,
+            "routes": [
+                {"provider": provider, "model": model}
+                for provider, model, _quota_group in self.routes
+            ],
+            "fallback_enabled": len(self.routes) > 1,
+            "paid_data_acknowledgement": (
+                PAID_DATA_ACKNOWLEDGEMENT if self.status == "cross_provider" else None
+            ),
+            "validation_error": self.validation_error,
+            "disclosure": disclosure,
+        }
+
+
+def _cleanup_runtime_configuration(runtime: Settings) -> CleanupRuntimeConfiguration:
+    cross_provider_requested = any(
+        value is not None
+        for value in (
+            runtime.openai_api_key,
+            runtime.openai_model,
+            runtime.cleanup_route_order,
+            runtime.gemini_quota_group_id,
+            runtime.openai_quota_group_id,
+            runtime.paid_data_acknowledgement,
+        )
+    )
+    if not cross_provider_requested:
+        if not runtime.gemini_api_key:
+            return CleanupRuntimeConfiguration("unavailable")
+        return CleanupRuntimeConfiguration(
+            "gemini_only",
+            routes=(
+                ("gemini", runtime.gemini_model, "gemini-default"),
+                ("gemini", "gemini-2.5-flash", "gemini-default"),
+            ),
+        )
+
+    validation_error = _cross_provider_validation_error(runtime)
+    if validation_error is not None:
+        return CleanupRuntimeConfiguration("invalid", validation_error=validation_error)
+    return CleanupRuntimeConfiguration(
+        "cross_provider",
+        routes=(
+            ("gemini", GEMINI_37_FLASH, runtime.gemini_quota_group_id or ""),
+            ("openai", OPENAI_GPT_56_LUNA, runtime.openai_quota_group_id or ""),
+        ),
+    )
+
+
+def _cross_provider_validation_error(runtime: Settings) -> str | None:
+    if runtime.cleanup_route_order != CROSS_PROVIDER_ROUTE_ORDER:
+        return "route_order_must_be_gemini_openai"
+    if not runtime.gemini_api_key or not runtime.gemini_api_key_is_explicit:
+        return "explicit_gemini_credential_required"
+    if runtime.gemini_model != GEMINI_37_FLASH:
+        return "gemini_model_must_be_gemini_3_7_flash"
+    if not _safe_configuration_identifier(runtime.gemini_quota_group_id):
+        return "gemini_quota_group_required"
+    if not runtime.openai_api_key:
+        return "explicit_openai_credential_required"
+    if runtime.openai_model != OPENAI_GPT_56_LUNA:
+        return "openai_model_must_be_gpt_5_6_luna"
+    if not _safe_configuration_identifier(runtime.openai_quota_group_id):
+        return "openai_quota_group_required"
+    if runtime.gemini_quota_group_id == runtime.openai_quota_group_id:
+        return "provider_quota_groups_must_differ"
+    if runtime.paid_data_acknowledgement != PAID_DATA_ACKNOWLEDGEMENT:
+        return "paid_data_acknowledgement_required"
+    return None
+
+
+def _safe_configuration_identifier(value: str | None) -> bool:
+    return value is not None and SAFE_CONFIGURATION_IDENTIFIER.fullmatch(value) is not None
 
 
 class PromptCreateRequest(BaseModel):
@@ -75,52 +207,68 @@ def create_app(
         except SeedStateError as exc:
             configuration_error = str(exc)
     state = OutgoingStateStore(cleanup_enabled=cleanup_enabled)
+    cleanup_configuration = _cleanup_runtime_configuration(runtime)
     disabled_cleanup = CleanupService(
         provider=None,
         model=runtime.gemini_model,
         timeout_seconds=runtime.cleanup_timeout_seconds,
         provider_id="gemini",
     )
-    cleanup_available = bool(runtime.gemini_api_key) or cleanup_service is not None
+    cleanup_available = cleanup_configuration.available or cleanup_service is not None
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
-        if cleanup_service is not None or not runtime.gemini_api_key:
+        if cleanup_service is not None or not cleanup_configuration.available:
             application.state.cleanup_service = cleanup_service or disabled_cleanup
             yield
             return
-        client = _new_provider_client(runtime.cleanup_timeout_seconds)
+        clients: dict[str, httpx.AsyncClient] = {}
         try:
-            quota_group_id = "gemini-default"
-            routes = tuple(
-                CleanupRoute(
-                    adapter=GeminiAdapter(
-                        runtime.gemini_api_key,
+            adapters = []
+            for provider_id, model, quota_group_id in cleanup_configuration.routes:
+                client = clients.get(provider_id)
+                if client is None:
+                    client = _new_provider_client(runtime.cleanup_timeout_seconds)
+                    clients[provider_id] = client
+                adapter = (
+                    GeminiAdapter(
+                        runtime.gemini_api_key or "",
                         model,
                         client,
                         quota_group_id=quota_group_id,
-                    ),
-                    # Keep the active 30-second product deadline unchanged. The evaluated
-                    # 20/12/8 policy remains deferred until benchmark evidence owns activation.
-                    attempt_budget_seconds=runtime.cleanup_timeout_seconds,
-                    quota_group_id=quota_group_id,
+                    )
+                    if provider_id == "gemini"
+                    else OpenAIAdapter(
+                        runtime.openai_api_key or "",
+                        client,
+                        model=model,
+                        quota_group_id=quota_group_id,
+                    )
                 )
-                for model in (runtime.gemini_model, "gemini-2.5-flash")
-            )
+                adapters.append(
+                    CleanupRoute(
+                        adapter=adapter,
+                        # Preserve the active 30-second product deadline. Each later route
+                        # receives only the time left after the preceding qualifying failure.
+                        attempt_budget_seconds=runtime.cleanup_timeout_seconds,
+                        quota_group_id=quota_group_id,
+                    )
+                )
             provider = SequentialCleanupProvider(
-                routes,
+                tuple(adapters),
                 total_budget_seconds=runtime.cleanup_timeout_seconds,
             )
             application.state.cleanup_service = CleanupService(
                 provider=provider,
-                model=runtime.gemini_model,
+                model=cleanup_configuration.routes[0][1],
                 timeout_seconds=runtime.cleanup_timeout_seconds,
                 provider_id="gemini",
             )
             yield
         finally:
             application.state.cleanup_service = disabled_cleanup
-            await client.aclose()
+            for client in clients.values():
+                await client.aclose()
 
     application = FastAPI(title=runtime.page_title, lifespan=lifespan)
     application.state.cleanup_service = cleanup_service or disabled_cleanup
@@ -141,6 +289,7 @@ def create_app(
                 "expected_revision": schema.expected_revision,
             },
             "configuration_error": configuration_error,
+            "cleanup_configuration": cleanup_configuration.public(),
         }
 
     def require_configuration() -> None:
@@ -163,8 +312,7 @@ def create_app(
                 badge_text = f"DEV · {state_name}"
                 badge_label = f"Development state {state_name}"
             development_badge = (
-                f'<span class="development-badge" aria-label="{badge_label}">'
-                f"{badge_text}</span>"
+                f'<span class="development-badge" aria-label="{badge_label}">{badge_text}</span>'
             )
         return (
             INDEX_TEMPLATE.replace("__PAGE_TITLE__", escape(runtime.page_title))
@@ -175,7 +323,7 @@ def create_app(
         )
 
     @application.get("/api/config")
-    def browser_config() -> dict[str, str | bool | None]:
+    def browser_config() -> dict[str, object]:
         require_configuration()
         return {
             "display_name": runtime.display_name,
@@ -183,7 +331,10 @@ def create_app(
             "development_state": runtime.development_state_name,
             "cleanup_enabled_by_default": prompts.cleanup_enabled_by_default(),
             "cleanup_available": cleanup_available,
-            "cleanup_model": runtime.gemini_model,
+            "cleanup_model": cleanup_configuration.routes[0][1]
+            if cleanup_configuration.routes
+            else runtime.gemini_model,
+            "cleanup_configuration": cleanup_configuration.public(),
         }
 
     @application.post("/api/cleanup", response_model=CleanupResult)

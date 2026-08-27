@@ -3,12 +3,13 @@ import subprocess
 from pathlib import Path
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 import local_text.app as app_module
-from local_text.app import STATIC_VERSION, create_app
+from local_text.app import PAID_DATA_ACKNOWLEDGEMENT, STATIC_VERSION, create_app
 from local_text.cleanup import CleanupService, ProviderOutput, SequentialCleanupProvider
-from local_text.config import Profile, Settings
+from local_text.config import Profile, Settings, load_settings
 
 
 def test_health_reports_development_profile(initialized_settings: Settings) -> None:
@@ -17,7 +18,9 @@ def test_health_reports_development_profile(initialized_settings: Settings) -> N
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {
+    health = response.json()
+    cleanup_configuration = health.pop("cleanup_configuration")
+    assert health == {
         "status": "ok",
         "profile": "development",
         "development_state": None,
@@ -28,6 +31,10 @@ def test_health_reports_development_profile(initialized_settings: Settings) -> N
         },
         "configuration_error": None,
     }
+    assert cleanup_configuration["status"] == "unavailable"
+    assert cleanup_configuration["available"] is False
+    assert cleanup_configuration["routes"] == []
+    assert cleanup_configuration["validation_error"] is None
 
 
 def test_health_reports_missing_schema_without_creating_database(tmp_path: Path) -> None:
@@ -89,6 +96,9 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="select-cleaned"' in response.text
     assert 'id="select-original"' in response.text
     assert 'id="toggle-original"' in response.text
+    assert 'id="cleanup-disclosure"' in response.text
+    assert 'id="cleanup-route-list"' in response.text
+    assert "This does not save an evaluation corpus." not in response.text
     assert "Type, paste, or dictate here" in response.text
     assert 'aria-keyshortcuts="Meta+Enter Control+Enter"' in response.text
     assert 'title="Run cleanup (⌘↵)"' in response.text
@@ -198,7 +208,9 @@ def test_config_reports_cleanup_without_exposing_key(initialized_settings: Setti
 
     response = client.get("/api/config")
 
-    assert response.json() == {
+    configuration = response.json()
+    cleanup_configuration = configuration.pop("cleanup_configuration")
+    assert configuration == {
         "display_name": "Sayloom Development",
         "profile": "development",
         "development_state": None,
@@ -206,7 +218,229 @@ def test_config_reports_cleanup_without_exposing_key(initialized_settings: Setti
         "cleanup_available": True,
         "cleanup_model": "gemini-3.5-flash",
     }
+    assert cleanup_configuration["status"] == "gemini_only"
+    assert cleanup_configuration["routes"] == [
+        {"provider": "gemini", "model": "gemini-3.5-flash"},
+        {"provider": "gemini", "model": "gemini-2.5-flash"},
+    ]
+    assert cleanup_configuration["paid_data_acknowledgement"] is None
     assert "not-a-real-key" not in response.text
+
+
+def cross_provider_settings(initialized_settings: Settings, **overrides) -> Settings:
+    values = {
+        "profile": Profile.DEVELOPMENT,
+        "gemini_api_key": "synthetic-gemini-key",
+        "gemini_model": "gemini-3.7-flash",
+        "openai_api_key": "synthetic-openai-key",
+        "openai_model": "gpt-5.6-luna",
+        "cleanup_route_order": "gemini,openai",
+        "gemini_quota_group_id": "gemini-paid-project",
+        "openai_quota_group_id": "openai-paid-project",
+        "paid_data_acknowledgement": PAID_DATA_ACKNOWLEDGEMENT,
+        "database_path": initialized_settings.database_path,
+    }
+    values.update(overrides)
+    return Settings(**values)
+
+
+def test_acknowledged_cross_provider_route_is_exact_sanitized_and_falls_back_once(
+    initialized_settings: Settings, monkeypatch
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if "generativelanguage" in request.url.host:
+            return httpx.Response(503, json={"error": {"code": "service_unavailable"}})
+        return httpx.Response(
+            200,
+            json={
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": '{"cleaned_text":"Synthetic clean text."}',
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+
+    transport = httpx.MockTransport(respond)
+    provider_clients: list[httpx.AsyncClient] = []
+
+    def new_client(_timeout: float) -> httpx.AsyncClient:
+        client = httpx.AsyncClient(transport=transport)
+        provider_clients.append(client)
+        return client
+
+    monkeypatch.setattr(app_module, "_new_provider_client", new_client)
+    settings = cross_provider_settings(initialized_settings)
+
+    with TestClient(create_app(settings)) as client:
+        configuration_response = client.get("/api/config")
+        health_response = client.get("/health")
+        result = client.post(
+            "/api/cleanup", json={"raw_text": "synthetic source", "enabled": True}
+        )
+        provider = client.app.state.cleanup_service.provider
+        assert isinstance(provider, SequentialCleanupProvider)
+        assert [route.quota_group_id for route in provider.routes] == [
+            "gemini-paid-project",
+            "openai-paid-project",
+        ]
+        assert provider.total_budget_seconds == 30
+        assert [route.attempt_budget_seconds for route in provider.routes] == [30, 30]
+
+    cleanup_configuration = configuration_response.json()["cleanup_configuration"]
+    assert cleanup_configuration == health_response.json()["cleanup_configuration"]
+    assert cleanup_configuration["status"] == "cross_provider"
+    assert cleanup_configuration["routes"] == [
+        {"provider": "gemini", "model": "gemini-3.7-flash"},
+        {"provider": "openai", "model": "gpt-5.6-luna"},
+    ]
+    assert cleanup_configuration["paid_data_acknowledgement"] == PAID_DATA_ACKNOWLEDGEMENT
+    assert "same current text and cleanup instruction" in cleanup_configuration["disclosure"][
+        "fallback"
+    ]
+    assert result.json()["provider"] == "openai"
+    assert result.json()["model"] == "gpt-5.6-luna"
+    assert len(requests) == 2
+    assert requests[0].headers["x-goog-api-key"] == "synthetic-gemini-key"
+    assert requests[1].headers["authorization"] == "Bearer synthetic-openai-key"
+    serialized = configuration_response.text + health_response.text
+    assert "synthetic-gemini-key" not in serialized
+    assert "synthetic-openai-key" not in serialized
+    assert len(provider_clients) == 2
+    assert all(provider_client.is_closed for provider_client in provider_clients)
+
+
+def test_unacknowledged_cross_provider_configuration_creates_no_client_and_fails_open(
+    initialized_settings: Settings, monkeypatch
+) -> None:
+    calls = 0
+
+    def unexpected_client(_timeout: float):
+        nonlocal calls
+        calls += 1
+        raise AssertionError("invalid configuration must not create a provider client")
+
+    monkeypatch.setattr(app_module, "_new_provider_client", unexpected_client)
+    settings = cross_provider_settings(initialized_settings, paid_data_acknowledgement=None)
+
+    with TestClient(create_app(settings)) as client:
+        configuration_response = client.get("/api/config")
+        result = client.post(
+            "/api/cleanup", json={"raw_text": "synthetic source", "enabled": True}
+        )
+
+    configuration = configuration_response.json()["cleanup_configuration"]
+    assert configuration["status"] == "invalid"
+    assert configuration["available"] is False
+    assert configuration["routes"] == []
+    assert configuration["validation_error"] == "paid_data_acknowledgement_required"
+    assert result.json()["status"] == "disabled"
+    assert result.json()["cleaned_text"] == "synthetic source"
+    assert calls == 0
+    assert "synthetic-gemini-key" not in configuration_response.text
+    assert "synthetic-openai-key" not in configuration_response.text
+
+
+@pytest.mark.parametrize(
+    ("overrides", "expected_error"),
+    [
+        ({"cleanup_route_order": "openai,gemini"}, "route_order_must_be_gemini_openai"),
+        ({"gemini_api_key_is_explicit": False}, "explicit_gemini_credential_required"),
+        ({"gemini_model": "gemini-3.5-flash"}, "gemini_model_must_be_gemini_3_7_flash"),
+        ({"openai_api_key": None}, "explicit_openai_credential_required"),
+        ({"openai_model": "other-model"}, "openai_model_must_be_gpt_5_6_luna"),
+        (
+            {"openai_quota_group_id": "gemini-paid-project"},
+            "provider_quota_groups_must_differ",
+        ),
+    ],
+)
+def test_invalid_cross_provider_variants_create_no_clients(
+    initialized_settings: Settings, monkeypatch, overrides, expected_error: str
+) -> None:
+    calls = 0
+
+    def unexpected_client(_timeout: float):
+        nonlocal calls
+        calls += 1
+        raise AssertionError("invalid configuration must not create a provider client")
+
+    monkeypatch.setattr(app_module, "_new_provider_client", unexpected_client)
+    settings = cross_provider_settings(initialized_settings, **overrides)
+
+    with TestClient(create_app(settings)) as client:
+        configuration = client.get("/health").json()["cleanup_configuration"]
+
+    assert configuration["status"] == "invalid"
+    assert configuration["validation_error"] == expected_error
+    assert configuration["routes"] == []
+    assert calls == 0
+
+
+def test_generic_openai_key_never_activates_openai(
+    initialized_settings: Settings, monkeypatch
+) -> None:
+    provider_keys = (
+        "LOCAL_TEXT_GEMINI_API_KEY",
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "LOCAL_TEXT_OPENAI_API_KEY",
+        "LOCAL_TEXT_OPENAI_MODEL",
+        "LOCAL_TEXT_CLEANUP_ROUTE_ORDER",
+        "LOCAL_TEXT_GEMINI_QUOTA_GROUP_ID",
+        "LOCAL_TEXT_OPENAI_QUOTA_GROUP_ID",
+        "LOCAL_TEXT_CLEANUP_PAID_DATA_ACKNOWLEDGEMENT",
+    )
+    for key in provider_keys:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "ambient-openai-key")
+    monkeypatch.setenv("LOCAL_TEXT_DATABASE_PATH", str(initialized_settings.database_path))
+
+    settings = load_settings()
+    response = TestClient(create_app(settings)).get("/api/config")
+
+    assert settings.openai_api_key is None
+    assert response.json()["cleanup_configuration"]["status"] == "unavailable"
+    assert "ambient-openai-key" not in response.text
+
+
+def test_ambient_gemini_remains_legacy_compatible_without_activating_ambient_openai(
+    initialized_settings: Settings, monkeypatch
+) -> None:
+    for key in (
+        "LOCAL_TEXT_GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "LOCAL_TEXT_OPENAI_API_KEY",
+        "LOCAL_TEXT_OPENAI_MODEL",
+        "LOCAL_TEXT_CLEANUP_ROUTE_ORDER",
+        "LOCAL_TEXT_GEMINI_QUOTA_GROUP_ID",
+        "LOCAL_TEXT_OPENAI_QUOTA_GROUP_ID",
+        "LOCAL_TEXT_CLEANUP_PAID_DATA_ACKNOWLEDGEMENT",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "ambient-gemini-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "ambient-openai-key")
+    monkeypatch.setenv("LOCAL_TEXT_DATABASE_PATH", str(initialized_settings.database_path))
+
+    settings = load_settings()
+    response = TestClient(create_app(settings)).get("/api/config")
+
+    assert settings.gemini_api_key == "ambient-gemini-key"
+    assert settings.gemini_api_key_is_explicit is False
+    assert settings.openai_api_key is None
+    assert response.json()["cleanup_configuration"]["status"] == "gemini_only"
+    assert "ambient-gemini-key" not in response.text
+    assert "ambient-openai-key" not in response.text
 
 
 def test_app_lifespan_reuses_and_closes_the_gemini_client(
@@ -700,6 +934,10 @@ async function run(originalValue) {
     "#cleaned-count": new Element(), "#outgoing-kind": new Element(),
     "#select-cleaned": new Element(), "#select-original": new Element(),
     "#publication-state": new Element(), "#model-label": new Element(),
+    "#cleanup-disclosure": new Element(), "#cleanup-disclosure-summary": new Element(),
+    "#cleanup-route-list": new Element(), "#cleanup-processing-disclosure": new Element(),
+    "#cleanup-fallback-disclosure": new Element(), "#cleanup-corpus-disclosure": new Element(),
+    "#cleanup-validation-detail": new Element(),
     ".workspace": new Element(), "#workspace-resizer": new Element(),
     "#active-prompt-selector": new Element(), "#error-details-dialog": new Element(),
     "#error-details-ledger": new Element(), "#close-error-details": new Element(),

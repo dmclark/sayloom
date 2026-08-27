@@ -311,10 +311,13 @@ Every harmful change receives blinded human review; aggregate edit distance cann
 3. **Sequential router (no migration):** budgets, route/quota breakers, cancellation, concurrency,
    and attempt attribution. Verify deterministic fake-clock interleavings, retry-after, storm, and
    total-deadline tests.
-4. **Disclosure and explicit configuration (no migration):** provider order and paid-data-use
-   acknowledgement in external configuration plus UI disclosure. Verify portable tests and an
-   isolated browser with no credentials; provider lane remains unavailable unless separately
-   authorized.
+4. **Disclosure and explicit configuration (implemented, no migration):** the fixed paid Gemini
+   `gemini-3.7-flash` → paid OpenAI `gpt-5.6-luna` route requires exact provider credentials,
+   distinct quota groups, route order, and `paid-external-cleanup-v1` acknowledgement. Invalid or
+   incomplete cross-provider configuration creates no clients. `/health`, `/api/config`, and the
+   expandable Workspace disclosure report sanitized routing status and state that fallback sends
+   the same current text/instruction only after qualifying Gemini failure and saves no evaluation
+   corpus. Legacy Gemini-only routing remains compatible; generic `OPENAI_API_KEY` is ignored.
 5. **Corpus contract and schema design (no migration):** encode the six confirmed decisions in API,
    storage, consent, expiry, deletion, and JSONL export contracts; pre-register the benchmark. No
    collection before implementation and verification of those contracts.

@@ -23,6 +23,13 @@
     selectOriginal: document.querySelector("#select-original"),
     publication: document.querySelector("#publication-state"),
     modelLabel: document.querySelector("#model-label"),
+    cleanupDisclosure: document.querySelector("#cleanup-disclosure"),
+    cleanupDisclosureSummary: document.querySelector("#cleanup-disclosure-summary"),
+    cleanupRouteList: document.querySelector("#cleanup-route-list"),
+    cleanupProcessingDisclosure: document.querySelector("#cleanup-processing-disclosure"),
+    cleanupFallbackDisclosure: document.querySelector("#cleanup-fallback-disclosure"),
+    cleanupCorpusDisclosure: document.querySelector("#cleanup-corpus-disclosure"),
+    cleanupValidationDetail: document.querySelector("#cleanup-validation-detail"),
     workspace: document.querySelector(".workspace"),
     workspaceResizer: document.querySelector("#workspace-resizer"),
     activePromptSelector: document.querySelector("#active-prompt-selector"),
@@ -148,6 +155,40 @@
   function setPublicationState(nextState, label) {
     elements.publication.dataset.state = nextState;
     elements.publication.lastElementChild.textContent = label;
+  }
+
+  function renderCleanupConfiguration(configuration) {
+    const routes = Array.isArray(configuration?.routes) ? configuration.routes : [];
+    const disclosure = configuration?.disclosure || {};
+    elements.cleanupDisclosure.dataset.status = configuration?.status || "unavailable";
+    elements.cleanupDisclosureSummary.textContent = typeof disclosure.summary === "string"
+      ? disclosure.summary
+      : "Cleanup provider is not configured";
+    elements.cleanupRouteList.textContent = "";
+    routes.forEach((route) => {
+      if (typeof route?.provider !== "string" || typeof route?.model !== "string") return;
+      const item = document.createElement("li");
+      const provider = route.provider === "openai"
+        ? "OpenAI"
+        : route.provider.charAt(0).toUpperCase() + route.provider.slice(1);
+      item.textContent = `${provider} · ${route.model}`;
+      elements.cleanupRouteList.append(item);
+    });
+    elements.cleanupRouteList.hidden = routes.length === 0;
+    elements.cleanupProcessingDisclosure.textContent = disclosure.processing || "";
+    elements.cleanupFallbackDisclosure.textContent = disclosure.fallback || "";
+    elements.cleanupCorpusDisclosure.textContent = disclosure.corpus || "";
+    const validationError = configuration?.validation_error;
+    elements.cleanupValidationDetail.hidden = typeof validationError !== "string";
+    elements.cleanupValidationDetail.textContent = typeof validationError === "string"
+      ? `Configuration status: ${validationError.replaceAll("_", " ")}.`
+      : "";
+
+    elements.modelLabel.textContent = routes.length
+      ? routes.map((route) => route.provider === "openai" ? "OpenAI" : "Gemini").join(" → ")
+      : configuration?.status === "invalid"
+        ? "Cleanup configuration invalid"
+        : "Cleanup configuration needed";
   }
 
   function errorFields(error) {
@@ -694,9 +735,7 @@
       const config = await readJson(configResponse, "Workspace configuration");
 
       elements.cleanupEnabled.checked = config.cleanup_enabled_by_default ?? true;
-      elements.modelLabel.textContent = config.cleanup_available
-        ? `Gemini · ${config.cleanup_model}`
-        : "Gemini · configuration needed";
+      renderCleanupConfiguration(config.cleanup_configuration);
 
       elements.cleaned.value = "";
       originalOutgoingOverride = false;

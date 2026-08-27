@@ -16,7 +16,14 @@ class Settings:
     profile: Profile
     development_state_name: str | None = None
     gemini_api_key: str | None = field(default=None, repr=False)
+    gemini_api_key_is_explicit: bool = True
     gemini_model: str = "gemini-3.5-flash"
+    openai_api_key: str | None = field(default=None, repr=False)
+    openai_model: str | None = None
+    cleanup_route_order: str | None = None
+    gemini_quota_group_id: str | None = None
+    openai_quota_group_id: str | None = None
+    paid_data_acknowledgement: str | None = None
     cleanup_timeout_seconds: float = 30.0
     database_path: Path | None = None
 
@@ -50,16 +57,20 @@ def load_settings() -> Settings:
             Path.home() / "Library/Application Support/local-text" / profile,
         )
     )
-    api_key = (
-        os.getenv("LOCAL_TEXT_GEMINI_API_KEY")
-        or os.getenv("GEMINI_API_KEY")
-        or os.getenv("GOOGLE_API_KEY")
-    )
+    explicit_gemini_api_key = os.getenv("LOCAL_TEXT_GEMINI_API_KEY")
+    api_key = explicit_gemini_api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     return Settings(
         profile=profile,
         development_state_name=os.getenv("LOCAL_TEXT_DEVELOPMENT_STATE_NAME"),
         gemini_api_key=api_key,
+        gemini_api_key_is_explicit=bool(explicit_gemini_api_key),
         gemini_model=os.getenv("LOCAL_TEXT_GEMINI_MODEL", "gemini-3.5-flash"),
+        openai_api_key=os.getenv("LOCAL_TEXT_OPENAI_API_KEY"),
+        openai_model=os.getenv("LOCAL_TEXT_OPENAI_MODEL"),
+        cleanup_route_order=os.getenv("LOCAL_TEXT_CLEANUP_ROUTE_ORDER"),
+        gemini_quota_group_id=os.getenv("LOCAL_TEXT_GEMINI_QUOTA_GROUP_ID"),
+        openai_quota_group_id=os.getenv("LOCAL_TEXT_OPENAI_QUOTA_GROUP_ID"),
+        paid_data_acknowledgement=os.getenv("LOCAL_TEXT_CLEANUP_PAID_DATA_ACKNOWLEDGEMENT"),
         cleanup_timeout_seconds=float(os.getenv("LOCAL_TEXT_CLEANUP_TIMEOUT_SECONDS", "30")),
         database_path=Path(
             os.getenv("LOCAL_TEXT_DATABASE_PATH", state_directory / "local-text.sqlite3")

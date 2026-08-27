@@ -88,9 +88,27 @@ def print_configuration_status(state: State) -> None:
     else:
         state_location = f"{selected} (missing)"
     print(f"State configuration: {state_location}")
-    credential = "configured" if "LOCAL_TEXT_GEMINI_API_KEY" in configuration else "missing"
-    print(f"Gemini credential: {credential}")
+    gemini_credential = "configured" if "LOCAL_TEXT_GEMINI_API_KEY" in configuration else "missing"
+    openai_credential = "configured" if "LOCAL_TEXT_OPENAI_API_KEY" in configuration else "missing"
+    route_order = configuration.get("LOCAL_TEXT_CLEANUP_ROUTE_ORDER", "legacy Gemini-only")
+    print(f"Cleanup route order: {route_order}")
+    print(f"Gemini credential: {gemini_credential}")
     print(f"Gemini model: {configuration.get('LOCAL_TEXT_GEMINI_MODEL', 'application default')}")
+    print(
+        "Gemini quota group: "
+        f"{'configured' if 'LOCAL_TEXT_GEMINI_QUOTA_GROUP_ID' in configuration else 'missing'}"
+    )
+    print(f"OpenAI credential: {openai_credential}")
+    print(f"OpenAI model: {configuration.get('LOCAL_TEXT_OPENAI_MODEL', 'missing')}")
+    print(
+        "OpenAI quota group: "
+        f"{'configured' if 'LOCAL_TEXT_OPENAI_QUOTA_GROUP_ID' in configuration else 'missing'}"
+    )
+    acknowledgement = configuration.get("LOCAL_TEXT_CLEANUP_PAID_DATA_ACKNOWLEDGEMENT")
+    print(
+        "Paid-data acknowledgement: "
+        f"{'configured' if acknowledgement == 'paid-external-cleanup-v1' else 'missing or invalid'}"
+    )
     print(
         "Cleanup timeout: "
         f"{configuration.get('LOCAL_TEXT_CLEANUP_TIMEOUT_SECONDS', 'application default')}"

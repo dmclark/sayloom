@@ -46,7 +46,7 @@ executes that worktree's own runtime scripts.
 
 The local default is the `development` profile and displays **Sayloom Development**. A release process can explicitly select release branding with `LOCAL_TEXT_PROFILE=release`. Application startup performs no database migrations or seed writes. If the database is absent or at the wrong schema revision, `/health` reports `setup_required` with HTTP 503 rather than changing it.
 
-## Gemini cleanup
+## Cleanup providers
 
 Cleanup is enabled by default for every Original update, regardless of whether it came from typing, ordinary paste, or compatible dictation. Replacing a fully selected Original clears the previous Cleaned result for the new session; incremental input keeps the last result visible while cleanup is waiting or running. During either kind of reprocessing, outgoing state immediately fails open to the current Original text. Reloading the page clears both editors and the process-local outgoing state without changing durable prompt or cleanup settings. Dictation tools that signal a write with an untrusted synthetic paste followed by a trusted input event receive compatible caret and focus handling, but that event sequence is not a required input API.
 
@@ -67,10 +67,43 @@ Each file uses unquoted `KEY=value` entries:
 
 ```sh
 LOCAL_TEXT_GEMINI_API_KEY=replace-with-your-key
-# Optional:
+# Optional legacy Gemini-only settings:
 # LOCAL_TEXT_GEMINI_MODEL=gemini-3.5-flash
 # LOCAL_TEXT_CLEANUP_TIMEOUT_SECONDS=30
 ```
+
+With no cross-provider settings, this remains the compatible Gemini-only route:
+the selected Gemini model followed by `gemini-2.5-flash` within the existing
+30-second total deadline. Existing `GEMINI_API_KEY` and `GOOGLE_API_KEY` values
+remain compatible with that legacy route.
+
+Cross-provider fallback is activated only by this complete, exact contract:
+
+```sh
+LOCAL_TEXT_CLEANUP_ROUTE_ORDER=gemini,openai
+LOCAL_TEXT_GEMINI_API_KEY=replace-with-paid-gemini-key
+LOCAL_TEXT_GEMINI_MODEL=gemini-3.7-flash
+LOCAL_TEXT_GEMINI_QUOTA_GROUP_ID=gemini-paid-project
+LOCAL_TEXT_OPENAI_API_KEY=replace-with-paid-openai-key
+LOCAL_TEXT_OPENAI_MODEL=gpt-5.6-luna
+LOCAL_TEXT_OPENAI_QUOTA_GROUP_ID=openai-paid-project
+LOCAL_TEXT_CLEANUP_PAID_DATA_ACKNOWLEDGEMENT=paid-external-cleanup-v1
+# Optional:
+# LOCAL_TEXT_CLEANUP_TIMEOUT_SECONDS=30
+```
+
+The quota-group identifiers must be valid technical identifiers and must differ.
+Any missing, invalid, or unacknowledged cross-provider setting disables every
+provider client and preserves Original fail-open. Generic `OPENAI_API_KEY` is
+never used. Arbitrary provider endpoints, route orders, and production model IDs
+are not supported.
+
+The Workspace's expandable **Cleanup route** disclosure and the sanitized
+`cleanup_configuration` object in `/health` and `/api/config` report the active
+status and provider/model order without credentials. Cross-provider cleanup sends
+the current text and cleanup instruction to paid Gemini. Only after a qualifying
+Gemini failure may it send the same current text and instruction to paid OpenAI.
+This processing does not save an evaluation corpus.
 
 Create the shared file with an editor so the credential does not enter shell
 history or command arguments:
@@ -82,10 +115,10 @@ chmod 600 "$HOME/.config/local-text/development/environment"
 scripts/dev.py restart
 ```
 
-The files and keys must never enter Git. Only the three keys shown above are
+The files and keys must never enter Git. Only the cleanup keys shown above are
 accepted; files must be regular, non-symlink files with mode `0600`, are parsed
 as data, and are never sourced as shell code. Database path, state directory,
-profile, service label, and port overrides are rejected: those routing values
+profile, service label, and port overrides are rejected: those runtime values
 remain exclusively bound by the selected state manifest.
 
 ## Durable prompt configuration
