@@ -183,18 +183,12 @@ def test_status_without_selection_reports_state_for_current_checkout(tmp_path: P
     assert (
         run_dev(state_root, "create", "selected", "--port", str(selected_port)).returncode == 0
     )
-    other_manifest_path = state_root / "other/state.json"
-    other_manifest_path.parent.mkdir()
-    other_manifest = json.loads((state_root / "selected/state.json").read_text())
-    other_manifest.update(
+    write_foreign_state(
+        state_root,
         name="other",
-        repository_root="/tmp/another-checkout",
-        state_directory=str(other_manifest_path.parent.resolve()),
+        repository=tmp_path / "another-checkout",
         port=unused_port(),
     )
-    checkout_id = hashlib.sha256(other_manifest["repository_root"].encode()).hexdigest()[:12]
-    other_manifest["label"] = f"local.local-text.development.{checkout_id}.other"
-    other_manifest_path.write_text(json.dumps(other_manifest))
 
     status = run_dev(state_root, "status")
 
@@ -592,20 +586,19 @@ def test_shared_configuration_is_overridden_by_checkout_state_without_printing_s
     assert "must have mode 0600" in insecure.stderr
 
 
-def test_runtime_helpers_require_explicit_state_selection() -> None:
-    development = subprocess.run(
-        [str(REPOSITORY_ROOT / "scripts/dev.py")],
-        cwd=REPOSITORY_ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+def test_runtime_helpers_require_explicit_state_selection(tmp_path: Path) -> None:
+    state_root = tmp_path / "states"
+    development = run_dev(state_root)
     assert development.returncode == 0
     assert "No development state for this checkout" in development.stdout
 
     for script_name in ("run-development.py", "render-launchd-plist.py"):
         result = subprocess.run(
-            [str(REPOSITORY_ROOT / "scripts" / script_name)],
+            [
+                str(REPOSITORY_ROOT / "scripts" / script_name),
+                "--state-root",
+                str(state_root),
+            ],
             cwd=REPOSITORY_ROOT,
             text=True,
             capture_output=True,
