@@ -1,11 +1,21 @@
+import hashlib
+import importlib.util
 import json
 import os
+import socket
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 REPOSITORY_ROOT = Path(__file__).parent.parent
+
+
+def unused_port() -> int:
+    with socket.socket() as candidate:
+        candidate.bind(("127.0.0.1", 0))
+        return candidate.getsockname()[1]
 
 
 def run_admin(
@@ -41,6 +51,29 @@ def run_dev(
         capture_output=True,
         check=False,
     )
+
+
+def write_foreign_state(
+    state_root: Path,
+    *,
+    name: str,
+    repository: Path,
+    port: int,
+) -> Path:
+    directory = state_root / name
+    directory.mkdir(parents=True)
+    checkout = str(repository.resolve())
+    checkout_id = hashlib.sha256(checkout.encode()).hexdigest()[:12]
+    manifest = {
+        "name": name,
+        "repository_root": checkout,
+        "state_directory": str(directory.resolve()),
+        "label": f"local.local-text.development.{checkout_id}.{name}",
+        "port": port,
+    }
+    manifest_path = directory / "state.json"
+    manifest_path.write_text(json.dumps(manifest))
+    return manifest_path
 
 
 def test_admin_initializes_and_requires_an_unchanged_import_preview(tmp_path: Path) -> None:
@@ -100,7 +133,8 @@ def test_named_development_state_is_explicit_read_only_then_initialized(tmp_path
     assert manifest["state_directory"] == str((state_root / "focused-work").resolve())
     assert manifest["label"].startswith("local.local-text.development.")
     assert manifest["label"].endswith(".focused-work")
-    assert manifest["port"] == 7523
+    assert 7523 <= manifest["port"] <= 7622
+    assert manifest["port"] != 7532
 
     ambient_database = tmp_path / "ambient.sqlite3"
     environment = {
@@ -143,25 +177,250 @@ def test_named_development_state_is_explicit_read_only_then_initialized(tmp_path
     assert "__" not in rendered
 
 
-def test_status_without_selection_reports_all_states(tmp_path: Path) -> None:
+def test_status_without_selection_reports_state_for_current_checkout(tmp_path: Path) -> None:
     state_root = tmp_path / "states"
-    assert run_dev(state_root, "create", "second").returncode == 0
-    assert run_dev(state_root, "create", "first").returncode == 0
+    selected_port = unused_port()
+    assert (
+        run_dev(state_root, "create", "selected", "--port", str(selected_port)).returncode == 0
+    )
+    other_manifest_path = state_root / "other/state.json"
+    other_manifest_path.parent.mkdir()
+    other_manifest = json.loads((state_root / "selected/state.json").read_text())
+    other_manifest.update(
+        name="other",
+        repository_root="/tmp/another-checkout",
+        state_directory=str(other_manifest_path.parent.resolve()),
+        port=unused_port(),
+    )
+    checkout_id = hashlib.sha256(other_manifest["repository_root"].encode()).hexdigest()[:12]
+    other_manifest["label"] = f"local.local-text.development.{checkout_id}.other"
+    other_manifest_path.write_text(json.dumps(other_manifest))
 
     status = run_dev(state_root, "status")
 
     assert status.returncode == 1
-    assert status.stdout.count('"state": "missing"') == 2
-    assert status.stdout.index("State: first") < status.stdout.index("State: second")
+    assert status.stdout.count('"state": "missing"') == 1
+    assert "State: selected" in status.stdout
+    assert "State: other" not in status.stdout
+    duplicate = run_dev(state_root, "create", "duplicate")
+    assert duplicate.returncode != 0
+    assert "already has a development state" in duplicate.stderr
 
 
-def test_status_without_selection_reports_when_no_states_exist(tmp_path: Path) -> None:
+def test_status_without_selection_prompts_to_create_state_for_current_checkout(
+    tmp_path: Path,
+) -> None:
     state_root = tmp_path / "states"
 
     status = run_dev(state_root, "status")
 
     assert status.returncode == 0
-    assert status.stdout.strip() == f"No development states found in {state_root}"
+    assert status.stdout.splitlines() == [
+        "No development state for this checkout.",
+        "Create and initialize one with: scripts/dev.py init",
+    ]
+
+    implicit = run_dev(state_root)
+    assert implicit.returncode == 0
+    assert implicit.stdout == status.stdout
+
+
+def test_init_creates_branch_named_state_then_migrates_and_seeds(tmp_path: Path) -> None:
+    state_root = tmp_path / "states"
+    branch = subprocess.run(
+        ["git", "branch", "--show-current"],
+        cwd=REPOSITORY_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    expected_name = branch.lower().replace("/", "-") or REPOSITORY_ROOT.name
+
+    initialized = run_dev(state_root, "init")
+
+    assert initialized.returncode == 0
+    manifest = json.loads((state_root / expected_name / "state.json").read_text())
+    assert manifest["name"] == expected_name
+    assert 7523 <= manifest["port"] <= 7622
+    assert (state_root / expected_name / "local-text.sqlite3").is_file()
+    database_status = run_dev(state_root, "db")
+    assert database_status.returncode == 0
+    assert '"state": "current"' in database_status.stdout
+
+
+def test_create_allocates_unique_ports_and_accepts_an_override(tmp_path: Path) -> None:
+    state_root = tmp_path / "states"
+    write_foreign_state(
+        state_root,
+        name="foreign",
+        repository=tmp_path / "deleted-worktree",
+        port=7523,
+    )
+
+    created = run_dev(state_root, "create", "selected")
+
+    assert created.returncode == 0
+    manifest = json.loads((state_root / "selected/state.json").read_text())
+    assert manifest["port"] != 7523
+
+    other_root = tmp_path / "other-states"
+    requested_port = unused_port()
+    overridden = run_dev(
+        other_root, "create", "explicit", "--port", str(requested_port)
+    )
+    assert overridden.returncode == 0
+    assert json.loads((other_root / "explicit/state.json").read_text())["port"] == requested_port
+
+
+def test_list_prune_and_remove_manage_only_registered_state_data(tmp_path: Path) -> None:
+    state_root = tmp_path / "states"
+    stale_path = write_foreign_state(
+        state_root,
+        name="stale",
+        repository=tmp_path / "deleted-worktree",
+        port=unused_port(),
+    )
+
+    listed = run_dev(state_root, "list")
+    preview = run_dev(state_root, "prune")
+
+    assert listed.returncode == 0
+    assert "stale" in listed.stdout.lower()
+    assert preview.returncode == 0
+    assert "Preview only" in preview.stdout
+    assert stale_path.exists()
+
+    applied = run_dev(
+        state_root,
+        "prune",
+        "--apply",
+        environment={**os.environ, "HOME": str(tmp_path / "home")},
+    )
+    assert applied.returncode == 0
+    assert not stale_path.parent.exists()
+
+    current_root = tmp_path / "current-states"
+    assert (
+        run_dev(
+            current_root, "create", "removable", "--port", str(unused_port())
+        ).returncode
+        == 0
+    )
+    unconfirmed = run_dev(current_root, "remove")
+    assert unconfirmed.returncode != 0
+    assert "requires confirmation" in unconfirmed.stderr
+    assert (current_root / "removable/state.json").exists()
+
+    removed = run_dev(
+        current_root,
+        "remove",
+        "--yes",
+        environment={**os.environ, "HOME": str(tmp_path / "home")},
+    )
+    assert removed.returncode == 0
+    assert not (current_root / "removable").exists()
+
+    absent = run_dev(current_root, "remove", "--all", "--yes")
+    assert absent.returncode == 0
+    assert "no development state" in absent.stdout
+
+    write_foreign_state(
+        current_root,
+        name="legacy-one",
+        repository=REPOSITORY_ROOT,
+        port=unused_port(),
+    )
+    write_foreign_state(
+        current_root,
+        name="legacy-two",
+        repository=REPOSITORY_ROOT,
+        port=unused_port(),
+    )
+    all_removed = run_dev(
+        current_root,
+        "remove",
+        "--all",
+        "--yes",
+        environment={**os.environ, "HOME": str(tmp_path / "home")},
+    )
+    assert all_removed.returncode == 0
+    assert not (current_root / "legacy-one").exists()
+    assert not (current_root / "legacy-two").exists()
+
+
+def test_activate_swaps_the_raycast_port_without_changing_raycast(
+    tmp_path: Path, monkeypatch
+) -> None:
+    state_root = tmp_path / "states"
+    selected_port = unused_port()
+    assert (
+        run_dev(state_root, "create", "selected", "--port", str(selected_port)).returncode == 0
+    )
+    write_foreign_state(
+        state_root,
+        name="raycast-owner",
+        repository=tmp_path / "other-worktree",
+        port=7523,
+    )
+
+    scripts = str(REPOSITORY_ROOT / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        specification = importlib.util.spec_from_file_location(
+            "sayloom_dev_script", REPOSITORY_ROOT / "scripts/dev.py"
+        )
+        assert specification is not None and specification.loader is not None
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+    finally:
+        sys.path.remove(scripts)
+    restarted = []
+    monkeypatch.setattr(module, "verify_repository", lambda: None)
+    monkeypatch.setattr(
+        module, "restart", lambda state, **_arguments: restarted.append(state)
+    )
+
+    selected = module.load_state(state_root, "selected")
+    module.activate(state_root, selected)
+
+    assert module.load_state(state_root, "selected").port == 7523
+    foreign = json.loads((state_root / "raycast-owner/state.json").read_text())
+    assert foreign["port"] == selected_port
+    assert [state.name for state in restarted] == ["selected"]
+
+
+def test_help_lists_checkout_service_database_and_cleanup_commands() -> None:
+    result = subprocess.run(
+        [str(REPOSITORY_ROOT / "scripts/dev.py"), "--help"],
+        cwd=REPOSITORY_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    for command_name in (
+        "status",
+        "create",
+        "initialize",
+        "restart",
+        "activate",
+        "list",
+        "remove",
+        "prune",
+        "db",
+    ):
+        assert command_name in result.stdout
+    assert "Running without a command is equivalent to status" in result.stdout
+
+
+def test_supacode_lifecycle_initializes_runs_and_deletes_without_archiving() -> None:
+    configuration = json.loads((REPOSITORY_ROOT / "supacode.json").read_text())
+
+    assert configuration["setupScript"] == "scripts/dev.py init"
+    assert configuration["runScript"] == "scripts/dev.py restart"
+    assert configuration["deleteScript"] == "scripts/dev.py remove --all --yes"
+    assert "archiveScript" not in configuration
 
 
 @pytest.mark.parametrize(
@@ -170,7 +429,8 @@ def test_status_without_selection_reports_when_no_states_exist(tmp_path: Path) -
         ("repository_root", "/tmp/another-checkout", "different checkout"),
         ("state_directory", "/tmp/outside-state-root", "outside its selected"),
         ("label", "local.local-text.development.other", "invalid service label"),
-        ("port", 7524, "must use development port 7523"),
+        ("port", 700, "invalid loopback port"),
+        ("port", 7532, "reserved production port"),
     ],
 )
 def test_state_manifest_rejects_changed_bindings(
@@ -243,16 +503,17 @@ def test_shared_configuration_is_overridden_by_checkout_state_without_printing_s
     home = tmp_path / "home"
     config_root = home / ".config/local-text/development"
     shared = config_root / "environment"
-    selected = config_root / f"states/{checkout_id}/selected/environment"
+    legacy = config_root / f"states/{checkout_id}/selected/environment"
+    selected = state_root / "selected/environment"
     shared.parent.mkdir(parents=True)
-    selected.parent.mkdir(parents=True)
+    legacy.parent.mkdir(parents=True)
     secret = "synthetic-secret-not-for-output"
     shared.write_text(
         f"LOCAL_TEXT_GEMINI_API_KEY={secret}\nLOCAL_TEXT_GEMINI_MODEL=shared-model\n"
     )
-    selected.write_text("LOCAL_TEXT_GEMINI_MODEL=selected-model\n")
+    legacy.write_text("LOCAL_TEXT_GEMINI_MODEL=selected-model\n")
     shared.chmod(0o600)
-    selected.chmod(0o600)
+    legacy.chmod(0o600)
     environment = {**os.environ, "HOME": str(home)}
 
     status = run_dev(
@@ -264,11 +525,20 @@ def test_shared_configuration_is_overridden_by_checkout_state_without_printing_s
     )
     assert status.returncode == 1
     assert f"Shared configuration: {shared} (present)" in status.stdout
-    assert f"State configuration: {selected} (present)" in status.stdout
+    assert f"State configuration: {legacy} (present; moves on init or restart)" in status.stdout
     assert "Gemini credential: configured" in status.stdout
     assert "Gemini model: selected-model" in status.stdout
     assert secret not in status.stdout
     assert secret not in status.stderr
+
+    initialized = run_dev(
+        state_root,
+        "init",
+        environment=environment,
+    )
+    assert initialized.returncode == 0
+    assert selected.read_text() == "LOCAL_TEXT_GEMINI_MODEL=selected-model\n"
+    assert not legacy.exists()
 
     shared.chmod(0o644)
     insecure = run_dev(
@@ -282,8 +552,18 @@ def test_shared_configuration_is_overridden_by_checkout_state_without_printing_s
     assert "must have mode 0600" in insecure.stderr
 
 
-def test_development_runtime_requires_explicit_state_selection() -> None:
-    for script_name in ("dev.py", "run-development.py", "render-launchd-plist.py"):
+def test_runtime_helpers_require_explicit_state_selection() -> None:
+    development = subprocess.run(
+        [str(REPOSITORY_ROOT / "scripts/dev.py")],
+        cwd=REPOSITORY_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert development.returncode == 0
+    assert "No development state for this checkout" in development.stdout
+
+    for script_name in ("run-development.py", "render-launchd-plist.py"):
         result = subprocess.run(
             [str(REPOSITORY_ROOT / "scripts" / script_name)],
             cwd=REPOSITORY_ROOT,

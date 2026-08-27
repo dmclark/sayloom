@@ -11,13 +11,18 @@ with respect to schema and seed state.
 - `ADMIN.SEED`: deterministic seed is safe to repeat and required configuration is validated.
 - `ADMIN.IMPORT`: allowlisted preview/digest/confirm is read-only then transactional and one-time.
 - `ADMIN.CONTROLLED`: the macOS restart workflow verifies, backs up, migrates/seeds, restarts, and
-  health-checks only a dedicated named state.
+  health-checks only the state inferred from the current checkout. Checkout states use persistent
+  independently allocated ports; activation moves the Raycast-targeted state to port 7523.
+- `ADMIN.STATE-LIFECYCLE`: init creates a branch-named checkout state when missing; list, remove,
+  and preview-first prune manage registered and stale external state without shared fallback.
 
 ## How to get to it (user POV)
 
 - Run `uv run python -m local_text.admin schema|migrate|seed` with an explicit disposable
   `LOCAL_TEXT_DATABASE_PATH`.
 - Run `import-preview` and `import-confirm --digest ...` against a synthetic source directory.
+- Run `scripts/dev.py`, `init`, `db`, `list`, and preview-only `prune` against a disposable state
+  root. Exercise `remove --yes` and `prune --apply` only on states created by that run.
 - On a dedicated verification-only macOS host, use the named-state controlled workflow. Never run
   it on a host with the stable application.
 
@@ -30,6 +35,8 @@ Follow the Database proof sequence in `../SKILL.md` and retain sanitized JSON ou
   instance to prove seeded state is readable and unique.
 - For every new migration, build supported predecessor fixtures with synthetic rows, upgrade them,
   and verify data plus constraints. Empty-database success alone is insufficient.
+- Prove checkout inference ignores other worktrees, generated names follow the Git branch, ports
+  are unique, activation swaps port 7523, and cleanup removes only selected disposable resources.
 - Preview a synthetic import, modify an allowlisted source, reject the stale digest, preview again,
   confirm once, reject a second confirmation, and verify ignored files were not read or changed.
 - Keep `ADMIN.CONTROLLED` in the macOS lane. Portable tests may pass while the real-device entry

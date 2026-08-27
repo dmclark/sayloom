@@ -1,3 +1,3 @@
 #!/bin/sh
-echo "Implicit development service removal is no longer supported; preserve the selected external state." >&2
+echo "Use scripts/dev.py remove; the development state is inferred from this checkout." >&2
 exit 2

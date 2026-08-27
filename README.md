@@ -10,31 +10,37 @@ Requirements: macOS, Python 3.12+, and [uv](https://docs.astral.sh/uv/).
 
 ```sh
 uv sync --locked
-scripts/dev.py create feature-workflow
-scripts/dev.py initialize --state feature-workflow
-scripts/dev.py status
+scripts/dev.py init
+scripts/dev.py
 ```
 
-Every development runtime must use an explicit named external state. `create`
-prints its state directory, database, service label, and fixed development port;
-no command falls
-back to a shared state. Put optional credentials in the shared development
-configuration file, then run
-`scripts/dev.py restart --state feature-workflow`.
-Restart verifies, backs up, explicitly migrates/seeds, and health-checks only
-the selected state-scoped service. State manifests bind the canonical checkout
-and state paths to a checkout-specific service label and the fixed loopback
-port. Missing, changed, cross-checkout, and path-escaping manifests are rejected
-before an operation can use them.
+Every checkout has one named external state. Commands infer it from the current
+checkout, so routine use requires no `--state` argument. `init` creates a missing
+state, names it from the sanitized Git branch, allocates an available loopback
+port, then explicitly migrates and seeds its database. `create [NAME]` remains
+available when an uninitialized state, custom name, or `--port` is required.
+No command falls back to shared operating data.
 
-`scripts/dev.py status` reports every registered development state in name order.
-Pass `--state NAME` to report only one state.
+Running `scripts/dev.py` without a command reports the current checkout's state,
+configuration, schema, service, and port. `restart` verifies the repository,
+backs up and initializes the database, then restarts only this checkout's
+state-scoped service. Multiple checkout states may run concurrently on their
+persisted ports. Missing, changed, cross-checkout, duplicate, and path-escaping
+manifests are rejected before use.
 
-Development always uses `127.0.0.1:7523`, so Raycast commands have one stable
-endpoint. A controlled restart stops any registered named development state on
-that port before starting the selected state. It refuses to stop an unregistered
-listener. Only one named development state runs at a time; production remains
-separate on port 7532.
+Raycast continues to use `127.0.0.1:7523`. Run `scripts/dev.py activate` to move
+the current checkout to that port; the previous owner moves to the current
+state's old port. Production remains separate on reserved port 7532. Use
+`scripts/dev.py list` to inspect every registration, `remove` to delete the
+current checkout's external state after confirmation, and `prune` to preview
+states whose checkout no longer exists. `prune --apply` performs that cleanup.
+The tracked `supacode.json` runs `init` after Supacode creates a worktree, maps
+its repeatable run command to the controlled `restart`, and runs
+`remove --all --yes` only before deletion. Reversible archive leaves state
+intact, and a cleanup failure blocks deletion. Existing worktrees can run
+`scripts/dev.py init` once after receiving this revision; they also need the
+revision before their services can use ports other than 7523 because each plist
+executes that worktree's own runtime scripts.
 
 The local default is the `development` profile and displays **Sayloom Development**. A release process can explicitly select release branding with `LOCAL_TEXT_PROFILE=release`. Application startup performs no database migrations or seed writes. If the database is absent or at the wrong schema revision, `/health` reports `setup_required` with HTTP 503 rather than changing it.
 
@@ -42,17 +48,20 @@ The local default is the `development` profile and displays **Sayloom Developmen
 
 Cleanup is enabled by default for every Original update, regardless of whether it came from typing, ordinary paste, or compatible dictation. Replacing a fully selected Original clears the previous Cleaned result for the new session; incremental input keeps the last result visible while cleanup is waiting or running. During either kind of reprocessing, outgoing state immediately fails open to the current Original text. Reloading the page clears both editors and the process-local outgoing state without changing durable prompt or cleanup settings. Dictation tools that signal a write with an untrusted synthetic paste followed by a trusted input event receive compatible caret and focus handling, but that event sequence is not a required input API.
 
-Development configuration uses two external, user-only files under `~/.config`:
+Development configuration uses one shared file and an optional state-specific
+file inside the external state directory:
 
 ```text
 ~/.config/local-text/development/environment
-~/.config/local-text/development/states/CHECKOUT_ID/STATE_NAME/environment
+~/Library/Application Support/local-text/dev-states/STATE_NAME/environment
 ```
 
-The shared file is loaded first. The checkout-and-state-specific file is loaded
-second and may override shared values. `scripts/dev.py status --state NAME`
-prints the exact paths and a sanitized effective status without displaying
-credential values. Each file uses unquoted `KEY=value` entries:
+The shared file is loaded first. The state-specific file is loaded second and
+may override shared values. Existing state-specific files under the former
+`~/.config/local-text/development/states/` layout remain readable and move into
+the state directory on the next `init` or `restart`. Status prints the exact
+paths and a sanitized effective result without displaying credential values.
+Each file uses unquoted `KEY=value` entries:
 
 ```sh
 LOCAL_TEXT_GEMINI_API_KEY=replace-with-your-key
@@ -68,7 +77,7 @@ history or command arguments:
 install -d -m 700 "$HOME/.config/local-text/development"
 "${EDITOR:?Set EDITOR first}" "$HOME/.config/local-text/development/environment"
 chmod 600 "$HOME/.config/local-text/development/environment"
-scripts/dev.py restart --state NAME
+scripts/dev.py restart
 ```
 
 The files and keys must never enter Git. Only the three keys shown above are
@@ -88,14 +97,16 @@ Cleanup details distinguish provider authentication/access rejection, quota or r
 Normal startup only checks schema state. Development-state administration is explicit:
 
 ```sh
-scripts/dev.py status --state NAME
-scripts/dev.py initialize --state NAME
+scripts/dev.py db
+scripts/dev.py db migrate
+scripts/dev.py db seed
+scripts/dev.py init
 ```
 
-Use `scripts/dev.py restart --state NAME` for a real update rather than running
+Use `scripts/dev.py restart` for a real update rather than running
 migration steps individually. It runs all checks, makes an online SQLite backup,
-migrates, applies the deterministic seed release, and restarts only the selected
-state-scoped service.
+migrates, applies the deterministic seed release, and restarts only the current
+checkout's state-scoped service.
 
 ### One-time configuration import
 
@@ -107,8 +118,8 @@ The importer reads an explicitly supplied directory and never discovers, modifie
 Other files—including databases, history, text content, diagnostics, logs, and recordings—are ignored. Preview prints the exact imported values and a confirmation digest:
 
 ```sh
-uv run python -m local_text.admin import-preview /path/to/configuration-directory
-uv run python -m local_text.admin import-confirm /path/to/configuration-directory \
+scripts/dev.py db import-preview /path/to/configuration-directory
+scripts/dev.py db import-confirm /path/to/configuration-directory \
   --digest COPY_THE_PREVIEW_DIGEST_HERE
 ```
 
@@ -122,7 +133,7 @@ uv run pytest
 ```
 
 Do not use hot reload for validated coding tasks. Use the controlled
-`scripts/dev.py restart --state NAME` workflow described above.
+`scripts/dev.py restart` workflow described above.
 
 ## State-scoped launchd service
 
@@ -134,7 +145,7 @@ uv run python scripts/render-launchd-plist.py \
 plutil -lint /tmp/local-text-development.plist
 ```
 
-`restart` installs or reloads only the selected state's user agent. Runtime logs
+`restart` installs or reloads only the current checkout state's user agent. Runtime logs
 and all future operating data belong in that external state directory, never in
 this repository.
 
@@ -153,8 +164,9 @@ Pass `--directory PATH` to select another directory. The installer links the fiv
 Raycast commands rather than copying them, prefixes their filenames with `dev-`,
 is safe to run again, recovers its broken managed aliases after a disposable
 checkout is removed, and refuses to replace an existing file or unrelated link.
-The aliases remain independent of named development state and target the fixed
-development endpoint on port 7523. They provide exactly five user-facing commands:
+The aliases target whichever development state currently owns port 7523; use
+`scripts/dev.py activate` from a checkout to change that state. They provide
+exactly five user-facing commands:
 
 - **Dev: Open Sayloom**
 - **Dev: Send to Amp**
