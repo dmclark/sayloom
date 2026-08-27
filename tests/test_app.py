@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from local_text.app import STATIC_VERSION, create_app
-from local_text.cleanup import CleanupService
+from local_text.cleanup import CleanupService, ProviderOutput
 from local_text.config import Profile, Settings
 
 
@@ -223,6 +223,7 @@ def test_cleanup_endpoint_fails_open_when_provider_is_unconfigured(
         "provider": "gemini",
         "model": "gemini-3.5-flash",
         "error": None,
+        "attempts": [],
     }
 
 
@@ -231,10 +232,15 @@ def test_cleanup_endpoint_returns_provider_result(initialized_settings: Settings
         provider_id = "gemini"
         model = "test-model"
 
-        async def clean(self, raw_text: str, system_prompt: str) -> str:
+        async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
             assert raw_text == "synthetic source text"
             assert "untrusted input data" in system_prompt
-            return "Synthetic clean text."
+            return ProviderOutput(
+                text="Synthetic clean text.",
+                provider_id="gemini",
+                model_id=self.model,
+                elapsed_ms=3,
+            )
 
     service = CleanupService(provider=Provider(), model="test-model", timeout_seconds=1)
     client = TestClient(create_app(initialized_settings, service))
@@ -247,6 +253,24 @@ def test_cleanup_endpoint_returns_provider_result(initialized_settings: Settings
     assert response.status_code == 200
     assert response.json()["cleaned_text"] == "Synthetic clean text."
     assert response.json()["status"] == "cleaned"
+    assert response.json()["provider"] == "gemini"
+    assert response.json()["model"] == "test-model"
+    assert response.json()["attempts"] == [
+        {
+            "provider": "gemini",
+            "model": "test-model",
+            "outcome": "success",
+            "elapsed_ms": 3,
+            "route_index": 0,
+            "input_tokens": None,
+            "output_tokens": None,
+            "failure_class": None,
+            "provider_code": None,
+            "http_status": None,
+            "retry_after_seconds": None,
+            "quota_group_id": None,
+        }
+    ]
 
 
 def test_prompt_api_creates_history_and_activates_an_exact_version(
@@ -288,9 +312,14 @@ def test_cleanup_uses_the_durable_active_prompt(initialized_settings: Settings) 
         provider_id = "gemini"
         model = "test-model"
 
-        async def clean(self, raw_text: str, system_prompt: str) -> str:
+        async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
             observed.append(system_prompt)
-            return raw_text
+            return ProviderOutput(
+                text=raw_text,
+                provider_id="gemini",
+                model_id=self.model,
+                elapsed_ms=3,
+            )
 
     service = CleanupService(provider=Provider(), model="test-model", timeout_seconds=1)
     client = TestClient(create_app(initialized_settings, service))
@@ -321,9 +350,14 @@ def test_cleanup_can_use_a_session_prompt_without_changing_the_durable_default(
         provider_id = "gemini"
         model = "test-model"
 
-        async def clean(self, raw_text: str, system_prompt: str) -> str:
+        async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
             observed.append(system_prompt)
-            return raw_text
+            return ProviderOutput(
+                text=raw_text,
+                provider_id="gemini",
+                model_id=self.model,
+                elapsed_ms=3,
+            )
 
     service = CleanupService(provider=Provider(), model="test-model", timeout_seconds=1)
     client = TestClient(create_app(initialized_settings, service))

@@ -81,6 +81,7 @@ def create_app(
         provider=provider,
         model=runtime.gemini_model,
         timeout_seconds=runtime.cleanup_timeout_seconds,
+        provider_id="gemini",
     )
     application.mount("/static", StaticFiles(directory=STATIC_DIRECTORY), name="static")
 

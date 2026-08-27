@@ -12,12 +12,15 @@ from local_text.cleanup import (
     CleanupService,
     CleanupStatus,
     GeminiProvider,
+    ProviderError,
+    ProviderFailureClass,
     ProviderHTTPError,
     ProviderMalformedResponseError,
     ProviderOutput,
     ProviderRejectedOutputError,
     ProviderTransportError,
     _extract_text,
+    _parse_retry_after,
     _thinking_config,
 )
 
@@ -30,9 +33,14 @@ class StaticProvider:
         self.output = output
         self.calls = 0
 
-    async def clean(self, raw_text: str, system_prompt: str) -> str:
+    async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
         self.calls += 1
-        return self.output
+        return ProviderOutput(
+            text=self.output,
+            provider_id=self.provider_id,
+            model_id=self.model,
+            elapsed_ms=4,
+        )
 
 
 def run_cleanup(service: CleanupService, raw_text: str, *, enabled: bool = True):
@@ -180,6 +188,170 @@ def test_provider_failures_have_specific_safe_classifications() -> None:
         assert "synthetic source" not in serialized
 
 
+def test_miscellaneous_provider_http_status_preserves_safe_api_error() -> None:
+    class FailingProvider:
+        provider_id = "gemini"
+        model = "test-model"
+
+        async def clean(self, raw_text: str, system_prompt: str) -> str:
+            raise ProviderHTTPError(418)
+
+    result = run_cleanup(
+        CleanupService(provider=FailingProvider(), model="test-model", timeout_seconds=1),
+        "synthetic source",
+    )
+
+    assert result.attempts[0].failure_class is ProviderFailureClass.UNKNOWN
+    assert result.error is not None
+    assert result.error.model_dump() == {
+        "code": "cleanup_provider_http_error",
+        "message": "The cleanup provider rejected the request.",
+        "retry_action": "Check the provider model configuration, then retry cleanup.",
+        "http_status": 418,
+    }
+
+
+@pytest.mark.parametrize("failure_class", list(ProviderFailureClass))
+def test_every_normalized_failure_class_has_safe_public_attribution(
+    failure_class: ProviderFailureClass,
+) -> None:
+    failure = ProviderError(
+        "private provider response /Users/private/file",
+        failure_class=failure_class,
+        provider_id="alternate-provider",
+        model="alternate-model",
+        provider_code="safe_code",
+        http_status=429,
+        retry_after_seconds=12,
+        elapsed_ms=34,
+        quota_group_id="alternate-quota",
+        route_index=2,
+    )
+
+    class FailingProvider:
+        provider_id = "alternate-provider"
+        model = "alternate-model"
+
+        async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
+            raise failure
+
+    result = run_cleanup(
+        CleanupService(provider=FailingProvider(), model="alternate-model", timeout_seconds=1),
+        "private synthetic source",
+    )
+
+    assert result.cleaned_text == "private synthetic source"
+    assert result.provider == "alternate-provider"
+    assert result.model == "alternate-model"
+    assert len(result.attempts) == 1
+    assert result.attempts[0].model_dump(mode="json") == {
+        "provider": "alternate-provider",
+        "model": "alternate-model",
+        "outcome": "failure",
+        "elapsed_ms": 34,
+        "route_index": 2,
+        "input_tokens": None,
+        "output_tokens": None,
+        "failure_class": failure_class,
+        "provider_code": "safe_code",
+        "http_status": 429,
+        "retry_after_seconds": 12,
+        "quota_group_id": "alternate-quota",
+    }
+    assert "provider response" not in result.model_dump_json()
+    assert "/Users/" not in result.model_dump_json()
+
+
+def test_provider_neutral_success_attribution_includes_optional_usage() -> None:
+    class AlternateProvider:
+        provider_id = "alternate-provider"
+        model = "alternate-model"
+
+        async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
+            return ProviderOutput(
+                text="Synthetic clean text.",
+                provider_id=self.provider_id,
+                model_id=self.model,
+                elapsed_ms=25,
+                input_tokens=11,
+                output_tokens=7,
+                route_index=3,
+            )
+
+    result = run_cleanup(
+        CleanupService(provider=AlternateProvider(), model="alternate-model", timeout_seconds=1),
+        "synthetic source",
+    )
+
+    assert result.provider == "alternate-provider"
+    assert result.model == "alternate-model"
+    assert result.attempts[0].model_dump(mode="json") == {
+        "provider": "alternate-provider",
+        "model": "alternate-model",
+        "outcome": "success",
+        "elapsed_ms": 25,
+        "route_index": 3,
+        "input_tokens": 11,
+        "output_tokens": 7,
+        "failure_class": None,
+        "provider_code": None,
+        "http_status": None,
+        "retry_after_seconds": None,
+        "quota_group_id": None,
+    }
+
+
+def test_cleanup_cancellation_propagates_without_provider_failure(monkeypatch) -> None:
+    cancelled = asyncio.Event()
+    messages: list[str] = []
+
+    class WaitingProvider:
+        provider_id = "alternate-provider"
+        model = "alternate-model"
+
+        async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+
+    monkeypatch.setattr(
+        cleanup_module.logger,
+        "info",
+        lambda template, payload: messages.append(template % payload),
+    )
+
+    async def cancel_cleanup() -> None:
+        service = CleanupService(
+            provider=WaitingProvider(), model="alternate-model", timeout_seconds=30
+        )
+        task = asyncio.create_task(
+            service.clean(CleanupRequest(raw_text="synthetic source"), "Synthetic instruction")
+        )
+        await asyncio.sleep(0)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(cancel_cleanup())
+
+    assert cancelled.is_set()
+    assert len(messages) == 1
+    payload = json.loads(messages[0].split(" ", maxsplit=1)[1])
+    assert payload["category"] == "cancelled"
+    assert payload["attempts"] == []
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("15", 15), ("-1", None), ("999999", None), ("private detail", None)],
+)
+def test_retry_after_parsing_accepts_only_safe_bounded_values(
+    value: str, expected: int | None
+) -> None:
+    assert _parse_retry_after(value) == expected
+
+
 @pytest.mark.parametrize("status_code", [429, 503])
 def test_transient_http_failure_uses_fallback_and_cools_primary(
     monkeypatch, status_code: int
@@ -205,6 +377,15 @@ def test_transient_http_failure_uses_fallback_and_cools_primary(
 
     assert first.status is CleanupStatus.CLEANED
     assert first.model == "fallback-model"
+    assert [(attempt.outcome, attempt.model) for attempt in first.attempts] == [
+        ("failure", "primary-model"),
+        ("success", "fallback-model"),
+    ]
+    assert first.attempts[0].failure_class is (
+        ProviderFailureClass.TEMPORARY_QUOTA
+        if status_code == 429
+        else ProviderFailureClass.TRANSIENT_ROUTE
+    )
     assert second.status is CleanupStatus.CLEANED
     assert second.model == "fallback-model"
     assert calls == ["primary-model", "fallback-model", "fallback-model"]
@@ -310,8 +491,8 @@ def test_primary_model_is_retried_after_cooldown_expires(monkeypatch) -> None:
     now += 301
     second = asyncio.run(provider.clean("synthetic source", "Synthetic cleanup instruction"))
 
-    assert first.model == "fallback-model"
-    assert second.model == "primary-model"
+    assert first.model_id == "fallback-model"
+    assert second.model_id == "primary-model"
     assert calls == ["primary-model", "fallback-model", "primary-model"]
 
 
@@ -339,14 +520,32 @@ def test_cleanup_log_contains_only_allowlisted_diagnostics(monkeypatch) -> None:
     message = messages[0]
     prefix, payload = message.split(" ", maxsplit=1)
     assert prefix == "cleanup_result"
-    assert json.loads(payload) == {
-        "category": "http_quota",
+    parsed = json.loads(payload)
+    assert parsed == {
+        "attempts": parsed["attempts"],
+        "category": "temporary_quota",
         "duration_ms": json.loads(payload)["duration_ms"],
         "http_status": 429,
         "input_length": 24,
         "model": "test-model",
         "provider": "gemini",
     }
+    assert parsed["attempts"] == [
+        {
+            "elapsed_ms": 0,
+            "failure_class": "temporary_quota",
+            "http_status": 429,
+            "input_tokens": None,
+            "model": "test-model",
+            "outcome": "failure",
+            "output_tokens": None,
+            "provider": "gemini",
+            "provider_code": "http_429",
+            "quota_group_id": None,
+            "retry_after_seconds": None,
+            "route_index": 0,
+        }
+    ]
     assert isinstance(json.loads(payload)["duration_ms"], int)
     assert all(
         forbidden not in message
@@ -369,11 +568,9 @@ def test_cleanup_log_does_not_emit_an_unvalidated_model(monkeypatch) -> None:
         "info",
         lambda template, payload: messages.append(template % payload),
     )
-    service = CleanupService(
-        provider=StaticProvider("Synthetic clean text."),
-        model="private model\nprivate path",
-        timeout_seconds=1,
-    )
+    provider = StaticProvider("Synthetic clean text.")
+    provider.model = "private model\nprivate path"
+    service = CleanupService(provider=provider, model=provider.model, timeout_seconds=1)
 
     run_cleanup(service, "synthetic source")
 
@@ -418,6 +615,7 @@ def test_gemini_provider_converts_http_failure_without_reading_provider_payload(
             self.send_response(429)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(private_payload)))
+            self.send_header("Retry-After", "17")
             self.end_headers()
             self.wfile.write(private_payload)
 
@@ -443,6 +641,7 @@ def test_gemini_provider_converts_http_failure_without_reading_provider_payload(
         server.server_close()
 
     assert caught.value.status_code == 429
+    assert caught.value.retry_after_seconds == 17
     assert "private provider detail" not in str(caught.value)
 
 
@@ -485,7 +684,10 @@ def test_gemini_provider_separately_frames_prompt_and_untrusted_source_text() ->
 
     request_url = urlparse(str(observed["url"]))
     request_body = observed["body"]
-    assert result == ProviderOutput(text="Synthetic clean text.", model="test-model")
+    assert result.text == "Synthetic clean text."
+    assert result.provider_id == "gemini"
+    assert result.model_id == "test-model"
+    assert result.elapsed_ms >= 0
     assert request_url.path == "/models/test-model:generateContent"
     assert parse_qs(request_url.query) == {"key": ["synthetic-key"]}
     assert request_body["system_instruction"]["parts"][0]["text"] == "Synthetic system prompt"
