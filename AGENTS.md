@@ -10,6 +10,15 @@ This repository is local-first and public-safe from its first commit.
 - For validated coding changes, use the controlled verify-then-restart workflow rather than hot reload.
 - Keep features and abstractions limited to the current requirement.
 
+## Mandrel project
+
+- All durable memory for this repository belongs to the existing Mandrel project
+  `voiceitt-bridge` (`c875b2af-9020-41b7-9595-d70221603464`).
+- Sayloom is part of the Voiceitt Bridge product memory. It is not a separate Mandrel project.
+- Before any Mandrel read or write, verify that `voiceitt-bridge` is active and switch to it if
+  needed.
+- Never create or suggest a separate Sayloom Mandrel project.
+
 ## Local worktree workflow
 
 - Worktrees are per independently changing topic, not per Amp thread or Orb. Code changes must occur on an appropriate topic branch rather than the protected primary `main` checkout.
