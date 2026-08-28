@@ -31,8 +31,9 @@ manifests are rejected before use.
 Raycast continues to use `127.0.0.1:7523`. Run `scripts/dev.py activate` to move
 the current checkout to that port and atomically repoint each installed managed
 Raycast alias to that checkout; the previous owner moves to the current
-state's old port. Alias conflicts are rejected before state changes. Production
-remains separate on reserved port 7532. Use
+state's old port. Run `scripts/dev.py relink` to reconcile the installed links
+with the current branch without changing state or restarting its service. Alias
+conflicts are rejected before changes. Production remains separate on reserved port 7532. Use
 `scripts/dev.py list` to inspect every registration, `remove` to delete the
 current checkout's external state after confirmation, and `prune` to preview
 states whose checkout no longer exists. `prune --apply` performs that cleanup.
@@ -197,14 +198,16 @@ Install development-prefixed aliases in Raycast's default Script Commands direct
 scripts/install-raycast.py
 ```
 
-Pass `--directory PATH` to select another directory. The installer links the five
+Pass `--directory PATH` to select another directory. The installer links the current
 Raycast commands rather than copying them, prefixes their filenames with `dev-`,
 is safe to run again, recovers its broken managed aliases after a disposable
 checkout is removed, and refuses to replace an existing file or unrelated link.
 The aliases target whichever development state currently owns port 7523; use
 `scripts/dev.py activate` from a checkout to change that state and repoint the
-installed aliases to its scripts. They provide
-exactly five user-facing commands:
+installed aliases to its scripts. Activation also adds or removes managed aliases
+to match the commands available in that branch. Run `scripts/dev.py relink` to
+perform only that link reconciliation when the state is already active. The current
+branch provides five user-facing commands:
 
 - **Dev: Open Sayloom**
 - **Dev: Send to Amp**

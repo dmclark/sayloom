@@ -13,7 +13,7 @@ with respect to schema and seed state.
 - `ADMIN.CONTROLLED`: the macOS restart workflow verifies, backs up, migrates/seeds, restarts, and
   health-checks only the state inferred from the current checkout. Checkout states use persistent
   independently allocated ports; activation moves the Raycast-targeted state to port 7523 and
-  repoints installed managed Raycast aliases to that checkout.
+  reconciles installed managed Raycast aliases with the commands available in that checkout.
 - `ADMIN.STATE-LIFECYCLE`: init creates a branch-named checkout state when missing; list, remove,
   and preview-first prune manage registered and stale external state without shared fallback.
 

@@ -376,9 +376,29 @@ def test_activate_swaps_the_raycast_port_and_repoints_installed_aliases(
     raycast_directory = tmp_path / "raycast-commands"
     raycast_directory.mkdir()
     old_checkout = tmp_path / "old-checkout" / "raycast"
-    for source in (REPOSITORY_ROOT / "raycast").glob("*.sh"):
-        if "# @raycast.schemaVersion" in source.read_text():
-            (raycast_directory / f"dev-{source.name}").symlink_to(old_checkout / source.name)
+    old_checkout.mkdir(parents=True)
+    command_names = sorted(
+        source.name
+        for source in (REPOSITORY_ROOT / "raycast").glob("*.sh")
+        if "# @raycast.schemaVersion" in source.read_text()
+    )
+    for name in command_names[:-1]:
+        (old_checkout / name).write_text(
+            "# @raycast.schemaVersion 1\n"
+            "# @raycast.packageName Sayloom Development\n"
+        )
+        (raycast_directory / f"dev-{name}").symlink_to(old_checkout / name)
+    stale = raycast_directory / "dev-removed-command.sh"
+    (old_checkout / "removed-command.sh").write_text(
+        "# @raycast.schemaVersion 1\n"
+        "# @raycast.packageName Sayloom Development\n"
+    )
+    stale.symlink_to(old_checkout / "removed-command.sh")
+    unrelated = raycast_directory / "dev-local-command.sh"
+    unrelated_source = tmp_path / "unrelated" / "raycast" / "local-command.sh"
+    unrelated_source.parent.mkdir(parents=True)
+    unrelated_source.write_text("# @raycast.schemaVersion 1\n")
+    unrelated.symlink_to(unrelated_source)
 
     selected = module.load_state(state_root, "selected")
     module.activate(state_root, selected, raycast_directory=raycast_directory)
@@ -387,9 +407,16 @@ def test_activate_swaps_the_raycast_port_and_repoints_installed_aliases(
     foreign = json.loads((state_root / "raycast-owner/state.json").read_text())
     assert foreign["port"] == selected_port
     assert [state.name for state in restarted] == ["selected"]
-    for alias in raycast_directory.iterdir():
-        source = REPOSITORY_ROOT / "raycast" / alias.name.removeprefix("dev-")
-        assert alias.resolve() == source.resolve()
+    assert not stale.exists(follow_symlinks=False)
+    assert unrelated.resolve() == unrelated_source
+    assert {alias.name for alias in raycast_directory.iterdir()} == {
+        *(f"dev-{name}" for name in command_names),
+        "dev-local-command.sh",
+    }
+    for name in command_names:
+        assert (raycast_directory / f"dev-{name}").resolve() == (
+            REPOSITORY_ROOT / "raycast" / name
+        ).resolve()
 
 
 def test_activate_rejects_alias_conflicts_before_changing_state(tmp_path: Path) -> None:
@@ -423,6 +450,41 @@ def test_activate_rejects_alias_conflicts_before_changing_state(tmp_path: Path) 
     assert conflict.read_text() == "unrelated command\n"
 
 
+def test_relink_reconciles_aliases_without_a_development_state(tmp_path: Path) -> None:
+    raycast_directory = tmp_path / "raycast-commands"
+    raycast_directory.mkdir()
+    old_checkout = tmp_path / "old-checkout" / "raycast"
+    old_checkout.mkdir(parents=True)
+    old_source = old_checkout / "open-sayloom.sh"
+    old_source.write_text(
+        "# @raycast.schemaVersion 1\n"
+        "# @raycast.packageName Sayloom Development\n"
+    )
+    (raycast_directory / "dev-open-sayloom.sh").symlink_to(old_source)
+
+    result = run_dev(
+        tmp_path / "states",
+        "relink",
+        "--directory",
+        str(raycast_directory),
+    )
+
+    assert result.returncode == 0
+    assert "updated 5, removed 0, active 5" in result.stdout
+    command_names = {
+        source.name
+        for source in (REPOSITORY_ROOT / "raycast").glob("*.sh")
+        if "# @raycast.schemaVersion" in source.read_text()
+    }
+    assert {alias.name for alias in raycast_directory.iterdir()} == {
+        f"dev-{name}" for name in command_names
+    }
+    for name in command_names:
+        assert (raycast_directory / f"dev-{name}").resolve() == (
+            REPOSITORY_ROOT / "raycast" / name
+        ).resolve()
+
+
 def test_help_lists_checkout_service_database_and_cleanup_commands() -> None:
     result = subprocess.run(
         [str(REPOSITORY_ROOT / "scripts/dev.py"), "--help"],
@@ -439,6 +501,7 @@ def test_help_lists_checkout_service_database_and_cleanup_commands() -> None:
         "initialize",
         "restart",
         "activate",
+        "relink",
         "list",
         "remove",
         "prune",

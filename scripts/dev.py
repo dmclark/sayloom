@@ -353,9 +353,9 @@ def restart(state: State, *, run_checks: bool = True) -> None:
     verify_service(state)
 
 
-def activate(root: Path, state: State, *, raycast_directory: Path = RAYCAST_DIRECTORY) -> None:
+def raycast_alias_plan(raycast_directory: Path) -> AliasPlan:
     try:
-        alias_plan = plan_install(
+        return plan_install(
             raycast_directory,
             repository_root(),
             repoint_managed=True,
@@ -363,6 +363,10 @@ def activate(root: Path, state: State, *, raycast_directory: Path = RAYCAST_DIRE
         )
     except ValueError as error:
         fail(str(error))
+
+
+def activate(root: Path, state: State, *, raycast_directory: Path = RAYCAST_DIRECTORY) -> None:
+    alias_plan = raycast_alias_plan(raycast_directory)
     previous_owners = [
         candidate
         for candidate in states_on_port(root, DEVELOPMENT_PORT)
@@ -417,8 +421,27 @@ def activate(root: Path, state: State, *, raycast_directory: Path = RAYCAST_DIRE
 
 def repoint_raycast_aliases(plan: AliasPlan) -> None:
     updated, _verified = apply_plan(plan)
-    if updated:
-        print(f"Repointed {updated} Raycast aliases to {repository_root()}")
+    removed = len(plan.removals)
+    if updated or removed:
+        print(
+            f"Reconciled Raycast aliases with {repository_root()}: "
+            f"updated {updated}, removed {removed}"
+        )
+
+
+def relink_raycast_aliases(raycast_directory: Path = RAYCAST_DIRECTORY) -> None:
+    plan = raycast_alias_plan(raycast_directory)
+    updated, _verified = apply_plan(plan)
+    active = sum(
+        destination.is_symlink() and destination.resolve() == source
+        for source, destination in plan.aliases
+    )
+    print(
+        f"Reconciled Raycast aliases with {repository_root()}: "
+        f"updated {updated}, removed {len(plan.removals)}, active {active}"
+    )
+    if plan.aliases and not active:
+        print("No development Raycast aliases are installed; run scripts/install-raycast.py")
 
 
 def remove_state(root: Path, state: State, *, confirmed: bool) -> None:
@@ -544,6 +567,10 @@ def command(arguments: argparse.Namespace) -> int:
         prune(root, apply=arguments.apply)
         return 0
 
+    if operation == "relink":
+        relink_raycast_aliases(arguments.directory)
+        return 0
+
     if operation == "remove" and arguments.all:
         matches = states_for_current_checkout(root)
         if not matches:
@@ -580,6 +607,7 @@ def parser() -> argparse.ArgumentParser:
   scripts/dev.py init            create its state, then migrate and seed
   scripts/dev.py restart         verify, back up, initialize, and restart
   scripts/dev.py activate        move this checkout to Raycast port 7523
+  scripts/dev.py relink          reconcile installed Raycast links only
   scripts/dev.py list            show every registered development state
   scripts/dev.py prune           preview stale-state cleanup
 
@@ -627,6 +655,13 @@ status and prune are read-only unless prune receives --apply.
         "activate", help=f"move this checkout to Raycast port {DEVELOPMENT_PORT}"
     )
     activate_parser.add_argument("--state", help=argparse.SUPPRESS)
+
+    relink_parser = subparsers.add_parser(
+        "relink", help="reconcile installed Raycast links with this checkout"
+    )
+    relink_parser.add_argument(
+        "--directory", type=Path, default=RAYCAST_DIRECTORY, help=argparse.SUPPRESS
+    )
 
     subparsers.add_parser("list", help="list every registered state")
 

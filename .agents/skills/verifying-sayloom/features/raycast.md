@@ -9,6 +9,10 @@ Amp, iTerm, Supacode, and VS Code without submitting it.
   `~/.config/raycast/scripts` by default, accepts an explicit directory, recovers broken managed
   aliases after a disposable checkout is removed, and refuses to replace existing files or
   unrelated links.
+- `RAYCAST.ACTIVATE`: activating a checkout repoints installed managed aliases and reconciles
+  additions and removals to the Raycast commands available in that branch.
+- `RAYCAST.RELINK`: `scripts/dev.py relink` performs the same installed-alias reconciliation
+  without requiring a development state, changing ports, or restarting a service.
 - `RAYCAST.OPEN`: Open Sayloom raises an existing matching development window or creates one only
   after development health and profile checks pass.
 - `RAYCAST.AMP`, `RAYCAST.SUPACODE`, `RAYCAST.VSCODE`: safe synthetic paste inserts without Return,
@@ -29,8 +33,9 @@ Amp, iTerm, Supacode, and VS Code without submitting it.
 Portable lane:
 
 - Run the installer twice, recover a broken managed alias, and prove a conflicting destination
-  leaves all broken managed aliases intact against a temporary directory; also run shell syntax
-  and `tests/test_raycast.py`. Record exactly which installation and command contracts those tests
+  leaves all broken managed aliases intact against a temporary directory. Prove activation adds
+  and removes managed aliases to match the selected branch. Also run shell syntax and
+  `tests/test_raycast.py`. Record exactly which installation and command contracts those tests
   exercise. This does not prove macOS interaction.
 
 macOS integration lane:
