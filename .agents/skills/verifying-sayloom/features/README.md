@@ -8,7 +8,8 @@ contracts, not implementation modules. The index and sibling feature files must 
 - Use a new run ID, synthetic text, disposable SQLite database, dynamic port, and fresh browser
   session.
 - Require the generated development-state identity and healthy schema before driving.
-- Never interact with the stable application or its resources.
+- Never interact with the stable application or its resources except for an explicitly authorized
+  target-command check constrained by the safety boundary in `../SKILL.md`.
 - Record every planned lane as `passed`, `skipped`, `unavailable`, or `configured in CI` using the
   definitions in `../SKILL.md`.
 - Capture each entry point separately. Preserve evidence while removing run-created state.

@@ -4,7 +4,8 @@ This repository is local-first and public-safe from its first commit.
 
 - Keep operating data, API keys, dictated or cleaned text, databases, and logs outside Git.
 - Never add real user content, credentials, private machine paths, or copied legacy implementation.
-- Never inspect, modify, start, stop, or otherwise interact with the existing stable application or any of its checkouts, services, ports, configuration, databases, logs, or integrations.
+- Never inspect, modify, start, stop, or otherwise interact with the existing stable application or any of its checkouts, services, ports, configuration, databases, logs, or integrations, except for the target-command boundary below.
+- For explicit target-command work, agents may read target status through the stable application's Targets surface or API, inspect the configured Raycast Script Commands directory, and use the Targets install, regenerate, or remove operations. This permits only the target-definition reads and target-local operation-error updates performed by those endpoints. Create only an absent expected target path; overwrite or remove only an artifact recognized as Sayloom-owned by its target ID and generated filename. Never execute target commands, alter collisions or unrelated entries, or access other stable application state. Obtain explicit approval immediately before each live mutation. `scripts/dev.py activate` repoints only the fixed development aliases; use Targets regeneration, not activation, to restore a managed target command.
 - Use neutral technical identifiers such as `local_text`; keep them decoupled from the display brand.
 - Normal application startup must not run database migrations.
 - For validated coding changes, use the controlled verify-then-restart workflow rather than hot reload.

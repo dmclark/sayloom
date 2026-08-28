@@ -11,7 +11,17 @@ Use this contract to make verification claims that another engineer can reproduc
 ## Safety boundary
 
 - Never inspect, start, stop, migrate, query, or drive the stable application, its checkout,
-  fixed ports, state, services, configuration, database, logs, or integrations.
+  fixed ports, state, services, configuration, database, logs, or integrations, except for the
+  explicit target-command boundary below.
+- For explicitly authorized target-command work, the macOS integration lane may read target status
+  through the stable application's Targets surface or API, inspect the configured Raycast Script
+  Commands directory, and use the Targets install, regenerate, or remove operations. This permits
+  only the target-definition reads and target-local operation-error updates performed by those
+  endpoints. Create only an absent expected target path; overwrite or remove only an artifact
+  recognized as Sayloom-owned by its target ID and generated filename. Never execute a target
+  command, alter a collision or unrelated entry, or access other stable application state. Obtain
+  explicit approval immediately before each live mutation. Activation repoints only the fixed
+  development aliases; Targets regeneration is the recovery path for a managed command.
 - Use synthetic text and a new disposable database and service for every live run. Unset
   `LOCAL_TEXT_*`, `GEMINI_API_KEY`, and `GOOGLE_API_KEY` unless a dedicated provider lane is
   intentionally being tested. Never print credential values.
@@ -65,7 +75,7 @@ Plan only applicable lanes, but report every planned lane explicitly.
 | Portable | Python, JavaScript, shell, API, and state logic | Run in this checkout with generated temporary paths and no credentials. Record commands and exit status. |
 | Isolated browser | Real user interaction, responsive layout, and accessibility tree | New temporary database, dynamic loopback port, health-checked supervised service, fresh browser session, synthetic text. Prove DOM/accessibility state and visible output. |
 | Database/migration | Schema lifecycle, persistence, import, and no-migration startup | New temporary SQLite database and synthetic import directory. Check state before and after every mutating command. |
-| macOS integration | launchd, Raycast, Chrome, iTerm, clipboard, and destination-app behavior | Dedicated verification host/profile only, with no stable app present. If this orb is Linux or the apps are absent, use `unavailable`; tests alone stay in Portable. |
+| macOS integration | launchd, Raycast, Chrome, iTerm, clipboard, and destination-app behavior | Dedicated verification host/profile with no stable app present, except for an explicitly authorized target-command check constrained by the safety boundary. If this orb is Linux or the apps are absent, use `unavailable`; tests alone stay in Portable. |
 | Provider | Successful Gemini cleanup, timeout, and provider failure | Dedicated test credential plus isolated browser service and synthetic input. Missing credential is `unavailable`, not `skipped` or `passed`. Mock-provider tests stay in Portable. |
 | CI | Checks delegated to automation | Use `configured in CI` only after reading the tracked workflow and citing its job. No workflow means the lane is `unavailable` if required. |
 

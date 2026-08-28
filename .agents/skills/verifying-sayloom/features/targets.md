@@ -55,15 +55,22 @@ macOS integration lane:
   four initial targets verify application absent/present, relevant permission absent/present,
   UTF-8/multiline insertion, no Return/submission, clipboard restoration where applicable,
   regeneration, disable, remove, and Raycast hotkey retention behavior.
+- An explicitly authorized local check may instead read stable target status and use its Install,
+  Regenerate, or Remove operation while inspecting only expected managed target paths under the
+  configured Raycast Script Commands directory. Create an absent path, but overwrite or remove only
+  an artifact recognized as Sayloom-owned; leave collisions and unrelated entries untouched.
+  Obtain approval immediately before each mutation.
 
 ## Gotchas
 
 - Linux/orb generation and adapter success is Portable only. Raycast, destination applications,
   clipboard behavior, application availability, permissions, and hotkey retention remain macOS
   integration checks.
-- Never point the disposable command directory at a stable Raycast scripts directory and never use
-  an existing database, fixed service, predecessor checkout, predecessor command package, or real
-  outgoing text.
+- Never point a disposable check at a stable Raycast scripts directory. The explicitly authorized
+  local target-command check is separate and may use the stable Targets status and operations only
+  within the safety boundary; never directly access its database or use a predecessor checkout,
+  predecessor command package, or real outgoing text. Activation repoints fixed development
+  aliases but does not restore managed target commands; regenerate them through Targets.
 - Save and preview state do not prove installation; installation does not prove application or
   permission readiness; command invocation cannot claim successful insertion when the adapter
   cannot report it.
