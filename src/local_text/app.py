@@ -457,6 +457,15 @@ def create_app(
         require_configuration()
         return {"targets": [target_response(target) for target in targets.list()]}
 
+    @application.get("/api/target-applications")
+    def discover_target_applications() -> dict[str, object]:
+        require_configuration()
+        return {
+            "applications": [
+                asdict(application) for application in adapter.discover_applications()
+            ]
+        }
+
     @application.post("/api/targets", status_code=status.HTTP_201_CREATED)
     def create_target(definition: TargetDefinition) -> dict[str, object]:
         require_configuration()

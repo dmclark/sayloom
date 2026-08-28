@@ -52,6 +52,8 @@
     targetPrimaryState: document.querySelector("#target-primary-state"),
     targetSaveState: document.querySelector("#target-save-state"),
     targetPreset: document.querySelector("#target-preset"),
+    targetDiscoveredApplications: document.querySelector("#target-discovered-applications"),
+    targetDiscoveryState: document.querySelector("#target-discovery-state"),
     targetDisplayName: document.querySelector("#target-display-name"),
     targetApplicationName: document.querySelector("#target-application-name"),
     targetBundleId: document.querySelector("#target-bundle-id"),
@@ -99,6 +101,7 @@
   let targetDirty = false;
   let targetDraftIsNew = false;
   let targetLocalError = null;
+  let discoveredTargetApplications = new Map();
   const errors = { cleanup: null, publication: null };
 
   const targetPresets = {
@@ -754,6 +757,36 @@
       .replace(/^./, (letter) => letter.toUpperCase());
   }
 
+  function targetStateLabel(value) {
+    const labels = {
+      not_installed: "Raycast command not installed",
+      installed: "Raycast command installed",
+      needs_update: "Raycast command needs update",
+      collision: "Raycast command path blocked",
+      disabled: "Disabled",
+    };
+    return labels[value] || titleCaseState(value);
+  }
+
+  function ensureTargetDiscoveryControls() {
+    if (!elements.targetDiscoveredApplications) {
+      const applications = document.createElement("optgroup");
+      applications.id = "target-discovered-applications";
+      applications.label = "Installed applications";
+      elements.targetPreset.insertBefore(applications, elements.targetPreset.children[1] || null);
+      elements.targetDiscoveredApplications = applications;
+    }
+    if (!elements.targetDiscoveryState) {
+      const state = document.createElement("p");
+      state.id = "target-discovery-state";
+      state.className = "field-help";
+      state.setAttribute("role", "status");
+      state.setAttribute("aria-live", "polite");
+      elements.targetPreset.parentElement.after(state);
+      elements.targetDiscoveryState = state;
+    }
+  }
+
   function targetDefinitionFromForm() {
     return {
       display_name: elements.targetDisplayName.value,
@@ -800,9 +833,9 @@
       row.type = "button";
       row.className = "target-row";
       row.dataset.targetId = target.id;
-      row.setAttribute("aria-label", `Edit ${target.display_name}, ${titleCaseState(target.state)}`);
+      row.setAttribute("aria-label", `Edit ${target.display_name}, ${targetStateLabel(target.state)}`);
       identity.textContent = `${target.icon} ${target.display_name}`;
-      state.textContent = `${target.application_name} · ${titleCaseState(target.state)}`;
+      state.textContent = `${target.application_name} · ${targetStateLabel(target.state)}`;
       row.append(identity, state);
       row.addEventListener("click", () => selectTarget(target.id));
       item.append(row);
@@ -822,9 +855,14 @@
     elements.targetIcon.value = target?.icon || "🧵";
     elements.targetStrategy.value = target?.send_strategy || "synthetic_paste";
     elements.targetPreset.value = "manual";
+    ensureTargetDiscoveryControls();
+    elements.targetDiscoveryState.textContent =
+      "Choose an installed application, a common preset, or enter one manually.";
     elements.targetPreview.value = target?.preview || "Save definition to generate a command preview.";
-    elements.targetPrimaryState.textContent = titleCaseState(target?.state || "not_installed");
-    elements.targetInstallationState.textContent = titleCaseState(target?.installation || "not_installed");
+    elements.targetPrimaryState.textContent = targetStateLabel(target?.state || "not_installed");
+    elements.targetInstallationState.textContent = targetStateLabel(
+      target?.installation || "not_installed",
+    );
     elements.targetAvailability.textContent = titleCaseState(target?.availability || "not_verified");
     elements.targetPermission.textContent = titleCaseState(target?.permission || "not_verified");
     elements.targetReadinessAction.textContent = target
@@ -843,7 +881,10 @@
     elements.targetSaveState.textContent = target ? "Saved" : "Not saved";
     renderTargetErrors(target);
     renderTargetList();
-    if (!elements.targetDialog.open) elements.targetDialog.showModal();
+    if (!elements.targetDialog.open) {
+      elements.targetDialog.showModal();
+      elements.targetDialog.scrollTop = 0;
+    }
   }
 
   function confirmDiscardTargetDraft() {
@@ -868,6 +909,35 @@
       || null;
     renderTargetList();
     if (selected) populateTargetForm(selected);
+  }
+
+  async function discoverTargetApplications() {
+    discoveredTargetApplications = new Map();
+    ensureTargetDiscoveryControls();
+    elements.targetDiscoveredApplications.textContent = "";
+    elements.targetDiscoveryState.textContent = "Looking for installed applications…";
+    try {
+      const response = await fetch("/api/target-applications");
+      if (!response.ok) throw await safeHttpError(response, "Application discovery");
+      const result = await readJson(response, "Application discovery");
+      if (!result || !Array.isArray(result.applications)) {
+        throw malformedResponseError("Application discovery", response.status);
+      }
+      result.applications.forEach((application) => {
+        const value = `application:${application.application_bundle_id}`;
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = `${application.display_name} — ${application.application_bundle_id}`;
+        discoveredTargetApplications.set(value, application);
+        elements.targetDiscoveredApplications.append(option);
+      });
+      elements.targetDiscoveryState.textContent = result.applications.length
+        ? `${result.applications.length} installed application${result.applications.length === 1 ? "" : "s"} found.`
+        : "No installed applications discovered. Choose a preset or enter an application manually.";
+    } catch (_error) {
+      elements.targetDiscoveryState.textContent =
+        "Application discovery is unavailable. Choose a preset or enter an application manually.";
+    }
   }
 
   async function targetRequest(operation, url, options = {}) {
@@ -919,7 +989,9 @@
   });
   elements.navTargets.addEventListener("click", () => showDestination("targets"));
   elements.newTarget.addEventListener("click", () => {
-    if (confirmDiscardTargetDraft()) populateTargetForm(null);
+    if (!confirmDiscardTargetDraft()) return;
+    populateTargetForm(null);
+    discoverTargetApplications();
   });
   elements.targetListBack.addEventListener("click", () => {
     if (!confirmDiscardTargetDraft()) return;
@@ -938,7 +1010,15 @@
     elements.targetDialog.close();
   });
   elements.targetPreset.addEventListener("change", () => {
-    const preset = targetPresets[elements.targetPreset.value];
+    const discovered = discoveredTargetApplications.get(elements.targetPreset.value);
+    const preset = discovered
+      ? [
+          discovered.display_name,
+          discovered.application_name,
+          discovered.application_bundle_id,
+          discovered.send_strategy,
+        ]
+      : targetPresets[elements.targetPreset.value];
     if (!preset) return;
     [
       elements.targetDisplayName.value,

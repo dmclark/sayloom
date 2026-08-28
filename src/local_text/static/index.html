@@ -168,15 +168,19 @@
                   <h3 id="definition-title">Authored definition</h3>
                   <span id="target-save-state" role="status" aria-live="polite">Saved</span>
                 </div>
-                <label>Common preset
+                <label>Start from
                   <select id="target-preset">
                     <option value="manual">Manual</option>
-                    <option value="amp">Amp</option>
-                    <option value="iterm">iTerm</option>
-                    <option value="supacode">Supacode</option>
-                    <option value="vs-code">VS Code</option>
+                    <optgroup id="target-discovered-applications" label="Installed applications"></optgroup>
+                    <optgroup label="Common presets">
+                      <option value="amp">Amp</option>
+                      <option value="iterm">iTerm</option>
+                      <option value="supacode">Supacode</option>
+                      <option value="vs-code">VS Code</option>
+                    </optgroup>
                   </select>
                 </label>
+                <p id="target-discovery-state" class="field-help" role="status" aria-live="polite">Choose a preset or enter an application manually.</p>
                 <div class="target-field-grid">
                   <label>Display name
                     <input id="target-display-name" required maxlength="80">
@@ -185,7 +189,7 @@
                     <input id="target-application-name" required maxlength="80">
                   </label>
                   <label>Application bundle identifier
-                    <input id="target-bundle-id" required maxlength="255" pattern="[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z0-9.-]+">
+                    <input id="target-bundle-id" required maxlength="255" pattern="[A-Za-z0-9][A-Za-z0-9.\-]*\.[A-Za-z0-9.\-]+">
                   </label>
                   <label>Icon
                     <input id="target-icon" required maxlength="16" value="🧵">

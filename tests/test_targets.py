@@ -1,3 +1,4 @@
+import plistlib
 import sqlite3
 import subprocess
 from dataclasses import replace
@@ -28,6 +29,28 @@ def definition(**changes: object) -> TargetDefinition:
     }
     values.update(changes)
     return TargetDefinition(**values)
+
+
+def write_application(
+    root: Path,
+    name: str,
+    bundle_id: str,
+    *,
+    display_name: str | None = None,
+) -> Path:
+    bundle = root / f"{name}.app"
+    contents = bundle / "Contents"
+    contents.mkdir(parents=True)
+    with (contents / "Info.plist").open("wb") as stream:
+        plistlib.dump(
+            {
+                "CFBundleIdentifier": bundle_id,
+                "CFBundleName": name,
+                "CFBundleDisplayName": display_name or name,
+            },
+            stream,
+        )
+    return bundle
 
 
 def test_target_definition_is_bounded_and_rejects_command_metadata_injection() -> None:
@@ -104,6 +127,73 @@ def test_adapter_refuses_unrelated_links_without_mutation(tmp_path: Path) -> Non
     assert destination.is_symlink()
     assert destination.resolve() == unrelated
     assert unrelated.read_text() == "unrelated\n"
+
+
+def test_adapter_discovers_valid_applications_without_following_links(tmp_path: Path) -> None:
+    applications = tmp_path / "Applications"
+    utilities = applications / "Utilities"
+    write_application(applications, "Synthetic Editor", "example.synthetic.editor")
+    write_application(
+        utilities,
+        "iTerm",
+        "com.googlecode.iterm2",
+        display_name="Synthetic iTerm",
+    )
+    write_application(utilities, "Duplicate", "example.synthetic.editor")
+    malformed = applications / "Malformed.app/Contents"
+    malformed.mkdir(parents=True)
+    (malformed / "Info.plist").write_text("not a plist")
+    linked = applications / "Linked.app"
+    linked.symlink_to(applications / "Synthetic Editor.app")
+    external = tmp_path / "External"
+    write_application(external, "External", "example.external")
+    (applications / "Linked Folder").symlink_to(external)
+
+    discovered = TargetAdapter(
+        tmp_path / "commands",
+        application_directories=(applications,),
+    ).discover_applications()
+
+    assert [application.display_name for application in discovered] == [
+        "Synthetic Editor",
+        "Synthetic iTerm",
+    ]
+    assert [application.application_bundle_id for application in discovered] == [
+        "example.synthetic.editor",
+        "com.googlecode.iterm2",
+    ]
+    assert discovered[0].send_strategy is SendStrategy.SYNTHETIC_PASTE
+    assert discovered[1].send_strategy is SendStrategy.ITERM_WRITE
+
+
+def test_application_discovery_api_supports_empty_and_discovered_results(
+    initialized_settings, tmp_path: Path
+) -> None:
+    empty_adapter = TargetAdapter(
+        tmp_path / "empty-commands",
+        application_directories=(),
+    )
+    empty_client = TestClient(create_app(initialized_settings, target_adapter=empty_adapter))
+    assert empty_client.get("/api/target-applications").json() == {"applications": []}
+
+    applications = tmp_path / "Applications"
+    write_application(applications, "Synthetic Editor", "example.synthetic.editor")
+    adapter = TargetAdapter(
+        tmp_path / "commands",
+        application_directories=(applications,),
+    )
+    client = TestClient(create_app(initialized_settings, target_adapter=adapter))
+
+    assert client.get("/api/target-applications").json() == {
+        "applications": [
+            {
+                "display_name": "Synthetic Editor",
+                "application_name": "Synthetic Editor",
+                "application_bundle_id": "example.synthetic.editor",
+                "send_strategy": "synthetic_paste",
+            }
+        ]
+    }
 
 
 def test_seed_creates_only_the_four_approved_managed_targets(
@@ -218,6 +308,9 @@ def test_targets_surface_has_accessible_grid_and_modal_editor(
     assert '<form id="target-detail"' in page
     assert 'id="save-target"' in page
     assert 'id="install-target"' in page
+    assert 'id="target-discovered-applications" label="Installed applications"' in page
+    assert 'id="target-discovery-state"' in page
+    assert r'pattern="[A-Za-z0-9][A-Za-z0-9.\-]*\.[A-Za-z0-9.\-]+"' in page
     assert "Saving changes only the durable definition" in page
     assert "Raycast and you own its hotkey" in page
     assert page.count("Outgoing is unchanged") >= 1
@@ -226,8 +319,13 @@ def test_targets_surface_has_accessible_grid_and_modal_editor(
     assert 'window.confirm("Discard unsaved target definition changes?")' in script
     assert 'window.addEventListener("beforeunload"' in script
     assert "elements.targetDialog.showModal()" in script
+    assert "elements.targetDialog.scrollTop = 0" in script
     assert 'elements.targetDialog.addEventListener("cancel"' in script
     assert '!target || target.installation === "not_installed"' in script
+    assert 'not_installed: "Raycast command not installed"' in script
+    assert 'fetch("/api/target-applications")' in script
+    assert "function ensureTargetDiscoveryControls()" in script
+    assert 'applications.label = "Installed applications"' in script
     assert "grid-template-columns: repeat(auto-fill, minmax(210px, 1fr))" in stylesheet
     assert ".target-dialog::backdrop" in stylesheet
     narrow = stylesheet.split("@media (max-width: 760px)", maxsplit=1)[1]
