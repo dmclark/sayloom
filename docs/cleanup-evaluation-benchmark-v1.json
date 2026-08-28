@@ -1,0 +1,208 @@
+{
+  "protocol_id": "cleanup-evaluation-benchmark-v1",
+  "status": "preregistered_before_candidate_results",
+  "purpose": "polished_cleanup_evaluation_only",
+  "corpus_contract_version": "cleanup-evaluation-corpus-v1",
+  "execution": {
+    "environment": "isolated_non_shadow_pilot",
+    "executions_per_case_per_arm": 1,
+    "shadow_traffic": false,
+    "write_candidate_outputs_back_to_corpus": false,
+    "requires_dedicated_paid_credentials": true,
+    "requires_synthetic_provider_smoke_before_private_corpus": true,
+    "same_prompt_snapshot_for_all_single_model_arms": true,
+    "randomize_arm_order_per_case": true,
+    "blind_review_labels": [
+      "output_a",
+      "output_b"
+    ],
+    "private_run_manifest_frozen_before_execution": true,
+    "private_run_manifest_requires": [
+      "protocol_sha256",
+      "corpus_snapshot_sha256",
+      "case_ids_revisions_and_record_sha256",
+      "prompt_ids_text_and_sha256",
+      "annotation_snapshot_sha256",
+      "exact_provider_model_ids",
+      "provider_reported_model_versions_when_available",
+      "route_order_and_budgets",
+      "scoring_code_commit",
+      "review_rubric_sha256",
+      "pricing_snapshot_ids",
+      "bootstrap_seed"
+    ]
+  },
+  "arms": [
+    {
+      "id": "baseline_gemini",
+      "kind": "single_model_quality",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash"
+    },
+    {
+      "id": "candidate_openai",
+      "kind": "single_model_quality",
+      "provider": "openai",
+      "model": "gpt-5.6-luna"
+    },
+    {
+      "id": "candidate_route",
+      "kind": "routing_reliability_latency_cost",
+      "routes": [
+        {
+          "provider": "gemini",
+          "model": "gemini-3.7-flash",
+          "attempt_budget_seconds": 12
+        },
+        {
+          "provider": "openai",
+          "model": "gpt-5.6-luna",
+          "attempt_budget_seconds": 8
+        }
+      ],
+      "maximum_provider_calls_per_execution": 2,
+      "total_budget_seconds": 20,
+      "minimum_remaining_to_start_seconds": 0.5
+    }
+  ],
+  "sample": {
+    "feasibility_cases": 60,
+    "maximum_cases": 300,
+    "expansion_rule": "expand_only_to_fill_preregistered_strata_or_narrow_existing_confidence_intervals",
+    "minimum_cases_per_critical_tag_at_expansion": 30,
+    "minimum_must_preserve_cases_at_expansion": 50,
+    "case_exclusions_after_results": "none_except_predeclared_invalid_or_withdrawn_cases_reported_with_reason"
+  },
+  "strata": {
+    "length_words": {
+      "short": "0-20",
+      "medium": "21-80",
+      "long": "81+"
+    },
+    "source": [
+      "dictation",
+      "typed",
+      "pasted",
+      "unknown"
+    ],
+    "transformation_need": [
+      "unchanged",
+      "punctuation_casing",
+      "grammar",
+      "disfluency_removal",
+      "recognition_like_term_correction",
+      "mixed"
+    ],
+    "must_preserve": [
+      "names_terms",
+      "numbers_dates",
+      "negation_modality",
+      "links_code_identifiers",
+      "quotations",
+      "line_paragraph_structure",
+      "already_correct_text"
+    ],
+    "risk_challenge": [
+      "ambiguous_wording",
+      "multilingual_code_switching",
+      "safety_sensitive_surface_text",
+      "near_product_length_limit",
+      "prior_provider_failure"
+    ]
+  },
+  "metrics": {
+    "correction_effort": {
+      "definition": "unicode_code_point_levenshtein_distance_from_output_to_expected_divided_by_max_expected_code_points_1",
+      "aggregation": "paired_case_mean"
+    },
+    "must_preserve_accuracy": {
+      "definition": "exact_preservation_of_preregistered_annotated_spans",
+      "aggregation": "micro_average_with_names_terms_numbers_dates_and_negation_modality_also_reported_separately"
+    },
+    "harmful_change": {
+      "categories": [
+        "meaning",
+        "invented_content",
+        "qualification_or_negation",
+        "identifier_number_or_name",
+        "damaging_formatting"
+      ],
+      "review": "blinded_human_review_of_every_harmful_change"
+    },
+    "secondary": [
+      "exact_match",
+      "normalized_character_edit_distance",
+      "normalized_word_edit_distance",
+      "blinded_preference",
+      "success_rate",
+      "safety_refusal_rate",
+      "timeout_rate",
+      "transient_failure_rate",
+      "permanent_failure_rate",
+      "fallback_rate",
+      "end_to_end_latency_p50_p95",
+      "attempt_latency_p50_p95",
+      "input_output_tokens",
+      "estimated_cost",
+      "provider_call_count"
+    ]
+  },
+  "statistics": {
+    "confidence_level": 0.95,
+    "bootstrap": "paired_case_percentile",
+    "resamples": 10000,
+    "seed": "fixed_in_private_run_manifest_before_execution",
+    "report_per_case_results": true,
+    "report_stratum_overlaps": true
+  },
+  "decision_gates": {
+    "non_inferiority": {
+      "correction_effort_relative_increase_max": 0.05,
+      "correction_effort_zero_baseline_rule": "candidate_mean_must_equal_zero",
+      "must_preserve_accuracy_absolute_drop_max": 0.01,
+      "p95_latency_increase_max": "max(20_percent_of_baseline_p95,1_second)",
+      "require_upper_95_percent_confidence_bound_inside_every_margin": true
+    },
+    "required_benefit_point_estimate_any": {
+      "correction_effort_relative_decrease_min": 0.1,
+      "successful_cleanup_rate_absolute_increase_min": 0.02
+    },
+    "harmful_change": {
+      "feasibility_severe_count_max": 0,
+      "expanded_set": "no_statistically_credible_increase_over_baseline_and_no_unresolved_severe_case"
+    },
+    "route_arm_scope": "availability_latency_cost_only_not_single_model_quality"
+  },
+  "canary_after_benchmark_approval": {
+    "stages": [
+      {
+        "cleanups": 10,
+        "candidate": "manual_choice",
+        "baseline": "manual_choice",
+        "automatic_fallback": false
+      },
+      {
+        "cleanups": 25,
+        "candidate": "pilot_primary",
+        "baseline": "manual_rerun",
+        "automatic_fallback": false
+      },
+      {
+        "cleanups": 100,
+        "candidate": "candidate_route",
+        "reviews_after": [
+          10,
+          25,
+          100
+        ]
+      }
+    ],
+    "stop_on": [
+      "one_severe_harmful_change",
+      "disclosure_or_storage_violation",
+      "more_than_two_consecutive_total_failures",
+      "budget_or_cost_breach"
+    ],
+    "stable_primary_switch_requires_separate_review": true
+  }
+}
