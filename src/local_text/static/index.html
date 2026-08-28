@@ -24,7 +24,7 @@
     </header>
 
     <main>
-      <section class="control-rail" aria-label="Cleanup controls">
+      <section id="workspace-controls" class="control-rail" aria-label="Cleanup controls">
         <label class="switch-control" for="cleanup-enabled">
           <input id="cleanup-enabled" type="checkbox" checked>
           <span class="switch-track" aria-hidden="true"><span></span></span>
@@ -41,10 +41,14 @@
 
       <div class="workspace-shell">
         <nav class="utility-rail" aria-label="Workspace sections">
-          <span class="utility-rail-item is-active" aria-current="page">
+          <button id="nav-workspace" class="utility-rail-item is-active" type="button" aria-current="page">
             <span class="utility-rail-index" aria-hidden="true">01</span>
             <span>Workspace</span>
-          </span>
+          </button>
+          <button id="nav-targets" class="utility-rail-item" type="button">
+            <span class="utility-rail-index" aria-hidden="true">02</span>
+            <span>Targets</span>
+          </button>
         </nav>
 
         <section class="workspace" aria-label="Text cleanup workspace">
@@ -127,9 +131,114 @@
             </footer>
           </article>
         </section>
+
+        <section id="targets-manager" class="targets-manager" aria-labelledby="targets-title" hidden>
+          <div class="target-grid-sheet">
+            <header class="setup-heading">
+              <div>
+                <span class="eyebrow">Local delivery</span>
+                <h2 id="targets-title">Targets</h2>
+              </div>
+            </header>
+            <p class="setup-intro">Each target has one Raycast command. Raycast and you own its hotkey.</p>
+            <div id="target-list" class="target-grid" role="list" aria-label="Saved targets">
+              <div id="target-add-item" class="target-grid-item" role="listitem">
+                <button id="new-target" class="target-add-tile" type="button">
+                  <span aria-hidden="true">+</span>
+                  <strong>Add target</strong>
+                  <small>Choose a common preset or configure one manually.</small>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <dialog id="target-dialog" class="target-dialog" aria-labelledby="target-detail-title">
+            <form id="target-detail" class="target-detail-sheet">
+              <header class="setup-heading target-detail-heading">
+                <div>
+                  <span class="eyebrow">Target</span>
+                  <h2 id="target-detail-title">Target definition</h2>
+                </div>
+                <strong id="target-primary-state" class="target-state">Not installed</strong>
+                <button id="target-list-back" class="dialog-close" type="button" aria-label="Close target editor">×</button>
+              </header>
+
+              <section class="target-section" aria-labelledby="definition-title">
+                <div class="target-section-heading">
+                  <h3 id="definition-title">Authored definition</h3>
+                  <span id="target-save-state" role="status" aria-live="polite">Saved</span>
+                </div>
+                <label>Common preset
+                  <select id="target-preset">
+                    <option value="manual">Manual</option>
+                    <option value="amp">Amp</option>
+                    <option value="iterm">iTerm</option>
+                    <option value="supacode">Supacode</option>
+                    <option value="vs-code">VS Code</option>
+                  </select>
+                </label>
+                <div class="target-field-grid">
+                  <label>Display name
+                    <input id="target-display-name" required maxlength="80">
+                  </label>
+                  <label>Application name
+                    <input id="target-application-name" required maxlength="80">
+                  </label>
+                  <label>Application bundle identifier
+                    <input id="target-bundle-id" required maxlength="255" pattern="[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z0-9.-]+">
+                  </label>
+                  <label>Icon
+                    <input id="target-icon" required maxlength="16" value="🧵">
+                  </label>
+                  <label>Send strategy
+                    <select id="target-strategy">
+                      <option value="synthetic_paste">Synthetic paste with clipboard restoration</option>
+                      <option value="iterm_write">iTerm direct multiline write</option>
+                    </select>
+                  </label>
+                </div>
+                <p class="field-help">Saving changes only the durable definition. It never changes a Raycast command.</p>
+                <button id="save-target" class="button button-primary" type="submit">Save definition</button>
+              </section>
+
+              <section class="target-section" aria-labelledby="command-title">
+              <div class="target-section-heading">
+                <h3 id="command-title">Generated command</h3>
+                <span id="target-installation-state">Not installed</span>
+              </div>
+              <label for="target-preview">Deterministic preview</label>
+              <textarea id="target-preview" class="command-preview" readonly aria-label="Generated Raycast command preview"></textarea>
+              <p class="field-help">Install uses this exact saved generation. Existing fixed Dev commands remain unchanged.</p>
+              <button id="install-target" class="button" type="button">Install command</button>
+              </section>
+
+              <section class="target-section" aria-labelledby="readiness-title">
+              <h3 id="readiness-title">Application and macOS readiness</h3>
+              <dl class="readiness-ledger">
+                <dt>Application availability</dt><dd id="target-availability">Not verified</dd>
+                <dt>Automation permission</dt><dd id="target-permission">Not verified</dd>
+              </dl>
+              <p id="target-readiness-action" class="field-help"></p>
+              <button id="check-target" class="button button-quiet" type="button">Check again</button>
+              </section>
+
+              <section id="target-errors" class="target-errors" aria-label="Target operation errors" aria-live="polite"></section>
+
+              <section class="target-section danger-zone" aria-labelledby="lifecycle-title">
+              <h3 id="lifecycle-title">Lifecycle</h3>
+              <p id="disable-consequence">Disable removes the recognized Sayloom-owned command and retains this definition. Outgoing is unchanged.</p>
+              <div class="target-lifecycle-actions">
+                <button id="toggle-target-enabled" class="button" type="button">Disable target</button>
+                <button id="remove-target" class="button button-danger" type="button">Remove target</button>
+              </div>
+              <p class="field-help">Remove deletes the definition and its recognized Sayloom-owned command. It never clears Outgoing.</p>
+              </section>
+            </form>
+          </dialog>
+        </section>
       </div>
 
-      <section class="outgoing-region" aria-label="Outgoing text state">
+      <section id="workspace-outgoing" class="outgoing-region" aria-label="Outgoing text state">
         <div class="outgoing-strip">
           <div class="outgoing-summary">
             <span class="outgoing-label">Outgoing</span>

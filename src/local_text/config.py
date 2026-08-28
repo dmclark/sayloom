@@ -26,6 +26,7 @@ class Settings:
     paid_data_acknowledgement: str | None = None
     cleanup_timeout_seconds: float = 30.0
     database_path: Path | None = None
+    raycast_directory: Path | None = None
 
     @property
     def display_name(self) -> str:
@@ -47,6 +48,12 @@ class Settings:
             / self.profile
             / "local-text.sqlite3"
         )
+
+    @property
+    def resolved_raycast_directory(self) -> Path:
+        if self.raycast_directory is not None:
+            return self.raycast_directory
+        return Path.home() / ".config/raycast/scripts"
 
 
 def load_settings() -> Settings:
@@ -74,5 +81,8 @@ def load_settings() -> Settings:
         cleanup_timeout_seconds=float(os.getenv("LOCAL_TEXT_CLEANUP_TIMEOUT_SECONDS", "30")),
         database_path=Path(
             os.getenv("LOCAL_TEXT_DATABASE_PATH", state_directory / "local-text.sqlite3")
+        ),
+        raycast_directory=(
+            Path(value) if (value := os.getenv("LOCAL_TEXT_RAYCAST_DIRECTORY")) else None
         ),
     )

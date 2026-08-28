@@ -11,7 +11,7 @@ from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.engine import URL
 from sqlalchemy.orm import Session, sessionmaker
 
-SCHEMA_REVISION = "0001_gate2_prompt_core"
+SCHEMA_REVISION = "0002_target_management"
 
 
 class SchemaState(StrEnum):

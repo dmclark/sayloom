@@ -201,10 +201,10 @@ stack into one column and actions wrap below them.
 
 Cleanup uses persistent Prompts and Vocabulary tabs inside the setup area. Each
 tab uses a master list with a selected detail sheet; do not nest independent
-cards inside that sheet. Targets uses the same master-detail proportion and
-control rhythm. On narrow screens, the rail becomes horizontal and each
-master-detail view becomes list-to-detail navigation rather than squeezed
-columns.
+cards inside that sheet. Targets instead uses a responsive overview grid; each
+target tile opens one focused editor dialog using the same section and control
+rhythm. On narrow screens, the rail becomes horizontal, cleanup master-detail
+views become sequential, and the Targets grid becomes one column.
 
 Spacing follows a 4px base with recurring 8px control gaps, 12–20px compact
 groups, 24–32px sheet padding, and 64px frame-scale separation. More space
@@ -279,7 +279,7 @@ between 120ms and 180ms. The incumbent page-entry settle may remain, but new
 surfaces must not add staged entrance choreography. Reduced-motion preferences
 collapse motion to effectively instant state changes.
 
-### Tabs and master-detail setup
+### Tabs and setup management
 
 Cleanup tabs are text-led and ruled, not pill tabs. The selected tab uses blue
 type or a blue underline plus explicit selected semantics. Lists use full-width
@@ -288,11 +288,12 @@ detail side is one continuous sheet with section headings, fields, and a fixed
 save/status row. Prompts and Vocabulary share this shell without merging their
 different data models.
 
-Targets uses the same list/detail shell. Each row pairs a target identity with
-one written installation or permission state. Definition, generated command
-preview, and observed installation state are separate ruled sections. Save,
-install/regenerate, disable, and remove must remain visually and behaviorally
-distinct.
+Targets uses a responsive grid of full target tiles plus an Add target tile.
+Each tile pairs target identity with one written installation or permission
+state and opens a modal editor. Inside that editor, definition, generated
+command preview, and observed installation state are separate ruled sections.
+Save, install/regenerate, disable, and remove must remain visually and
+behaviorally distinct.
 
 ### Outgoing selector and state
 

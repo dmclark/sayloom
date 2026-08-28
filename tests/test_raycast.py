@@ -232,6 +232,7 @@ def run_fetch(base_url: str) -> subprocess.CompletedProcess[bytes]:
     )
 
 
+@pytest.mark.skipif(not Path("/usr/bin/plutil").exists(), reason="requires macOS plutil")
 def test_raycast_fetch_preserves_multiline_outgoing_text() -> None:
     with OutgoingStateServer({"outgoing_text": "synthetic line one\nsynthetic line two"}) as url:
         result = run_fetch(url)
@@ -240,6 +241,7 @@ def test_raycast_fetch_preserves_multiline_outgoing_text() -> None:
     assert result.stdout == b"synthetic line one\nsynthetic line two"
 
 
+@pytest.mark.skipif(not Path("/usr/bin/plutil").exists(), reason="requires macOS plutil")
 def test_raycast_fetch_preserves_utf8_outgoing_text() -> None:
     outgoing = "Synthetic\u00a0text — ‘quoted’ café"
     with OutgoingStateServer({"outgoing_text": outgoing}) as url:
@@ -251,6 +253,7 @@ def test_raycast_fetch_preserves_utf8_outgoing_text() -> None:
     assert "LC_ALL=en_US.UTF-8 /usr/bin/pbpaste" in (RAYCAST_DIRECTORY / "lib.sh").read_text()
 
 
+@pytest.mark.skipif(not Path("/usr/bin/plutil").exists(), reason="requires macOS plutil")
 def test_raycast_fetch_refuses_empty_or_malformed_state() -> None:
     with OutgoingStateServer({"outgoing_text": "  \n"}) as url:
         empty = run_fetch(url)

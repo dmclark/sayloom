@@ -22,6 +22,7 @@ contracts, not implementation modules. The index and sibling feature files must 
 | `PROMPTS` | [Prompt selection and cleanup preference](prompts-preference.md) | Portable, Isolated browser, Database/migration |
 | `ADMIN` | [Schema, migration, seed, and import lifecycle](admin-lifecycle.md) | Portable, Database/migration, macOS integration |
 | `RAYCAST` | [Raycast publication destinations](raycast.md) | Portable, macOS integration |
+| `TARGETS` | [Target definition and command management](targets.md) | Portable, Isolated browser, Database/migration, macOS integration |
 
 ## Feature-file contract
 

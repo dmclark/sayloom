@@ -14,6 +14,7 @@ from local_text.config import Settings, load_settings
 from local_text.database import ApplicationDatabase
 from local_text.legacy_import import LegacyImportError, preview_legacy_configuration
 from local_text.prompt_store import PromptStore
+from local_text.target_store import TargetStore
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -55,8 +56,9 @@ def _run(args: argparse.Namespace) -> int:
 
     if args.command == "seed":
         database.assert_ready()
-        created = PromptStore(database).seed_default()
-        _print({"seeded": created})
+        prompt_created = PromptStore(database).seed_default()
+        targets_created = TargetStore(database).seed_defaults()
+        _print({"prompt_seeded": prompt_created, "targets_seeded": targets_created})
         return 0
 
     if args.command in {"import-preview", "import-confirm"}:

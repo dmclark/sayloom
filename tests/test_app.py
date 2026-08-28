@@ -26,8 +26,8 @@ def test_health_reports_development_profile(initialized_settings: Settings) -> N
         "development_state": None,
         "database": {
             "state": "current",
-            "current_revision": "0001_gate2_prompt_core",
-            "expected_revision": "0001_gate2_prompt_core",
+            "current_revision": "0002_target_management",
+            "expected_revision": "0002_target_management",
         },
         "configuration_error": None,
     }
@@ -66,7 +66,7 @@ def test_health_reports_schema_mismatch(tmp_path: Path) -> None:
     assert response.json()["database"] == {
         "state": "mismatch",
         "current_revision": "obsolete_revision",
-        "expected_revision": "0001_gate2_prompt_core",
+        "expected_revision": "0002_target_management",
     }
 
 
@@ -943,7 +943,7 @@ async function run(originalValue) {
     "#error-details-ledger": new Element(), "#close-error-details": new Element(),
     "#copy-error-details": new Element(),
   };
-  const querySelector = (selector) => selectors[selector];
+  const querySelector = (selector) => selectors[selector] || new Element();
   const createElement = () => new Element();
   const document = { querySelector, createElement, addEventListener() {} };
   const clearTimeout = () => {};

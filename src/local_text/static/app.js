@@ -37,6 +37,36 @@
     errorLedger: document.querySelector("#error-details-ledger"),
     closeErrorDialog: document.querySelector("#close-error-details"),
     copyError: document.querySelector("#copy-error-details"),
+    workspaceControls: document.querySelector("#workspace-controls"),
+    workspaceOutgoing: document.querySelector("#workspace-outgoing"),
+    navWorkspace: document.querySelector("#nav-workspace"),
+    navTargets: document.querySelector("#nav-targets"),
+    targetsManager: document.querySelector("#targets-manager"),
+    targetList: document.querySelector("#target-list"),
+    targetAddItem: document.querySelector("#target-add-item"),
+    newTarget: document.querySelector("#new-target"),
+    targetDialog: document.querySelector("#target-dialog"),
+    targetDetail: document.querySelector("#target-detail"),
+    targetListBack: document.querySelector("#target-list-back"),
+    targetDetailTitle: document.querySelector("#target-detail-title"),
+    targetPrimaryState: document.querySelector("#target-primary-state"),
+    targetSaveState: document.querySelector("#target-save-state"),
+    targetPreset: document.querySelector("#target-preset"),
+    targetDisplayName: document.querySelector("#target-display-name"),
+    targetApplicationName: document.querySelector("#target-application-name"),
+    targetBundleId: document.querySelector("#target-bundle-id"),
+    targetIcon: document.querySelector("#target-icon"),
+    targetStrategy: document.querySelector("#target-strategy"),
+    targetPreview: document.querySelector("#target-preview"),
+    targetInstallationState: document.querySelector("#target-installation-state"),
+    targetAvailability: document.querySelector("#target-availability"),
+    targetPermission: document.querySelector("#target-permission"),
+    targetReadinessAction: document.querySelector("#target-readiness-action"),
+    targetErrors: document.querySelector("#target-errors"),
+    installTarget: document.querySelector("#install-target"),
+    checkTarget: document.querySelector("#check-target"),
+    toggleTargetEnabled: document.querySelector("#toggle-target-enabled"),
+    removeTarget: document.querySelector("#remove-target"),
   };
 
   const statusLabels = {
@@ -64,7 +94,19 @@
   let selectedPromptVersionId = null;
   let activeResizePointer = null;
   let originalOutgoingOverride = false;
+  let targetRecords = [];
+  let selectedTargetId = null;
+  let targetDirty = false;
+  let targetDraftIsNew = false;
+  let targetLocalError = null;
   const errors = { cleanup: null, publication: null };
+
+  const targetPresets = {
+    amp: ["Amp", "Amp", "com.google.Chrome.app.bpgpkfmeagdpdcenbogglipmfkalmple", "synthetic_paste"],
+    iterm: ["iTerm", "iTerm", "com.googlecode.iterm2", "iterm_write"],
+    supacode: ["Supacode", "Supacode", "app.supabit.supacode", "synthetic_paste"],
+    "vs-code": ["VS Code", "Visual Studio Code", "com.microsoft.VSCode", "synthetic_paste"],
+  };
 
   function setStatus(nextStatus) {
     status = nextStatus;
@@ -706,6 +748,278 @@
     if (elements.original.value) scheduleCleanup();
   });
 
+  function titleCaseState(value) {
+    return String(value || "not_verified")
+      .replaceAll("_", " ")
+      .replace(/^./, (letter) => letter.toUpperCase());
+  }
+
+  function targetDefinitionFromForm() {
+    return {
+      display_name: elements.targetDisplayName.value,
+      application_name: elements.targetApplicationName.value,
+      application_bundle_id: elements.targetBundleId.value,
+      icon: elements.targetIcon.value,
+      send_strategy: elements.targetStrategy.value,
+    };
+  }
+
+  function renderTargetErrors(target) {
+    elements.targetErrors.textContent = "";
+    const operationErrors = [...(target?.errors || [])];
+    if (targetLocalError) operationErrors.push(targetLocalError);
+    elements.targetErrors.hidden = operationErrors.length === 0;
+    operationErrors.forEach((error) => {
+      const record = document.createElement("article");
+      const heading = document.createElement("strong");
+      const message = document.createElement("p");
+      const recovery = document.createElement("p");
+      heading.textContent = `${titleCaseState(error.operation)} failed · ${error.code}`;
+      message.textContent = error.message;
+      recovery.textContent = error.retry_action;
+      record.append(heading, message, recovery);
+      elements.targetErrors.append(record);
+    });
+  }
+
+  function renderTargetList() {
+    elements.targetList.textContent = "";
+    if (targetRecords.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "target-list-empty";
+      empty.textContent = "No targets are configured. Create one from a common preset or manually.";
+      elements.targetList.append(empty);
+    }
+    targetRecords.forEach((target) => {
+      const item = document.createElement("div");
+      const row = document.createElement("button");
+      const identity = document.createElement("span");
+      const state = document.createElement("span");
+      item.className = "target-grid-item";
+      item.setAttribute("role", "listitem");
+      row.type = "button";
+      row.className = "target-row";
+      row.dataset.targetId = target.id;
+      row.setAttribute("aria-label", `Edit ${target.display_name}, ${titleCaseState(target.state)}`);
+      identity.textContent = `${target.icon} ${target.display_name}`;
+      state.textContent = `${target.application_name} · ${titleCaseState(target.state)}`;
+      row.append(identity, state);
+      row.addEventListener("click", () => selectTarget(target.id));
+      item.append(row);
+      elements.targetList.append(item);
+    });
+    elements.targetList.append(elements.targetAddItem);
+  }
+
+  function populateTargetForm(target) {
+    selectedTargetId = target?.id || null;
+    targetDraftIsNew = !target;
+    targetLocalError = null;
+    elements.targetDetailTitle.textContent = target?.display_name || "New target";
+    elements.targetDisplayName.value = target?.display_name || "";
+    elements.targetApplicationName.value = target?.application_name || "";
+    elements.targetBundleId.value = target?.application_bundle_id || "";
+    elements.targetIcon.value = target?.icon || "🧵";
+    elements.targetStrategy.value = target?.send_strategy || "synthetic_paste";
+    elements.targetPreset.value = "manual";
+    elements.targetPreview.value = target?.preview || "Save definition to generate a command preview.";
+    elements.targetPrimaryState.textContent = titleCaseState(target?.state || "not_installed");
+    elements.targetInstallationState.textContent = titleCaseState(target?.installation || "not_installed");
+    elements.targetAvailability.textContent = titleCaseState(target?.availability || "not_verified");
+    elements.targetPermission.textContent = titleCaseState(target?.permission || "not_verified");
+    elements.targetReadinessAction.textContent = target
+      ? `${target.availability_action} ${target.permission_action}`
+      : "Save the definition before checking readiness.";
+    elements.installTarget.disabled = !target || !target.enabled;
+    elements.installTarget.textContent = !target || target.installation === "not_installed"
+      ? "Install command"
+      : "Regenerate command";
+    elements.toggleTargetEnabled.disabled = !target;
+    elements.toggleTargetEnabled.textContent = target?.enabled === false
+      ? "Enable target"
+      : "Disable target";
+    elements.removeTarget.disabled = !target;
+    targetDirty = false;
+    elements.targetSaveState.textContent = target ? "Saved" : "Not saved";
+    renderTargetErrors(target);
+    renderTargetList();
+    if (!elements.targetDialog.open) elements.targetDialog.showModal();
+  }
+
+  function confirmDiscardTargetDraft() {
+    return !targetDirty || window.confirm("Discard unsaved target definition changes?");
+  }
+
+  function selectTarget(targetId) {
+    if (!confirmDiscardTargetDraft()) return;
+    const target = targetRecords.find((candidate) => candidate.id === targetId);
+    if (target) populateTargetForm(target);
+  }
+
+  async function loadTargets(preferredId = selectedTargetId) {
+    const response = await fetch("/api/targets");
+    if (!response.ok) throw await safeHttpError(response, "Target loading");
+    const result = await readJson(response, "Target loading");
+    if (!result || !Array.isArray(result.targets)) {
+      throw malformedResponseError("Target loading", response.status);
+    }
+    targetRecords = result.targets;
+    const selected = targetRecords.find((target) => target.id === preferredId)
+      || null;
+    renderTargetList();
+    if (selected) populateTargetForm(selected);
+  }
+
+  async function targetRequest(operation, url, options = {}) {
+    targetLocalError = null;
+    const response = await fetch(url, options);
+    if (!response.ok) {
+      const error = await safeHttpError(response, operation);
+      targetLocalError = {
+        operation,
+        code: error.code,
+        message: error.message,
+        retry_action: error.retryAction,
+      };
+      renderTargetErrors(targetRecords.find((target) => target.id === selectedTargetId));
+      throw error;
+    }
+    if (response.status === 204) return null;
+    return readJson(response, operation);
+  }
+
+  function showDestination(destination) {
+    const targetsVisible = destination === "targets";
+    elements.workspace.hidden = targetsVisible;
+    elements.workspaceControls.hidden = targetsVisible;
+    elements.workspaceOutgoing.hidden = targetsVisible;
+    elements.targetsManager.hidden = !targetsVisible;
+    elements.navWorkspace.classList.toggle("is-active", !targetsVisible);
+    elements.navTargets.classList.toggle("is-active", targetsVisible);
+    elements.navWorkspace.toggleAttribute("aria-current", !targetsVisible);
+    elements.navTargets.toggleAttribute("aria-current", targetsVisible);
+    if (!targetsVisible && elements.targetDialog.open) elements.targetDialog.close();
+    if (targetsVisible && targetRecords.length === 0) {
+      loadTargets().catch((error) => {
+        targetLocalError = {
+          operation: "target loading",
+          code: error.code || "network_unavailable",
+          message: error.message || "Targets could not be loaded.",
+          retry_action: error.retryAction || "Retry loading targets.",
+        };
+        renderTargetErrors(null);
+      });
+    }
+  }
+
+  elements.navWorkspace.addEventListener("click", () => {
+    if (!confirmDiscardTargetDraft()) return;
+    targetDirty = false;
+    showDestination("workspace");
+  });
+  elements.navTargets.addEventListener("click", () => showDestination("targets"));
+  elements.newTarget.addEventListener("click", () => {
+    if (confirmDiscardTargetDraft()) populateTargetForm(null);
+  });
+  elements.targetListBack.addEventListener("click", () => {
+    if (!confirmDiscardTargetDraft()) return;
+    targetDirty = false;
+    elements.targetDialog.close();
+  });
+  elements.targetDialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    if (!confirmDiscardTargetDraft()) return;
+    targetDirty = false;
+    elements.targetDialog.close();
+  });
+  elements.targetDialog.addEventListener("click", (event) => {
+    if (event.target !== elements.targetDialog || !confirmDiscardTargetDraft()) return;
+    targetDirty = false;
+    elements.targetDialog.close();
+  });
+  elements.targetPreset.addEventListener("change", () => {
+    const preset = targetPresets[elements.targetPreset.value];
+    if (!preset) return;
+    [
+      elements.targetDisplayName.value,
+      elements.targetApplicationName.value,
+      elements.targetBundleId.value,
+      elements.targetStrategy.value,
+    ] = preset;
+    targetDirty = true;
+    elements.targetSaveState.textContent = "Unsaved changes";
+  });
+  [
+    elements.targetDisplayName,
+    elements.targetApplicationName,
+    elements.targetBundleId,
+    elements.targetIcon,
+    elements.targetStrategy,
+  ].forEach((field) => field.addEventListener("input", () => {
+    targetDirty = true;
+    elements.targetSaveState.textContent = "Unsaved changes";
+  }));
+  elements.targetDetail.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!elements.targetDetail.reportValidity()) return;
+    elements.targetSaveState.textContent = "Saving…";
+    const url = targetDraftIsNew ? "/api/targets" : `/api/targets/${selectedTargetId}`;
+    try {
+      const saved = await targetRequest("save definition", url, {
+        method: targetDraftIsNew ? "POST" : "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(targetDefinitionFromForm()),
+      });
+      selectedTargetId = saved.id;
+      await loadTargets(saved.id);
+    } catch (_error) {
+      elements.targetSaveState.textContent = "Save failed";
+    }
+  });
+  elements.installTarget.addEventListener("click", async () => {
+    if (targetDirty) {
+      elements.targetSaveState.textContent = "Save changes before installing";
+      return;
+    }
+    elements.installTarget.disabled = true;
+    elements.installTarget.textContent = "Installing…";
+    try {
+      await targetRequest("install", `/api/targets/${selectedTargetId}/install`, { method: "POST" });
+      await loadTargets(selectedTargetId);
+    } catch (_error) {
+      elements.installTarget.disabled = false;
+      elements.installTarget.textContent = "Retry installation";
+    }
+  });
+  elements.checkTarget.addEventListener("click", () => loadTargets(selectedTargetId));
+  elements.toggleTargetEnabled.addEventListener("click", async () => {
+    const target = targetRecords.find((candidate) => candidate.id === selectedTargetId);
+    if (!target || !confirmDiscardTargetDraft()) return;
+    const operation = target.enabled ? "disable" : "enable";
+    const consequence = target.enabled
+      ? "Disable this target? Its recognized Sayloom-owned command will be removed. Outgoing will not change."
+      : "Enable this target? It will remain uninstalled until you explicitly install it.";
+    if (!window.confirm(consequence)) return;
+    try {
+      await targetRequest(operation, `/api/targets/${target.id}/${operation}`, { method: "POST" });
+      await loadTargets(target.id);
+    } catch (_error) { /* Persistent target error is rendered above. */ }
+  });
+  elements.removeTarget.addEventListener("click", async () => {
+    const target = targetRecords.find((candidate) => candidate.id === selectedTargetId);
+    if (!target || !confirmDiscardTargetDraft()) return;
+    if (!window.confirm(
+      `Remove ${target.display_name}? Its recognized Sayloom-owned command and definition will be deleted. Outgoing will not change.`,
+    )) return;
+    try {
+      await targetRequest("remove", `/api/targets/${target.id}`, { method: "DELETE" });
+      selectedTargetId = null;
+      targetDirty = false;
+      elements.targetDialog.close();
+      await loadTargets();
+    } catch (_error) { /* Persistent target error is rendered above. */ }
+  });
+
   document.addEventListener("keydown", (event) => {
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
       event.preventDefault();
@@ -715,6 +1029,11 @@
 
   window.addEventListener("blur", () => {
     returnSelectionPending = true;
+  });
+  window.addEventListener("beforeunload", (event) => {
+    if (!targetDirty) return;
+    event.preventDefault();
+    event.returnValue = "";
   });
   window.addEventListener("focus", () => {
     if (!returnSelectionPending || !elements.original.value) return;

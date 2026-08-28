@@ -12,6 +12,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 html { min-height: 100%; }
 
@@ -347,6 +348,158 @@ main { padding-top: 22px; }
 .workspace.is-original-collapsed .original-panel-footer,
 .workspace.is-original-collapsed .workspace-resizer { display: none; }
 
+.targets-manager {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.target-grid-sheet {
+  height: 100%;
+  min-width: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  background: rgba(255, 253, 247, 0.94);
+  box-shadow: 0 14px 42px var(--shadow);
+}
+
+.setup-heading,
+.target-section-heading,
+.target-lifecycle-actions {
+  display: flex;
+  align-items: center;
+}
+
+.setup-heading {
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.setup-intro { margin: 0; padding: 16px 20px; color: var(--muted); font-size: 0.78rem; }
+.target-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 14px;
+  padding: 4px 20px 20px;
+}
+.target-list-empty { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 0.78rem; }
+.target-grid-item { min-width: 0; }
+.target-row {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  min-height: 154px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--blue);
+  color: var(--ink);
+  background: var(--paper-bright);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+.target-row:hover { transform: translateY(-2px); border-color: var(--blue); box-shadow: 0 10px 24px rgba(11, 18, 27, 0.12); }
+.target-row > span:first-child { font-family: "Iowan Old Style", Palatino, serif; font-size: 1.2rem; }
+.target-row > span:last-child { color: var(--muted); font-size: 0.72rem; line-height: 1.5; }
+.target-add-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 154px;
+  padding: 20px;
+  border: 1px dashed var(--blue);
+  color: var(--blue-dark);
+  background: rgba(219, 234, 246, 0.35);
+  cursor: pointer;
+  text-align: left;
+}
+.target-add-tile > span { font-family: "Iowan Old Style", Palatino, serif; font-size: 2rem; line-height: 0.8; }
+.target-add-tile > strong { font-size: 0.82rem; }
+.target-add-tile > small { color: var(--muted); font-size: 0.7rem; line-height: 1.45; }
+
+.target-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-width: none;
+  max-height: min(90dvh, 900px);
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--night);
+  border-radius: 4px;
+  color: var(--ink);
+  background: var(--paper-bright);
+  box-shadow: 0 28px 90px rgba(11, 18, 27, 0.38);
+}
+.target-dialog::backdrop {
+  background: rgba(11, 18, 27, 0.64);
+  backdrop-filter: blur(3px);
+}
+
+.target-detail-sheet { padding-bottom: 24px; }
+.target-detail-heading { position: sticky; top: 0; z-index: 2; background: var(--paper-bright); }
+.target-detail-heading > div { flex: 1; }
+.target-state {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  color: var(--blue-dark);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.target-section { padding: 22px 24px; border-bottom: 1px solid var(--line); }
+.target-section h3 { margin: 0 0 14px; font-family: "Iowan Old Style", Palatino, serif; font-size: 1.12rem; }
+.target-section-heading { justify-content: space-between; gap: 15px; }
+.target-section-heading > span { color: var(--muted); font-size: 0.7rem; }
+.target-section > label,
+.target-field-grid label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.target-section input,
+.target-section select {
+  width: 100%;
+  min-height: 38px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: var(--ink);
+  background: var(--paper-bright);
+}
+.target-field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+.target-field-grid label:nth-child(3), .target-field-grid label:nth-child(5) { grid-column: 1 / -1; }
+.field-help { color: var(--muted); font-size: 0.75rem; line-height: 1.5; }
+.command-preview {
+  height: 240px;
+  margin-top: 6px;
+  padding: 14px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  background: #f7f5ef;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+.readiness-ledger { display: grid; grid-template-columns: 180px 1fr; gap: 8px 14px; font-size: 0.78rem; }
+.readiness-ledger dt { color: var(--muted); font-weight: 700; }
+.readiness-ledger dd { margin: 0; }
+.target-errors { padding: 0 24px; }
+.target-errors article { margin: 18px 0; padding: 14px 16px; border-left: 4px solid var(--night); background: var(--paper-bright); }
+.target-errors p { margin: 6px 0 0; font-size: 0.75rem; }
+.danger-zone { border-bottom: 0; }
+.target-lifecycle-actions { gap: 10px; }
+.button-danger { border-color: var(--night); }
+
 .text-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -669,6 +822,8 @@ textarea::placeholder { color: #9a988f; font-style: italic; }
     height: 4px;
   }
   .workspace { height: clamp(580px, calc(100vh - 250px), 780px); }
+  .targets-manager { height: auto; }
+  .target-grid-sheet { min-height: calc(100vh - 190px); }
   .outgoing-strip {
     align-items: flex-start;
     flex-direction: column;
@@ -693,6 +848,12 @@ textarea::placeholder { color: #9a988f; font-style: italic; }
     gap: 6px 10px;
   }
   #copy-error-details { min-height: 44px; }
+  .target-field-grid { grid-template-columns: 1fr; }
+  .target-field-grid label:nth-child(3), .target-field-grid label:nth-child(5) { grid-column: auto; }
+  .target-detail-heading { flex-wrap: wrap; }
+  .target-dialog { width: calc(100vw - 18px); max-height: calc(100dvh - 18px); }
+  .target-grid { grid-template-columns: 1fr; padding-inline: 12px; }
+  .readiness-ledger { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

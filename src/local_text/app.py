@@ -9,7 +9,7 @@ from html import escape
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Response, status
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
@@ -29,6 +29,9 @@ from local_text.config import Profile, Settings, load_settings
 from local_text.database import ApplicationDatabase
 from local_text.prompt_store import PromptNotFoundError, PromptRecord, PromptStore, SeedStateError
 from local_text.state import OutgoingStateStore, OutgoingStateUpdate
+from local_text.target_adapter import TargetAdapter, TargetArtifactError
+from local_text.target_store import TargetNotFoundError, TargetRecord, TargetStore
+from local_text.targets import TargetDefinition, generate_command
 
 STATIC_DIRECTORY = Path(__file__).parent / "static"
 INDEX_TEMPLATE = (STATIC_DIRECTORY / "index.html").read_text()
@@ -193,11 +196,14 @@ def _prompt_response(prompt: PromptRecord, *, active: bool) -> dict[str, object]
 def create_app(
     settings: Settings | None = None,
     cleanup_service: CleanupService | None = None,
+    target_adapter: TargetAdapter | None = None,
 ) -> FastAPI:
     runtime = settings or load_settings()
     database = ApplicationDatabase(runtime.resolved_database_path)
     schema = database.schema_status()
     prompts = PromptStore(database)
+    targets = TargetStore(database)
+    adapter = target_adapter or TargetAdapter(runtime.resolved_raycast_directory)
     configuration_error: str | None = None
     cleanup_enabled = True
     if schema.ready:
@@ -403,6 +409,114 @@ def create_app(
     def clear_outgoing_state() -> dict[str, object]:
         require_configuration()
         return asdict(state.clear())
+
+    def target_or_404(target_id: str) -> TargetRecord:
+        try:
+            return targets.get(target_id)
+        except TargetNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="target does not exist") from exc
+
+    def target_response(target: TargetRecord) -> dict[str, object]:
+        generated = generate_command(target.id, target.definition)
+        observation = adapter.observe(target.id, generated)
+        primary_state = "disabled" if not target.enabled else observation.installation.value
+        return {
+            "id": target.id,
+            "display_name": target.display_name,
+            "application_name": target.application_name,
+            "application_bundle_id": target.application_bundle_id,
+            "icon": target.icon,
+            "send_strategy": target.send_strategy,
+            "enabled": target.enabled,
+            "created_at": target.created_at.isoformat(),
+            "updated_at": target.updated_at.isoformat(),
+            "preview": generated.content,
+            "preview_sha256": generated.sha256,
+            "state": primary_state,
+            "installation": observation.installation,
+            "availability": observation.availability,
+            "availability_action": observation.availability_action,
+            "permission": observation.permission,
+            "permission_action": observation.permission_action,
+            "errors": [asdict(error) for error in targets.errors(target.id)],
+        }
+
+    def artifact_failure(target_id: str, operation: str, exc: TargetArtifactError) -> None:
+        targets.record_error(target_id, operation, exc.code, exc.message, exc.retry_action)
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+                "retry_action": exc.retry_action,
+            },
+        ) from exc
+
+    @application.get("/api/targets")
+    def list_targets() -> dict[str, object]:
+        require_configuration()
+        return {"targets": [target_response(target) for target in targets.list()]}
+
+    @application.post("/api/targets", status_code=status.HTTP_201_CREATED)
+    def create_target(definition: TargetDefinition) -> dict[str, object]:
+        require_configuration()
+        return target_response(targets.create(definition))
+
+    @application.put("/api/targets/{target_id}")
+    def save_target(target_id: str, definition: TargetDefinition) -> dict[str, object]:
+        require_configuration()
+        target_or_404(target_id)
+        return target_response(targets.update(target_id, definition))
+
+    @application.post("/api/targets/{target_id}/install")
+    def install_target(target_id: str) -> dict[str, object]:
+        require_configuration()
+        target = target_or_404(target_id)
+        if not target.enabled:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "target_disabled",
+                    "message": "A disabled target cannot be installed.",
+                    "retry_action": "Enable the target, then install it.",
+                },
+            )
+        generated = generate_command(target.id, target.definition)
+        try:
+            adapter.install(target.id, generated)
+        except TargetArtifactError as exc:
+            artifact_failure(target.id, "install", exc)
+        targets.clear_error(target.id, "install")
+        return target_response(target_or_404(target.id))
+
+    @application.post("/api/targets/{target_id}/disable")
+    def disable_target(target_id: str) -> dict[str, object]:
+        require_configuration()
+        target = target_or_404(target_id)
+        generated = generate_command(target.id, target.definition)
+        try:
+            adapter.remove(target.id, generated)
+        except TargetArtifactError as exc:
+            artifact_failure(target.id, "disable", exc)
+        return target_response(targets.set_enabled(target.id, False))
+
+    @application.post("/api/targets/{target_id}/enable")
+    def enable_target(target_id: str) -> dict[str, object]:
+        require_configuration()
+        target_or_404(target_id)
+        return target_response(targets.set_enabled(target_id, True))
+
+    @application.delete("/api/targets/{target_id}", status_code=status.HTTP_204_NO_CONTENT)
+    def remove_target(target_id: str) -> Response:
+        require_configuration()
+        target = target_or_404(target_id)
+        generated = generate_command(target.id, target.definition)
+        try:
+            adapter.remove(target.id, generated)
+        except TargetArtifactError as exc:
+            artifact_failure(target.id, "remove", exc)
+        targets.delete(target.id)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     return application
 

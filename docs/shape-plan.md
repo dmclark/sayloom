@@ -416,15 +416,16 @@ copy the workspace implementation or build a speculative shared framework now.
 
 ### Targets: local delivery management
 
-- Use a master list plus selected-target detail on desktop; use list-to-detail
-  navigation on narrow screens. The pattern is appropriate, but the
-  predecessor's visual implementation is not binding.
-- The list groups production and development only when both environments
-  actually exist. Each row shows display name, application identity, and one
+- Use a responsive overview grid of target tiles plus an Add target tile.
+  Selecting a target or Add target opens one focused modal editor; the grid
+  becomes one column on narrow screens. The predecessor's visual implementation
+  is not binding.
+- The grid groups production and development only when both environments
+  actually exist. Each tile shows display name, application identity, and one
   state: installed, needs update, disabled, unavailable, or needs permission.
 - “New target” starts with discovered applications and common presets, with a
   manual path for an application that cannot be discovered.
-- The detail view separates:
+- The modal editor separates:
   1. authored definition (name, application identity, icon, send strategy),
   2. derived command preview, and
   3. current installation/permission state.
@@ -542,7 +543,8 @@ schema state rather than running migrations.
 
 - Preserve the vertically stacked text sequence at every width.
 - On narrow screens, list/detail managers become sequential rather than
-  compressing both columns.
+  compressing both columns; the Targets overview becomes a one-column grid and
+  its editor remains a focused modal.
 - Keep all cleanup, selection, resize, navigation, and manager actions keyboard
   operable. Preserve the existing separator semantics when resizing remains
   present.
