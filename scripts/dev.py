@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import sqlite3
 import subprocess
 import sys
@@ -14,7 +15,7 @@ import tempfile
 import time
 from dataclasses import replace
 from pathlib import Path
-from urllib import request
+from urllib import parse, request
 
 from development_state import (
     APPLICATION_ENVIRONMENT_KEYS,
@@ -450,7 +451,7 @@ def remove_state(root: Path, state: State, *, confirmed: bool) -> None:
     print(f"Removed state {state.name!r}")
 
 
-def amp_runner_repositories() -> set[Path]:
+def amp_runner_processes(*, required: bool = False) -> dict[Path, set[int]]:
     try:
         processes = subprocess.run(
             ["ps", "-axo", "pid=,command="],
@@ -459,27 +460,79 @@ def amp_runner_repositories() -> set[Path]:
             text=True,
         ).stdout.splitlines()
     except (OSError, subprocess.CalledProcessError):
-        return set()
+        if required:
+            fail("could not inspect Amp runners; preserving development worktrees")
+        return {}
 
-    runner_pids = []
+    runner_pids: list[int] = []
     for process in processes:
         fields = process.strip().split(maxsplit=2)
         if len(fields) < 2 or Path(fields[1]).name != "amp":
             continue
         arguments = fields[2] if len(fields) == 3 else ""
         if not arguments or arguments.startswith("-"):
-            runner_pids.append(fields[0])
+            runner_pids.append(int(fields[0]))
 
     lsof = shutil.which("lsof")
-    if not runner_pids or lsof is None:
-        return set()
+    if not runner_pids:
+        return {}
+    if lsof is None:
+        if required:
+            fail("lsof is unavailable; preserving development worktrees")
+        return {}
     result = subprocess.run(
-        [lsof, "-a", "-d", "cwd", "-p", ",".join(runner_pids), "-Fn"],
+        [lsof, "-a", "-d", "cwd", "-p", ",".join(map(str, runner_pids)), "-Fpn"],
         check=False,
         capture_output=True,
         text=True,
     )
-    return {Path(line[1:]).resolve() for line in result.stdout.splitlines() if line.startswith("n")}
+    runners: dict[Path, set[int]] = {}
+    pid: int | None = None
+    for line in result.stdout.splitlines():
+        if line.startswith("p"):
+            pid = int(line[1:])
+        elif line.startswith("n") and pid is not None:
+            runners.setdefault(Path(line[1:]).resolve(), set()).add(pid)
+    return runners
+
+
+def amp_runner_repositories() -> set[Path]:
+    return set(amp_runner_processes())
+
+
+def stop_amp_runners(repository: Path) -> None:
+    repository = repository.resolve()
+    runners = amp_runner_processes(required=True).get(repository, set())
+    for pid in runners:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        except OSError as error:
+            fail(f"could not stop Amp runner {pid} in {repository}: {error}")
+    if not runners:
+        return
+    for _ in range(50):
+        if repository not in amp_runner_processes(required=True):
+            print(f"Stopped {len(runners)} Amp runner(s) in {repository}")
+            return
+        time.sleep(0.1)
+    fail(f"Amp runner(s) in {repository} did not stop; preserving its worktree")
+
+
+def supacode_worktrees() -> dict[Path, str]:
+    result = subprocess.run(
+        ["supacode", "worktree", "list"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    worktrees: dict[Path, str] = {}
+    for line in result.stdout.splitlines():
+        worktree_id = line.split("\t", maxsplit=1)[0]
+        if worktree_id:
+            worktrees[Path(parse.unquote(worktree_id)).resolve()] = worktree_id
+    return worktrees
 
 
 def abbreviated_path(path: Path) -> str:
@@ -536,8 +589,19 @@ def prune(root: Path, *, apply: bool) -> None:
     if not apply:
         print("Preview only. Run scripts/dev.py prune --apply to remove these states.")
         return
+    worktrees = supacode_worktrees()
     for state in stale:
-        remove_state(root, state, confirmed=True)
+        repository = Path(state.repository_root).resolve()
+        stop_amp_runners(repository)
+        worktree_id = worktrees.get(repository)
+        if worktree_id is not None:
+            subprocess.run(
+                ["supacode", "worktree", "delete", "--worktree", worktree_id, "--background"],
+                check=True,
+            )
+            print(f"Removed Supacode worktree {repository}")
+        if state_path(root, state.name).exists():
+            remove_state(root, state, confirmed=True)
 
 
 def db_command(state: State, arguments: argparse.Namespace) -> int:
