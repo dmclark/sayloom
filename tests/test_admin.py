@@ -405,6 +405,141 @@ def test_list_orders_and_aligns_states_with_short_paths_and_runner_status(
     ]
 
 
+def test_amp_runner_processes_maps_runner_pids_to_checkout_paths(
+    tmp_path: Path, monkeypatch
+) -> None:
+    scripts = str(REPOSITORY_ROOT / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        specification = importlib.util.spec_from_file_location(
+            "sayloom_dev_runner_script", REPOSITORY_ROOT / "scripts/dev.py"
+        )
+        assert specification is not None and specification.loader is not None
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+    finally:
+        sys.path.remove(scripts)
+
+    repository = tmp_path / "managed-worktree"
+    responses = iter(
+        (
+            subprocess.CompletedProcess(
+                [], 0, "101 /opt/bin/amp --no-tui\n202 /opt/bin/amp threads list\n"
+            ),
+            subprocess.CompletedProcess([], 0, f"p101\nn{repository}\n"),
+        )
+    )
+    monkeypatch.setattr(module.shutil, "which", lambda command: f"/usr/bin/{command}")
+    monkeypatch.setattr(module.subprocess, "run", lambda *_args, **_kwargs: next(responses))
+
+    assert module.amp_runner_processes(required=True) == {repository.resolve(): {101}}
+
+
+def test_prune_apply_stops_runner_before_deleting_worktree_and_state(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    scripts = str(REPOSITORY_ROOT / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        specification = importlib.util.spec_from_file_location(
+            "sayloom_dev_prune_script", REPOSITORY_ROOT / "scripts/dev.py"
+        )
+        assert specification is not None and specification.loader is not None
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+    finally:
+        sys.path.remove(scripts)
+
+    state_root = tmp_path / "states"
+    repository = tmp_path / "managed-worktree"
+    write_foreign_state(
+        state_root,
+        name="managed",
+        repository=repository,
+        port=unused_port(),
+    )
+    worktree_id = "%2Fmanaged-worktree%2F"
+    events: list[str] = []
+    monkeypatch.setattr(module, "supacode_worktrees", lambda: {repository.resolve(): worktree_id})
+    monkeypatch.setattr(
+        module, "stop_amp_runners", lambda _repository: events.append("stop runner")
+    )
+
+    def fake_run(command: list[str], **_arguments) -> subprocess.CompletedProcess[str]:
+        assert command == [
+            "supacode",
+            "worktree",
+            "delete",
+            "--worktree",
+            worktree_id,
+            "--background",
+        ]
+        events.append("delete worktree")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        module,
+        "remove_state",
+        lambda _root, _state, *, confirmed: events.append("remove state"),
+    )
+
+    module.prune(state_root, apply=False)
+
+    preview = capsys.readouterr().out
+    assert "Stale: managed" in preview
+    assert "Preview only. Run scripts/dev.py prune --apply" in preview
+    assert events == []
+
+    module.prune(state_root, apply=True)
+
+    assert events == ["stop runner", "delete worktree", "remove state"]
+
+
+def test_prune_apply_preserves_worktree_and_state_when_runner_does_not_stop(
+    tmp_path: Path, monkeypatch
+) -> None:
+    scripts = str(REPOSITORY_ROOT / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        specification = importlib.util.spec_from_file_location(
+            "sayloom_dev_failed_prune_script", REPOSITORY_ROOT / "scripts/dev.py"
+        )
+        assert specification is not None and specification.loader is not None
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+    finally:
+        sys.path.remove(scripts)
+
+    state_root = tmp_path / "states"
+    repository = tmp_path / "managed-worktree"
+    manifest = write_foreign_state(
+        state_root,
+        name="managed",
+        repository=repository,
+        port=unused_port(),
+    )
+    monkeypatch.setattr(
+        module, "supacode_worktrees", lambda: {repository.resolve(): "%2Fmanaged-worktree%2F"}
+    )
+    monkeypatch.setattr(
+        module,
+        "stop_amp_runners",
+        lambda _repository: module.fail("runner remained active; preserving its worktree"),
+    )
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda *_arguments, **_keywords: pytest.fail("worktree deletion must not run"),
+    )
+
+    with pytest.raises(SystemExit, match="runner remained active"):
+        module.prune(state_root, apply=True)
+
+    assert not repository.exists()
+    assert manifest.exists()
+
+
 def test_activate_swaps_the_raycast_port_and_repoints_installed_aliases(
     tmp_path: Path, monkeypatch
 ) -> None:
