@@ -1,12 +1,44 @@
 ---
 name: verifying-sayloom
-description: Verifies and maintains Sayloom behavior with feature-mapped evidence across isolated test, browser, database, macOS, provider, and CI lanes. Use when implementing or reviewing changes, proving a fix, checking migrations or accessibility, or updating the verification map.
+description: Verifies high-risk or release-ready Sayloom behavior with feature-mapped evidence across isolated test, browser, database, macOS, provider, and CI lanes. Use when explicitly asked for full verification or when changes affect browser interaction, persistence, migrations, provider routing, accessibility, macOS/Raycast, or multiple feature areas. Do not use for routine localized implementation or review.
 ---
 
 # Verifying Sayloom
 
 Use this contract to make verification claims that another engineer can reproduce. Read
-`features/README.md` before choosing checks, then read each affected feature file.
+`features/README.md` before choosing checks, then read only the affected feature files.
+
+## Choose the smallest verification level
+
+Do not load or apply this skill to a routine localized change whose behavior is covered by one
+targeted test or static check. Use the repository's normal targeted verification instead.
+
+When this skill applies, choose one level before reading feature details or running checks:
+
+- **Focused** (default): map only affected sub-features, read only their feature files, and run the
+  smallest applicable Portable checks. Add a database or isolated-browser check only when the
+  changed behavior crosses that boundary.
+- **Full**: map all affected entry points and applicable lanes. Use only for an explicit full or
+  release verification request, a cross-feature change, or a change to shared persistence,
+  migrations, provider routing, accessibility foundations, or macOS/Raycast integration.
+
+Do not repeat unchanged checks or reload the contract in the same thread. Existing evidence may
+guide scope, but only checks executed in the current run can be marked `passed`.
+
+## API usage budget
+
+- Local Sayloom HTTP requests do not consume model-provider API quota. Prefer them as read-only
+  confirmation of browser-visible state, not as a substitute for browser interaction.
+- The default external-provider budget is **zero calls**. Use mocked-provider Portable tests for
+  timeout, malformed response, HTTP failure, cooldown, route ordering, and fail-open behavior.
+- Make a real Gemini or OpenAI request only when the user explicitly requests or approves provider
+  verification and the provider adapter, model contract, credential path, or production routing
+  changed. A general request to verify the application does not authorize paid provider calls.
+- Before a real-provider run, state the planned providers, maximum request count, synthetic input,
+  and stop condition. Default to one successful request per affected provider. Do not deliberately
+  trigger paid timeout, quota, or error responses when a mock proves the application behavior.
+- Record request count and returned token usage when available, never credential values or operating
+  text. Stop after the planned calls even if an optional state remains unproved; report it precisely.
 
 ## Safety boundary
 
@@ -66,7 +98,7 @@ Plan only applicable lanes, but report every planned lane explicitly.
 | Isolated browser | Real user interaction, responsive layout, and accessibility tree | New temporary database, dynamic loopback port, health-checked supervised service, fresh browser session, synthetic text. Prove DOM/accessibility state and visible output. |
 | Database/migration | Schema lifecycle, persistence, import, and no-migration startup | New temporary SQLite database and synthetic import directory. Check state before and after every mutating command. |
 | macOS integration | launchd, Raycast, Chrome, iTerm, clipboard, and destination-app behavior | Dedicated verification host/profile only, with no stable app present. If this orb is Linux or the apps are absent, use `unavailable`; tests alone stay in Portable. |
-| Provider | Successful Gemini cleanup, timeout, and provider failure | Dedicated test credential plus isolated browser service and synthetic input. Missing credential is `unavailable`, not `skipped` or `passed`. Mock-provider tests stay in Portable. |
+| Provider | Real Gemini/OpenAI request compatibility when explicitly approved | Dedicated test credential, isolated browser service, synthetic input, and a declared call budget. Missing approval or credential is `unavailable`, not `skipped` or `passed`. Mock-provider tests stay in Portable. |
 | CI | Checks delegated to automation | Use `configured in CI` only after reading the tracked workflow and citing its job. No workflow means the lane is `unavailable` if required. |
 
 ## Workflow
@@ -93,8 +125,9 @@ Plan only applicable lanes, but report every planned lane explicitly.
    health, or migrations could be affected. Follow “Database proof” below.
 5. **Run the Isolated browser lane** for user-visible behavior. Follow “Browser and accessibility
    proof” below. Do not substitute HTTP responses or source inspection for a browser interaction.
-6. **Probe optional lanes.** Probe platform, provider, and tracked CI configuration read-only.
-   Assign their precise status; do not silently omit them.
+6. **Classify planned optional lanes.** Probe platform and tracked CI configuration read-only only
+   when relevant. Do not inspect credentials or call a provider unless the Provider lane was
+   explicitly approved. Assign every planned lane its precise status; do not add unrelated lanes.
 7. **Clean run-owned resources.** Stop only the service created by this run, close its browser
    session, and remove its temporary state. Keep report artifacts.
 8. **Report by claim.** Lead with failures or blockers, then the evidence ledger. State exactly
@@ -108,11 +141,15 @@ server with `amp orb service start <unique-name> --command '<command>' --portal`
 
 ```sh
 env -u LOCAL_TEXT_GEMINI_API_KEY -u LOCAL_TEXT_GEMINI_MODEL \
-  -u LOCAL_TEXT_CLEANUP_TIMEOUT_SECONDS -u GEMINI_API_KEY -u GOOGLE_API_KEY \
+  -u LOCAL_TEXT_GEMINI_QUOTA_GROUP_ID -u LOCAL_TEXT_OPENAI_API_KEY \
+  -u LOCAL_TEXT_OPENAI_MODEL -u LOCAL_TEXT_OPENAI_QUOTA_GROUP_ID \
+  -u LOCAL_TEXT_CLEANUP_ROUTE_ORDER -u LOCAL_TEXT_CLEANUP_PAID_DATA_ACKNOWLEDGEMENT \
+  -u LOCAL_TEXT_CLEANUP_TIMEOUT_SECONDS -u GEMINI_API_KEY -u GOOGLE_API_KEY -u OPENAI_API_KEY \
   LOCAL_TEXT_PROFILE=development \
   LOCAL_TEXT_DEVELOPMENT_STATE_NAME=verification-RUN_ID \
   LOCAL_TEXT_STATE_DIRECTORY=/tmp/sayloom-verification-RUN_ID \
   LOCAL_TEXT_DATABASE_PATH=/tmp/sayloom-verification-RUN_ID/local-text.sqlite3 \
+  LOCAL_TEXT_RAYCAST_DIRECTORY=/tmp/sayloom-verification-RUN_ID/raycast \
   uv run uvicorn local_text.app:app --host 127.0.0.1 --port PORT
 ```
 

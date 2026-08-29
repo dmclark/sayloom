@@ -29,8 +29,10 @@ publishes the explicitly selected current value for downstream commands.
 
 ## Driving and proof
 
-Preconditions: healthy isolated browser lane. Use the unconfigured isolated lane for deterministic
-fail-open proof and the Provider lane for successful-clean, timeout, and provider-error proof.
+Preconditions: healthy isolated browser lane. Use the unconfigured isolated lane and mock-provider
+Portable tests for deterministic fail-open, timeout, provider-error, and routing proof. Use the
+Provider lane only for explicitly approved real-request compatibility within the declared call
+budget.
 
 - For every entry point, capture the initiating action and status transitions, then prove editor
   values, pressed outgoing button, outgoing label, publication live status, and a GET of
@@ -52,7 +54,7 @@ fail-open proof and the Provider lane for successful-clean, timeout, and provide
 ## Gotchas
 
 - A mock-provider API test is Portable proof, not Provider-lane or browser proof.
-- Without a dedicated credential, successful Gemini cleanup is `unavailable`; the deterministic
-  disabled/fail-open browser flow may still pass.
+- Without explicit approval and a dedicated credential, real Gemini/OpenAI cleanup is
+  `unavailable`; deterministic mocked and disabled/fail-open paths may still pass in their lanes.
 - Debounced cleanup and publication are separate. Wait for both final states before recording.
 - Do not induce publication failure by stopping or changing any service not created by this run.
