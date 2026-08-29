@@ -521,8 +521,11 @@ def stop_amp_runners(repository: Path) -> None:
 
 
 def supacode_worktrees() -> dict[Path, str]:
+    supacode = shutil.which("supacode")
+    if supacode is None:
+        return {}
     result = subprocess.run(
-        ["supacode", "worktree", "list"],
+        [supacode, "worktree", "list"],
         check=True,
         capture_output=True,
         text=True,
@@ -553,10 +556,7 @@ def print_registered_states(root: Path) -> None:
     for state in states:
         repository = Path(state.repository_root)
         checkout = "present" if repository.is_dir() else "stale"
-        if sys.platform == "darwin":
-            service = "running" if service_is_loaded(state) else "stopped"
-        else:
-            service = "unavailable"
+        service = "running" if service_is_loaded(state) else "stopped"
         rows.append(
             (
                 state.name,
