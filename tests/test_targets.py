@@ -1,3 +1,4 @@
+import re
 import sqlite3
 import subprocess
 from dataclasses import replace
@@ -232,6 +233,38 @@ def test_targets_surface_has_accessible_grid_and_modal_editor(
     assert ".target-dialog::backdrop" in stylesheet
     narrow = stylesheet.split("@media (max-width: 760px)", maxsplit=1)[1]
     assert ".target-grid { grid-template-columns: 1fr;" in narrow
+
+
+def test_bundle_id_pattern_is_valid_under_browser_v_semantics(
+    initialized_settings,
+) -> None:
+    client = TestClient(create_app(initialized_settings))
+    page = client.get("/").text
+    match = re.search(r'id="target-bundle-id"[^>]+pattern="([^"]+)"', page)
+
+    assert match is not None
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            """
+const pattern = new RegExp(`^(?:${process.argv[1]})$`, "v");
+const values = process.argv.slice(2).map((value) => pattern.test(value));
+process.stdout.write(JSON.stringify(values));
+""",
+            match.group(1),
+            "example.synthetic.editor",
+            "com.example-editor.app",
+            "not-a-bundle-id",
+            ".example",
+            "example.",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.stdout == "[true,true,false,false,false]"
 
 
 def test_target_implementation_contains_no_predecessor_integration_identifiers() -> None:
