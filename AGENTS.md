@@ -13,14 +13,30 @@ This repository is local-first and public-safe from its first commit.
   anchors with narrow, capped output; diagnose failures before retrying; avoid delegating small
   changes or work on a shared dirty worktree; do not replay unchanged context; and verify in stages
   with preflight checks, affected checks after edits, then one final applicable baseline.
+- Hand off to a new focused thread before further implementation when the principal deliverable
+  changes or the visible conversation reaches 100 messages. Defer unrelated review findings and
+  follow-up changes to a separate focused thread rather than expanding the current deliverable.
+  Start each fresh thread with a compact, self-contained prompt containing only confirmed decisions,
+  current state, evidence, the exact next deliverable, and necessary references; never import or
+  replay a long parent transcript. This is a reviewable checkpoint, not automatic token enforcement.
+- Give each changing worktree one implementation owner at a time. Delegate coding only for an
+  independent workstream with disjoint files and explicit ownership; the same owner resolves
+  cleanup, revert, and final verification unless a handoff explicitly transfers that responsibility.
+  Request one coherent implementation pass followed by one verification pass; if verification fails,
+  diagnose the new evidence, make a targeted correction, and then rerun instead of entering an
+  open-ended implementation and verification loop.
+- Resolve ambiguous completion from the current owner and `git status`/`git diff`, not a duplicate
+  cleanup thread. Validate test or browser commands before rerunning them, and do not repeat an
+  unchanged failing command or poll unchanged status without new evidence or a meaningful wait.
 
 ## Mandrel project
 
 - All durable memory for this repository belongs to the existing Mandrel project
   `voiceitt-bridge` (`c875b2af-9020-41b7-9595-d70221603464`).
 - Sayloom is part of the Voiceitt Bridge product memory. It is not a separate Mandrel project.
-- Before any Mandrel read or write, verify that `voiceitt-bridge` is active and switch to it if
-  needed.
+- Before the first Mandrel read or write in a thread, verify that `voiceitt-bridge` is active and
+  switch only if needed. Reuse that confirmed selection unless the connection changes or there is
+  evidence that the active project changed; do not repeatedly reload project-selection guidance.
 - Never create or suggest a separate Sayloom Mandrel project.
 
 ## Local worktree workflow
