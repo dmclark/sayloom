@@ -134,16 +134,21 @@ def states_for_current_checkout(root: Path) -> list[State]:
     )
 
 
-def resolve_state(root: Path, name: str | None = None) -> State:
-    if name is not None:
-        return load_state(root, name)
+def state_for_current_checkout(root: Path) -> State | None:
     matches = states_for_current_checkout(root)
-    if not matches:
-        fail("this checkout has no development state; run scripts/dev.py init")
     if len(matches) > 1:
         names = ", ".join(state.name for state in matches)
         fail(f"this checkout has multiple development states ({names}); remove the extras")
-    return matches[0]
+    return matches[0] if matches else None
+
+
+def resolve_state(root: Path, name: str | None = None) -> State:
+    if name is not None:
+        return load_state(root, name)
+    state = state_for_current_checkout(root)
+    if state is None:
+        fail("this checkout has no development state; run scripts/dev.py init")
+    return state
 
 
 def default_state_name() -> str:
@@ -445,22 +450,77 @@ def remove_state(root: Path, state: State, *, confirmed: bool) -> None:
     print(f"Removed state {state.name!r}")
 
 
+def amp_runner_repositories() -> set[Path]:
+    try:
+        processes = subprocess.run(
+            ["ps", "-axo", "pid=,command="],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+    except (OSError, subprocess.CalledProcessError):
+        return set()
+
+    runner_pids = []
+    for process in processes:
+        fields = process.strip().split(maxsplit=2)
+        if len(fields) < 2 or Path(fields[1]).name != "amp":
+            continue
+        arguments = fields[2] if len(fields) == 3 else ""
+        if not arguments or arguments.startswith("-"):
+            runner_pids.append(fields[0])
+
+    lsof = shutil.which("lsof")
+    if not runner_pids or lsof is None:
+        return set()
+    result = subprocess.run(
+        [lsof, "-a", "-d", "cwd", "-p", ",".join(runner_pids), "-Fn"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return {Path(line[1:]).resolve() for line in result.stdout.splitlines() if line.startswith("n")}
+
+
+def abbreviated_path(path: Path) -> str:
+    try:
+        relative = path.relative_to(Path.home())
+    except ValueError:
+        return str(path)
+    return str(Path("~") / relative) if relative.parts else "~"
+
+
 def print_registered_states(root: Path) -> None:
-    states = sorted(registered_states(root), key=lambda state: state.name)
+    states = sorted(registered_states(root), key=lambda state: (state.port, state.name))
     if not states:
         print("No development states are registered.")
         return
-    print(f"{'STATE':<24} {'PORT':<6} {'CHECKOUT':<8} {'SERVICE':<11} REPOSITORY")
+    runner_repositories = amp_runner_repositories()
+    rows: list[tuple[str, ...]] = []
     for state in states:
-        checkout = "present" if Path(state.repository_root).is_dir() else "stale"
+        repository = Path(state.repository_root)
+        checkout = "present" if repository.is_dir() else "stale"
         if sys.platform == "darwin":
             service = "running" if service_is_loaded(state) else "stopped"
         else:
             service = "unavailable"
-        print(
-            f"{state.name:<24} {state.port:<6} {checkout:<8} {service:<11} "
-            f"{state.repository_root}"
+        rows.append(
+            (
+                state.name,
+                str(state.port),
+                checkout,
+                service,
+                "✓" if repository.resolve() in runner_repositories else "",
+                abbreviated_path(repository),
+            )
         )
+    headers = ("STATE", "PORT", "CHECKOUT", "SERVICE", "RUNNER", "REPOSITORY")
+    widths = [
+        max(len(header), *(len(row[index]) for row in rows))
+        for index, header in enumerate(headers)
+    ]
+    for row in (headers, *rows):
+        print("  ".join(f"{value:<{widths[index]}}" for index, value in enumerate(row)).rstrip())
 
 
 def prune(root: Path, *, apply: bool) -> None:
@@ -526,15 +586,12 @@ def command(arguments: argparse.Namespace) -> int:
         selected_name = getattr(arguments, "state", None)
         if selected_name is not None:
             return print_status(resolve_state(root, selected_name))
-        matches = states_for_current_checkout(root)
-        if not matches:
+        state = state_for_current_checkout(root)
+        if state is None:
             print("No development state for this checkout.")
             print("Create and initialize one with: scripts/dev.py init")
             return 0
-        if len(matches) > 1:
-            names = ", ".join(state.name for state in matches)
-            fail(f"this checkout has multiple development states ({names}); remove the extras")
-        return print_status(matches[0])
+        return print_status(state)
 
     if operation == "list":
         print_registered_states(root)

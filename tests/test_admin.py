@@ -219,6 +219,24 @@ def test_status_without_selection_prompts_to_create_state_for_current_checkout(
     assert implicit.stdout == status.stdout
 
 
+def test_status_without_selection_rejects_multiple_states_for_current_checkout(
+    tmp_path: Path,
+) -> None:
+    state_root = tmp_path / "states"
+    for name in ("first", "second"):
+        write_foreign_state(
+            state_root,
+            name=name,
+            repository=REPOSITORY_ROOT,
+            port=unused_port(),
+        )
+
+    status = run_dev(state_root, "status")
+
+    assert status.returncode != 0
+    assert "multiple development states (first, second)" in status.stderr
+
+
 def test_init_creates_branch_named_state_then_migrates_and_seeds(tmp_path: Path) -> None:
     state_root = tmp_path / "states"
     branch = subprocess.run(
@@ -340,6 +358,51 @@ def test_list_prune_and_remove_manage_only_registered_state_data(tmp_path: Path)
     assert all_removed.returncode == 0
     assert not (current_root / "legacy-one").exists()
     assert not (current_root / "legacy-two").exists()
+
+
+def test_list_orders_and_aligns_states_with_short_paths_and_runner_status(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    scripts = str(REPOSITORY_ROOT / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        specification = importlib.util.spec_from_file_location(
+            "sayloom_dev_list_script", REPOSITORY_ROOT / "scripts/dev.py"
+        )
+        assert specification is not None and specification.loader is not None
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+    finally:
+        sys.path.remove(scripts)
+
+    state_root = tmp_path / "states"
+    home = Path.home()
+    repository_parent = home / f".missing-{tmp_path.name}"
+    first_repository = repository_parent / "first"
+    second_repository = repository_parent / "second"
+    write_foreign_state(
+        state_root,
+        name="higher-port",
+        repository=second_repository,
+        port=7600,
+    )
+    write_foreign_state(
+        state_root,
+        name="lower-port",
+        repository=first_repository,
+        port=7500,
+    )
+    monkeypatch.setattr(module, "amp_runner_repositories", lambda: {first_repository})
+    monkeypatch.setattr(module, "service_is_loaded", lambda _state: False)
+
+    module.print_registered_states(state_root)
+
+    lines = capsys.readouterr().out.splitlines()
+    assert lines == [
+        "STATE        PORT  CHECKOUT  SERVICE  RUNNER  REPOSITORY",
+        f"lower-port   7500  stale     stopped  ✓       ~/.missing-{tmp_path.name}/first",
+        f"higher-port  7600  stale     stopped          ~/.missing-{tmp_path.name}/second",
+    ]
 
 
 def test_activate_swaps_the_raycast_port_and_repoints_installed_aliases(
