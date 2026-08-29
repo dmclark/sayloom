@@ -9,6 +9,10 @@ This repository is local-first and public-safe from its first commit.
 - Normal application startup must not run database migrations.
 - For validated coding changes, use the controlled verify-then-restart workflow rather than hot reload.
 - Keep features and abstractions limited to the current requirement.
+- Keep agent work to one bounded deliverable: clarify material ambiguity before editing; inspect exact
+  anchors with narrow, capped output; diagnose failures before retrying; avoid delegating small
+  changes or work on a shared dirty worktree; do not replay unchanged context; and verify in stages
+  with preflight checks, affected checks after edits, then one final applicable baseline.
 
 ## Mandrel project
 
