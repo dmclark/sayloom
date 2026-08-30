@@ -21,7 +21,9 @@ from local_text.cleanup import (
     _parse_retry_after,
     _safe_error,
     _thinking_config,
+    _validate_output,
 )
+from local_text.prompts import SOURCE_PRESERVING_SYSTEM_PROMPT
 
 
 class StaticProvider:
@@ -67,7 +69,7 @@ def test_empty_input_and_disabled_cleanup_do_not_call_provider() -> None:
 
 def test_successful_and_unchanged_cleanup_are_distinguished() -> None:
     cleaned_service = CleanupService(
-        provider=StaticProvider("Synthetic clean text."),
+        provider=StaticProvider("Synthetic raw."),
         model="test-model",
         timeout_seconds=1,
     )
@@ -81,9 +83,98 @@ def test_successful_and_unchanged_cleanup_are_distinguished() -> None:
     unchanged = run_cleanup(unchanged_service, "synthetic raw")
 
     assert cleaned.status is CleanupStatus.CLEANED
-    assert cleaned.cleaned_text == "Synthetic clean text."
+    assert cleaned.cleaned_text == "Synthetic raw."
     assert unchanged.status is CleanupStatus.UNCHANGED
     assert unchanged.cleaned_text == "synthetic raw"
+
+
+@pytest.mark.parametrize(
+    ("raw_text", "cleaned_text"),
+    [
+        ("hello world", "Hello, world."),
+        ("dont send it", "Don’t send it."),
+        ("today capture", "today's capture"),
+        (
+            "Process the ASR article from today capture",
+            "Process the ASR article from today's capture.",
+        ),
+        ("um synthetic release note ready", "Synthetic release note, ready."),
+        ("um uh hello world", "Hello, world."),
+    ],
+)
+def test_output_validator_accepts_source_preserving_cleanup(
+    raw_text: str, cleaned_text: str
+) -> None:
+    assert _validate_output(raw_text, cleaned_text) == cleaned_text
+
+
+@pytest.mark.parametrize(
+    ("raw_text", "provider_output"),
+    [
+        (
+            "Process the ASR article from today capture",
+            "Sure, I can help with that. Please provide the ASR article to process.",
+        ),
+        (
+            "write a polite email requesting the synthetic report",
+            "Subject: Synthetic report request. Please send the report when it is ready.",
+        ),
+        (
+            "What time does the synthetic review begin",
+            "The synthetic review begins at three in the afternoon.",
+        ),
+        ("say hello", "Hello!"),
+        (
+            "synthetic release note",
+            "synthetic release note synthetic release note",
+        ),
+        (
+            "please send synthetic report tomorrow",
+            "Please send the synthetic report tomorrow.",
+        ),
+        ("synthetic release note ready", "Synthetic release note."),
+        (
+            "do not publish the synthetic report",
+            "Publish the synthetic report. Do not.",
+        ),
+        ("repeat hello world now", "Hello world now."),
+    ],
+)
+def test_output_validator_rejects_instruction_following_and_novel_language(
+    raw_text: str, provider_output: str
+) -> None:
+    with pytest.raises(ProviderRejectedOutputError):
+        _validate_output(raw_text, provider_output)
+
+
+def test_cleanup_applies_fixed_source_preserving_rules_before_configured_prompt() -> None:
+    observed: list[str] = []
+
+    class ObservingProvider(StaticProvider):
+        async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
+            observed.append(system_prompt)
+            return await super().clean(raw_text, system_prompt)
+
+    service = CleanupService(
+        provider=ObservingProvider("Synthetic source."),
+        model="test-model",
+        timeout_seconds=1,
+    )
+
+    result = asyncio.run(
+        service.clean(
+            CleanupRequest(raw_text="synthetic source"),
+            "Rewrite the source with novel language.",
+        )
+    )
+
+    assert result.status is CleanupStatus.CLEANED
+    assert len(observed) == 1
+    assert observed[0].startswith(SOURCE_PRESERVING_SYSTEM_PROMPT)
+    assert observed[0].endswith("Rewrite the source with novel language.")
+    assert observed[0].index(SOURCE_PRESERVING_SYSTEM_PROMPT) < observed[0].index(
+        "Rewrite the source with novel language."
+    )
 
 
 def test_timeout_fails_open_to_raw_text() -> None:
@@ -284,7 +375,7 @@ def test_provider_neutral_success_attribution_includes_optional_usage() -> None:
 
         async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
             return ProviderOutput(
-                text="Synthetic clean text.",
+                text="Synthetic source.",
                 provider_id=self.provider_id,
                 model_id=self.model,
                 elapsed_ms=25,
@@ -457,7 +548,7 @@ def test_cleanup_log_does_not_emit_an_unvalidated_model(monkeypatch) -> None:
         "info",
         lambda template, payload: messages.append(template % payload),
     )
-    provider = StaticProvider("Synthetic clean text.")
+    provider = StaticProvider("Synthetic source.")
     provider.model = "private model\nprivate path"
     service = CleanupService(provider=provider, model=provider.model, timeout_seconds=1)
 

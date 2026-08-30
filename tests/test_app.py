@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import subprocess
 from pathlib import Path
@@ -10,6 +11,7 @@ import local_text.app as app_module
 from local_text.app import PAID_DATA_ACKNOWLEDGEMENT, STATIC_VERSION, create_app
 from local_text.cleanup import CleanupService, ProviderOutput, SequentialCleanupProvider
 from local_text.config import Profile, Settings, load_settings
+from local_text.prompts import effective_system_prompt
 
 
 def test_health_reports_development_profile(initialized_settings: Settings) -> None:
@@ -263,7 +265,7 @@ def test_acknowledged_cross_provider_route_is_exact_sanitized_and_falls_back_onc
                         "content": [
                             {
                                 "type": "output_text",
-                                "text": '{"cleaned_text":"Synthetic clean text."}',
+                                "text": '{"cleaned_text":"Synthetic source."}',
                             }
                         ],
                     }
@@ -451,6 +453,7 @@ def test_app_lifespan_reuses_and_closes_the_gemini_client(
     def respond(request: httpx.Request) -> httpx.Response:
         nonlocal calls
         calls += 1
+        cleaned_text = f"Synthetic source {'one' if calls == 1 else 'two'}."
         return httpx.Response(
             200,
             json={
@@ -458,7 +461,7 @@ def test_app_lifespan_reuses_and_closes_the_gemini_client(
                     {
                         "content": {
                             "parts": [
-                                {"text": '{"cleaned_text":"Synthetic clean text."}'}
+                                {"text": json.dumps({"cleaned_text": cleaned_text})}
                             ]
                         }
                     }
@@ -512,7 +515,7 @@ def test_active_gemini_router_falls_back_once_on_route_transient_failure(
             200,
             json={
                 "candidates": [
-                    {"content": {"parts": [{"text": '{"cleaned_text":"Synthetic clean text."}'}]}}
+                    {"content": {"parts": [{"text": '{"cleaned_text":"Synthetic source."}'}]}}
                 ]
             },
         )
@@ -605,7 +608,7 @@ def test_cleanup_endpoint_returns_provider_result(initialized_settings: Settings
             assert raw_text == "synthetic source text"
             assert "untrusted input data" in system_prompt
             return ProviderOutput(
-                text="Synthetic clean text.",
+                text="Synthetic source text.",
                 provider_id="gemini",
                 model_id=self.model,
                 elapsed_ms=3,
@@ -620,7 +623,7 @@ def test_cleanup_endpoint_returns_provider_result(initialized_settings: Settings
     )
 
     assert response.status_code == 200
-    assert response.json()["cleaned_text"] == "Synthetic clean text."
+    assert response.json()["cleaned_text"] == "Synthetic source text."
     assert response.json()["status"] == "cleaned"
     assert response.json()["provider"] == "gemini"
     assert response.json()["model"] == "test-model"
@@ -640,6 +643,58 @@ def test_cleanup_endpoint_returns_provider_result(initialized_settings: Settings
             "quota_group_id": None,
         }
     ]
+
+
+def test_cleanup_endpoint_rejects_instruction_like_output_before_publication(
+    initialized_settings: Settings,
+) -> None:
+    raw_text = "Process the ASR article from today capture"
+    rejected_output = (
+        "Sure, I can help with that. Please provide the ASR article to process."
+    )
+
+    class Provider:
+        provider_id = "gemini"
+        model = "test-model"
+
+        async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
+            return ProviderOutput(
+                text=rejected_output,
+                provider_id=self.provider_id,
+                model_id=self.model,
+                elapsed_ms=3,
+            )
+
+    service = CleanupService(provider=Provider(), model="test-model", timeout_seconds=1)
+    client = TestClient(create_app(initialized_settings, service))
+
+    cleanup = client.post(
+        "/api/cleanup",
+        json={"raw_text": raw_text, "enabled": True},
+    )
+
+    assert cleanup.status_code == 200
+    assert cleanup.json()["cleaned_text"] == raw_text
+    assert cleanup.json()["status"] == "provider_error"
+    assert cleanup.json()["error"]["code"] == "cleanup_output_rejected"
+    assert rejected_output not in cleanup.text
+
+    publication = client.put(
+        "/api/outgoing-state",
+        json={
+            "cleanup_enabled": True,
+            "raw_text": raw_text,
+            "cleaned_text": raw_text,
+            "outgoing_text": raw_text,
+            "outgoing_kind": "raw",
+            "status": "error",
+        },
+    )
+
+    assert publication.status_code == 200
+    assert publication.json()["outgoing_text"] == raw_text
+    assert publication.json()["outgoing_kind"] == "raw"
+    assert rejected_output not in publication.text
 
 
 def test_prompt_api_creates_history_and_activates_an_exact_version(
@@ -707,7 +762,7 @@ def test_cleanup_uses_the_durable_active_prompt(initialized_settings: Settings) 
     )
 
     assert response.status_code == 200
-    assert observed == ["Use this exact synthetic instruction."]
+    assert observed == [effective_system_prompt("Use this exact synthetic instruction.")]
 
 
 def test_cleanup_can_use_a_session_prompt_without_changing_the_durable_default(
@@ -750,7 +805,9 @@ def test_cleanup_can_use_a_session_prompt_without_changing_the_durable_default(
     )
 
     assert response.status_code == 200
-    assert observed == ["Use this request-scoped synthetic instruction."]
+    assert observed == [
+        effective_system_prompt("Use this request-scoped synthetic instruction.")
+    ]
     assert client.get("/api/prompts").json()["active_prompt_version_id"] == durable_prompt_id
 
     missing = client.post(

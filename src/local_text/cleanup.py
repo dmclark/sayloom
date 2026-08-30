@@ -18,6 +18,8 @@ from typing import Any, Literal, Protocol
 import httpx
 from pydantic import BaseModel, Field
 
+from local_text.prompts import effective_system_prompt
+
 logger = logging.getLogger("uvicorn.error.local_text.cleanup")
 MODEL_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 SAFE_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
@@ -29,6 +31,8 @@ OPENAI_MAX_OUTPUT_TOKENS = 128_000
 EVALUATION_TOTAL_BUDGET_SECONDS = 20.0
 EVALUATION_PRIMARY_ATTEMPT_SECONDS = 12.0
 EVALUATION_FALLBACK_ATTEMPT_SECONDS = 8.0
+REMOVABLE_LEADING_FILLERS = frozenset({"erm", "hmm", "uh", "um"})
+LEXICAL_WORD = re.compile(r"\w+(?:['’]\w+)*['’]?")
 MINIMUM_ATTEMPT_SECONDS = 0.5
 ROUTE_BREAKER_BASE_SECONDS = 15.0
 ROUTE_BREAKER_MAX_SECONDS = 300.0
@@ -1012,7 +1016,38 @@ def _validate_output(raw_text: str, cleaned_text: str) -> str:
     maximum_length = max(len(raw_text) * 4, len(raw_text) + 1_000)
     if len(cleaned) > maximum_length:
         raise ProviderRejectedOutputError("The cleanup result expanded beyond the safety limit")
+
+    raw_words = _lexical_word_forms(raw_text)
+    cleaned_words = _lexical_word_forms(cleaned)
+    removable_prefix = 0
+    while (
+        removable_prefix < len(raw_words)
+        and raw_words[removable_prefix] & REMOVABLE_LEADING_FILLERS
+    ):
+        removable_prefix += 1
+    if not any(
+        len(raw_words) - start == len(cleaned_words)
+        and all(
+            source_forms & cleaned_forms
+            for source_forms, cleaned_forms in zip(
+                raw_words[start:], cleaned_words, strict=True
+            )
+        )
+        for start in range(removable_prefix + 1)
+    ):
+        raise ProviderRejectedOutputError("The cleanup result was not source-preserving")
     return cleaned
+
+
+def _lexical_word_forms(text: str) -> tuple[frozenset[str], ...]:
+    words: list[frozenset[str]] = []
+    for match in LEXICAL_WORD.finditer(text):
+        word = match.group().casefold().replace("’", "'")
+        forms = {word.replace("'", "")}
+        if word.endswith("'s"):
+            forms.add(word[:-2].replace("'", ""))
+        words.append(frozenset(forms))
+    return tuple(words)
 
 
 @dataclass(frozen=True)
@@ -1029,6 +1064,7 @@ class CleanupService:
         if not request.enabled or self.provider is None:
             return self._result(raw_text, CleanupStatus.DISABLED)
 
+        provider_prompt = effective_system_prompt(system_prompt)
         started = time.monotonic()
         category = "success"
         http_status: int | None = None
@@ -1037,10 +1073,10 @@ class CleanupService:
         attempts: list[CleanupAttempt] = []
         try:
             if isinstance(self.provider, SequentialCleanupProvider):
-                provider_output = await self.provider.clean(raw_text, system_prompt)
+                provider_output = await self.provider.clean(raw_text, provider_prompt)
             else:
                 provider_output = await asyncio.wait_for(
-                    self.provider.clean(raw_text, system_prompt),
+                    self.provider.clean(raw_text, provider_prompt),
                     timeout=self.timeout_seconds,
                 )
             selected_provider = provider_output.provider_id

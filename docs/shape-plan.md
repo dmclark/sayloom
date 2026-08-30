@@ -138,7 +138,7 @@ caption history or a new content-retention model.
 | Original | Current raw source and dictation target | Yes | Ephemeral | Input to cleanup and fail-open outgoing value |
 | Prompt version | One exact immutable version in the current global cleanup-instruction history | New versions only | Version and configured default are durable; workspace override is session-only | One configured default plus an optional page-session selection |
 | Vocabulary | Canonical terms plus recognition aliases | Yes | Durable | Zero or more active profiles, independent of prompt |
-| Cleaned | Candidate generated from the current Original, prompt, and vocabulary | No | Ephemeral | Valid only for the transformation context that produced it |
+| Cleaned | Source-preserving copy edit generated from the current Original and prompt | No | Ephemeral | Valid only for the transformation context that produced it; invalid provider output fails open to Original |
 | Outgoing | The exact value exposed to delivery integrations | Selection only | Ephemeral | Uses a current Cleaned result or Original |
 | Target | A local destination command and its installation state | Yes | Durable local configuration | Reads Outgoing; never owns prompt or vocabulary selection |
 | Recording review item | Audio plus review-specific transcript state | Later | Private operating data outside Git | Separate from live Original, Cleaned, and Outgoing |
@@ -149,10 +149,12 @@ the user explicitly chooses Original as outgoing. That keeps one editable text
 source and one generated candidate.
 
 The current prompt model is one cleanup instruction evolving through a single
-global version history. It is not yet a collection of named logical prompts,
-each with its own versions. Keep that simpler model for the current phase unless
-a concrete recurring need for multiple cleanup modes is identified; otherwise
-the UI would imply a domain model the storage and API do not have.
+global version history. Every version is subordinate to the fixed
+source-preserving output contract. It is not yet a collection of named logical
+prompts, each with its own versions. Keep that simpler model for the current
+phase unless a concrete recurring need for multiple cleanup modes is
+identified; otherwise the UI would imply a domain model the storage and API do
+not have.
 
 ## 4. Scope and boundaries
 
@@ -368,9 +370,10 @@ current unvalidated management dialog. When prompt management is prioritized:
 #### Vocabulary suggestions from Original → Cleaned
 
 Use successful cleanup differences as a fast way to author vocabulary, not as
-ground truth. The cleanup model may also change punctuation, grammar, tone, or
-wording, so Sayloom must never add every difference or write a profile without
-review.
+ground truth. Current cleanup may normalize capitalization, punctuation,
+apostrophes, and whitespace or remove leading fillers; grammar, tone, and
+wording rewrites are not accepted output. Sayloom must still never add every
+difference or write a profile without review.
 
 - After a current successful cleanup, identify differences that plausibly map
   an observed source word or phrase to an intended canonical term. Ignore
@@ -562,7 +565,11 @@ schema state rather than running migrations.
 - The display brand is Sayloom; package and service identifiers remain neutral
   `local_text` identifiers.
 - Normal startup does not migrate or seed the database.
-- Cleanup fails open to Original, including while a result is pending.
+- Cleanup is source-preserving copy-editing: it may normalize case,
+  punctuation, apostrophes, and whitespace or remove leading fillers, but it
+  rejects other word additions, substitutions, removals, and reordering.
+  Rejected output fails open to Original, as does a pending or unavailable
+  result.
 - API errors remain visible and provide expandable, copyable, sanitized details
   at the affected workflow. Error reporting never exposes credentials,
   operating text, provider payloads, stack traces, database contents, or

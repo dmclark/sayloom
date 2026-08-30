@@ -59,8 +59,11 @@ The product must distinguish three forms of text:
 These three forms of text do not have one-to-one word correspondence. A
 polished result can be useful without proving what was spoken, and an
 Original-to-Cleaned diff cannot prove that one phrase is the correct replacement
-for another (F002, F003). Existing intended-message cleanup should be preserved,
-but evaluated separately from transcript recovery.
+for another (F002, F003). The current Cleaned output is source-preserving
+copy-editing, limited to case, punctuation, apostrophe, and whitespace
+normalization plus leading-filler removal. Broader grammar, tone, or wording
+polishing is deferred to a separately approved user preference and remains
+separate from transcript recovery.
 
 ## Goals and non-goals
 

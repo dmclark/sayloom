@@ -3,6 +3,11 @@
 Sayloom cleans synthetic Original text when available, otherwise fails open to Original, and
 publishes the explicitly selected current value for downstream commands.
 
+Current cleanup is source-preserving copy-editing. It may normalize capitalization, punctuation,
+apostrophes, and whitespace or remove leading filler words. Provider output that otherwise adds,
+substitutes, removes, or reorders words is rejected locally and fails open to Original; configured
+prompt versions cannot widen this boundary.
+
 ## Sub-features
 
 - `CLEANUP.AUTO`: enabled edits schedule cleanup and expose waiting/running/final status.
@@ -17,6 +22,8 @@ publishes the explicitly selected current value for downstream commands.
 - `CLEANUP.ROUTING`: the configured provider/model order and external-processing behavior are
   visible, expandable, and credential-free; invalid cross-provider configuration activates no
   provider and preserves Original fail-open.
+- `CLEANUP.SEMANTIC_OUTPUT`: accepted provider output preserves the source lexical sequence except
+  for leading fillers; rejected output never becomes Cleaned or Outgoing text.
 
 ## How to get to it (user POV)
 
@@ -48,6 +55,10 @@ budget.
 - For routing disclosure, separately prove unavailable, legacy Gemini-only, invalid or
   unacknowledged cross-provider, and acknowledged Gemini → OpenAI states. Confirm route order,
   disclosure text, keyboard expansion, and absence of credential values in API and DOM output.
+- For semantic output, use independent-validator and mocked-provider tests to prove ordinary
+  case/punctuation/apostrophe normalization and leading-filler removal succeed, while
+  instruction-following, novel words, substitutions, removals, and reordering deterministically
+  reject and publish Original.
 - Record an ARIA snapshot, decisive DOM/API facts, console output, and an inspected screenshot for
   each state claimed.
 

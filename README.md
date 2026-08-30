@@ -1,6 +1,6 @@
 # Sayloom Development
 
-A local-first text cleanup workspace for typing, paste, and compatible dictation input. The daily surface keeps an editable, collapsible Original field and a read-only Cleaned result, fails open to the original when Gemini is unavailable, publishes the selected outgoing text for Raycast, and manages immutable cleanup-prompt versions. The Python package and machine-level identifiers are deliberately neutral and independent of the display brand.
+A local-first text cleanup workspace for typing, paste, and compatible dictation input. The daily surface keeps an editable, collapsible Original field and a read-only source-preserving Cleaned result, fails open to Original when cleanup is unavailable or rejected, publishes the selected outgoing text for Raycast, and manages immutable cleanup-prompt versions. The Python package and machine-level identifiers are deliberately neutral and independent of the display brand.
 
 ![Sayloom Development workspace](docs/images/sayloom-development.png)
 
@@ -49,6 +49,14 @@ The local default is the `development` profile and displays **Sayloom Developmen
 ## Cleanup providers
 
 Cleanup is enabled by default for every Original update, regardless of whether it came from typing, ordinary paste, or compatible dictation. Replacing a fully selected Original clears the previous Cleaned result for the new session; incremental input keeps the last result visible while cleanup is waiting or running. During either kind of reprocessing, outgoing state immediately fails open to the current Original text. Reloading the page clears both editors and the process-local outgoing state without changing durable prompt or cleanup settings. Dictation tools that signal a write with an untrusted synthetic paste followed by a trusted input event receive compatible caret and focus handling, but that event sequence is not a required input API.
+
+The fixed cleanup contract permits capitalization, punctuation, apostrophe, and
+whitespace normalization plus removal of one or more leading `erm`, `hmm`,
+`uh`, or `um` fillers. Every other lexical word must remain in source order.
+Instruction-following, added wording, substitutions, reordering, and other word
+removal are rejected locally and fail open to Original. Configured prompt
+versions provide guidance only within this fixed boundary; broader grammar,
+tone, or wording rewriting is not a current cleanup mode.
 
 Development configuration uses one shared file and an optional state-specific
 file inside the external state directory:
@@ -123,7 +131,7 @@ remain exclusively bound by the selected state manifest.
 
 ## Durable prompt configuration
 
-SQLite in the external profile state directory is authoritative for the seeded prompt, immutable custom prompt versions, exact durable default selection, the cleanup default, target definitions and target-operation errors, seed state, and one-time import status. The Cleaned header provides a compact prompt-version selector for the current page session. Selecting a version sends its exact identifier with cleanup requests but does not change the durable default; clearing text preserves the selection, while a full reload restores the configured default. Expanded prompt management is intentionally outside the Workspace surface.
+SQLite in the external profile state directory is authoritative for the seeded prompt, immutable custom prompt versions, exact durable default selection, the cleanup default, target definitions and target-operation errors, seed state, and one-time import status. The Cleaned header provides a compact prompt-version selector for the current page session. Selecting a version sends its exact identifier with cleanup requests but does not change the durable default; clearing text preserves the selection, while a full reload restores the configured default. Every selected prompt is wrapped in the fixed source-preserving product contract before it is sent to a provider, so neither a legacy seed nor a custom version can widen accepted output. Expanded prompt management is intentionally outside the Workspace surface.
 
 The **Targets** destination manages durable definitions for Amp, iTerm, Supacode, and VS Code plus bounded user-authored targets. **Save definition** never installs. **Install/Regenerate command** explicitly writes one generated command to the configured Raycast Script Commands directory, and Disable/Remove state their command-removal consequences. Generated commands consume only the current outgoing-state API, never press Return, and leave hotkey assignment to Raycast and the user. Application and macOS permission state remains **Not verified** until it is exercised on the Mac that runs Raycast. The fixed **Dev: Open Sayloom** command and four fixed Gate 1 send commands remain available during managed-command verification.
 

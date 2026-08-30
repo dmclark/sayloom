@@ -17,22 +17,25 @@ hotkey integration in their own way.
 ## Product Purpose
 
 Sayloom is a local-first text cleanup workspace that takes raw input from
-typing, paste, or compatible dictation, applies configurable Gemini-based
-cleanup with immutable prompt versions and optional vocabulary profiles, and
-publishes the selected outgoing text for delivery into other applications.
+typing, paste, or compatible dictation, applies configurable provider-guided
+copy-editing with immutable prompt versions and optional vocabulary profiles,
+and publishes the selected outgoing text for delivery into other applications.
+Current cleanup is source-preserving: it may normalize capitalization,
+punctuation, apostrophes, and whitespace or remove leading filler words, but it
+does not rewrite grammar, tone, or wording.
 
 It fills the gap between Voiceitt — which transcribes non-standard voices but
 does not clean up its output — and mainstream tools that clean up natively but
 cannot serve these users. Success means a person with a non-standard voice can
-dictate, clean, and send text as efficiently as someone using a mainstream
-tool.
+dictate, copy-edit, and send trustworthy text as efficiently as someone using
+a mainstream tool.
 
 ## Positioning
 
 Mainstream voice input tools (built-in dictation, Otter, etc.) clean up
 transcripts natively but fail for non-standard voices. Voiceitt serves those
 voices but offers no cleanup. Sayloom is the layer that makes Voiceitt output
-usable as polished text, with prompt-managed cleanup, vocabulary
+usable as trustworthy outgoing text, with prompt-managed cleanup, vocabulary
 disambiguation, and one-action delivery to target applications.
 
 ## Operating Context
@@ -63,8 +66,10 @@ interaction has been fully exercised, accepted, or proven in regular use.
 
 - Editable, collapsible Original field and read-only Cleaned result, vertically
   stacked with a resizable divider.
-- Automatic cleanup on every Original update with a 700 ms debounce. Fails open
-  to Original when Gemini is unavailable or times out.
+- Automatic source-preserving copy-editing on every Original update with a 700
+  ms debounce. Provider output that adds, substitutes, reorders, or removes
+  source words other than leading fillers is rejected and fails open to
+  Original, as do unavailable or timed-out providers.
 - Immutable cleanup-prompt versions with exact active-version selection,
   version history, and a full management dialog.
 - Compact prompt selector in the Cleaned header. The control is present and
@@ -146,8 +151,9 @@ interaction has been fully exercised, accepted, or proven in regular use.
   migrations and seeds are explicit admin commands.
 - **Controlled restarts:** Use `scripts/verify-then-restart.sh` for validated
   changes, not hot reload.
-- **Fails open:** If cleanup is unavailable or times out, outgoing text falls
-  back to the original raw input. The user is never blocked.
+- **Fails open:** If cleanup is unavailable, times out, or returns output beyond
+  the source-preserving copy-edit contract, outgoing text falls back to the
+  original raw input. The user is never blocked.
 - **Visible and inspectable failures:** API failures show a concise summary at
   the affected workflow and offer persistent, expandable safe details. Details
   may include the operation, time, HTTP status, stable error code, sanitized

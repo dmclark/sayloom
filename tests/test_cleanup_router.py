@@ -42,6 +42,10 @@ class FakeClock:
         self.value += seconds
 
 
+def source_preserving_cleanup(raw_text: str) -> str:
+    return f"{raw_text[:1].upper()}{raw_text[1:]}."
+
+
 class FakeAdapter:
     def __init__(
         self,
@@ -55,14 +59,20 @@ class FakeAdapter:
         self.provider_id = provider_id
         self.model = model
         self.quota_group_id = quota_group_id
-        self.outcomes = list(outcomes or ("Synthetic clean text.",))
+        self.outcomes = list(outcomes)
         self.input_tokens = input_tokens
         self.output_tokens = output_tokens
         self.calls = 0
 
     async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
         self.calls += 1
-        outcome = self.outcomes.pop(0) if len(self.outcomes) > 1 else self.outcomes[0]
+        outcome = (
+            self.outcomes.pop(0)
+            if len(self.outcomes) > 1
+            else self.outcomes[0]
+            if self.outcomes
+            else source_preserving_cleanup(raw_text)
+        )
         if callable(outcome):
             outcome = outcome()
         if isinstance(outcome, BaseException):
@@ -180,7 +190,7 @@ def test_eligible_failure_advances_once_with_ordered_safe_attribution() -> None:
 
     def win_fallback():
         clock.advance(0.25)
-        return "Synthetic clean text."
+        return source_preserving_cleanup("synthetic source")
 
     primary = FakeAdapter("primary", fail_primary, quota_group_id="quota-a")
     fallback = FakeAdapter(
@@ -258,7 +268,7 @@ def test_safety_refusal_is_terminal_and_does_not_open_a_breaker() -> None:
     primary = FakeAdapter(
         "primary",
         ProviderRejectedOutputError("private refusal", safety_policy=True),
-        "Synthetic clean text.",
+        source_preserving_cleanup("synthetic source"),
     )
     fallback = FakeAdapter("fallback", provider_id="provider-b", quota_group_id="quota-b")
     provider = router(primary, fallback)
@@ -273,7 +283,11 @@ def test_safety_refusal_is_terminal_and_does_not_open_a_breaker() -> None:
 
 
 def test_programming_exception_is_terminal_and_does_not_mutate_breakers() -> None:
-    primary = FakeAdapter("primary", ValueError("private bug detail"), "Synthetic clean text.")
+    primary = FakeAdapter(
+        "primary",
+        ValueError("private bug detail"),
+        source_preserving_cleanup("synthetic source"),
+    )
     fallback = FakeAdapter("fallback", provider_id="provider-b", quota_group_id="quota-b")
     provider = router(primary, fallback)
 
@@ -369,7 +383,9 @@ def test_attempt_never_starts_with_less_than_500ms(total: float, attempt_budget:
 
 def test_route_breaker_opens_skips_half_opens_and_resets_on_success() -> None:
     clock = FakeClock()
-    primary = FakeAdapter("primary", transient_http(), "Synthetic clean text.")
+    primary = FakeAdapter(
+        "primary", transient_http(), source_preserving_cleanup("synthetic source")
+    )
     fallback = FakeAdapter("fallback", provider_id="provider-b", quota_group_id="quota-b")
     provider = router(primary, fallback, clock=clock)
 
@@ -445,7 +461,9 @@ def test_stale_concurrent_success_does_not_close_new_route_breaker() -> None:
                     raise transient_http(503)
                 second_started.set()
                 await release_success.wait()
-                return ProviderOutput("Synthetic clean text.", self.provider_id, self.model, 0)
+                return ProviderOutput(
+                    source_preserving_cleanup(raw_text), self.provider_id, self.model, 0
+                )
 
         adapter = InterleavedAdapter("primary")
         provider = router(adapter, clock=clock)
@@ -480,7 +498,9 @@ def test_only_one_route_half_open_probe_runs_concurrently() -> None:
                     raise transient_http()
                 probe_started.set()
                 await release_probe.wait()
-                return ProviderOutput("Synthetic clean text.", self.provider_id, self.model, 0)
+                return ProviderOutput(
+                    source_preserving_cleanup(raw_text), self.provider_id, self.model, 0
+                )
 
         primary = ProbeAdapter("primary")
         fallback = FakeAdapter("fallback", provider_id="provider-b", quota_group_id="quota-b")
@@ -521,7 +541,11 @@ def test_429_opens_every_route_in_the_shared_quota_group() -> None:
 
 def test_quota_breaker_honors_retry_after_then_resets_on_probe_success() -> None:
     clock = FakeClock()
-    adapter = FakeAdapter("primary", transient_http(429, retry_after=17), "Synthetic clean text.")
+    adapter = FakeAdapter(
+        "primary",
+        transient_http(429, retry_after=17),
+        source_preserving_cleanup("synthetic source"),
+    )
     provider = router(adapter, clock=clock)
 
     with pytest.raises(ProviderHTTPError):
@@ -539,7 +563,9 @@ def test_quota_breaker_honors_retry_after_then_resets_on_probe_success() -> None
 def test_quota_breaker_does_not_probe_before_retry_after_beyond_backoff_cap() -> None:
     clock = FakeClock()
     adapter = FakeAdapter(
-        "primary", transient_http(429, retry_after=1_200), "Synthetic clean text."
+        "primary",
+        transient_http(429, retry_after=1_200),
+        source_preserving_cleanup("synthetic source"),
     )
     provider = router(adapter, clock=clock)
 
@@ -594,7 +620,9 @@ def test_stale_concurrent_success_does_not_close_new_shared_quota_breaker() -> N
                     raise transient_http(429)
                 second_started.set()
                 await release_success.wait()
-                return ProviderOutput("Synthetic clean text.", self.provider_id, self.model, 0)
+                return ProviderOutput(
+                    source_preserving_cleanup(raw_text), self.provider_id, self.model, 0
+                )
 
         adapter = InterleavedAdapter("primary", quota_group_id="shared")
         provider = router(adapter, clock=clock)
@@ -635,7 +663,9 @@ def test_half_open_success_does_not_clear_concurrent_permanent_quota_disable() -
                     raise transient_http(429)
                 probe_started.set()
                 await release_probe.wait()
-                return ProviderOutput("Synthetic clean text.", self.provider_id, self.model, 0)
+                return ProviderOutput(
+                    source_preserving_cleanup(raw_text), self.provider_id, self.model, 0
+                )
 
         adapter = InterleavedAdapter("primary", quota_group_id="shared")
         provider = router(adapter, clock=clock, budgets=(120,), total=120)
@@ -680,7 +710,9 @@ def test_only_one_shared_quota_half_open_probe_runs_concurrently() -> None:
                     raise transient_http(429)
                 probe_started.set()
                 await release_probe.wait()
-                return ProviderOutput("Synthetic clean text.", self.provider_id, self.model, 0)
+                return ProviderOutput(
+                    source_preserving_cleanup(raw_text), self.provider_id, self.model, 0
+                )
 
         primary = ProbeAdapter("primary", quota_group_id="shared")
         same_group = FakeAdapter("same-group", quota_group_id="shared")
@@ -739,7 +771,9 @@ def test_cancellation_is_terminal_and_releases_capacity_without_fallback() -> No
                 if self.calls == 1:
                     started.set()
                     await asyncio.Event().wait()
-                return ProviderOutput("Synthetic clean text.", self.provider_id, self.model, 0)
+                return ProviderOutput(
+                    source_preserving_cleanup(raw_text), self.provider_id, self.model, 0
+                )
 
         primary = CancelAdapter("primary")
         fallback = FakeAdapter("fallback", provider_id="provider-b", quota_group_id="quota-b")
@@ -770,7 +804,9 @@ def test_bulkhead_allows_two_active_calls_and_rejects_a_third_without_queue_or_c
                 if self.calls == 2:
                     two_started.set()
                 await release.wait()
-                return ProviderOutput("Synthetic clean text.", self.provider_id, self.model, 0)
+                return ProviderOutput(
+                    source_preserving_cleanup(raw_text), self.provider_id, self.model, 0
+                )
 
         adapter = BlockingAdapter("primary")
         provider = router(adapter)
