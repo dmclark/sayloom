@@ -1,29 +1,52 @@
 ---
 name: verifying-sayloom
-description: Verifies high-risk or release-ready Sayloom behavior with feature-mapped evidence across isolated test, browser, database, macOS, provider, and CI lanes. Use when explicitly asked for full verification or when changes affect browser interaction, persistence, migrations, provider routing, accessibility, macOS/Raycast, or multiple feature areas. Do not use for routine localized implementation or review.
+description: Verifies Sayloom integration or release readiness with full feature-mapped evidence across isolated test, browser, database, macOS, provider, and CI lanes. Use only for explicitly requested full, integration, or release verification. Do not use for routine localized implementation or review.
 ---
 
 # Verifying Sayloom
 
-Use this contract to make verification claims that another engineer can reproduce. Read
-`features/README.md` before choosing checks, then read only the affected feature files.
+Use this acceptance contract after implementation and affected checks are resolved. It is separate
+from implementation verification and makes full verification claims that another engineer can
+reproduce. Read `features/README.md` before choosing checks, then read only the affected feature
+files unless release scope requires the complete feature map.
 
-## Choose the smallest verification level
+## Invocation boundary
 
-Do not load or apply this skill to a routine localized change whose behavior is covered by one
-targeted test or static check. Use the repository's normal targeted verification instead.
+- Do not load or apply this skill during routine localized implementation. The implementation owner
+  runs only affected targeted tests and static checks, even when the module concerns browser,
+  persistence, migrations, providers, accessibility, or macOS behavior.
+- Use this workflow only when the user explicitly requests full, integration, release, or acceptance
+  verification. For substantial work, make it a separate phase after constituent implementations
+  and their affected checks are complete.
+- Full or integration scope maps every entry point and applicable lane affected by all constituent
+  changes. Release scope maps the complete release feature set. Do not narrow a genuinely selected
+  full run to the checks that were convenient during implementation.
+- Existing evidence may guide scope, but only checks executed in the current run can be marked
+  `passed`. Do not repeat unchanged checks or reload this contract in the same thread.
 
-When this skill applies, choose one level before reading feature details or running checks:
+## Ownership and phase gates
 
-- **Focused** (default): map only affected sub-features, read only their feature files, and run the
-  smallest applicable Portable checks. Add a database or isolated-browser check only when the
-  changed behavior crosses that boundary.
-- **Full**: map all affected entry points and applicable lanes. Use only for an explicit full or
-  release verification request, a cross-feature change, or a change to shared persistence,
-  migrations, provider routing, accessibility foundations, or macOS/Raycast integration.
+- Assign one integration owner to the broad run. Constituent implementation owners do not repeat the
+  full baseline; the integration owner runs it once after their changes and affected checks resolve.
+- Permit only one broad verification owner and one broad lane at a time. Finish and classify the
+  current lane before another broad owner or lane begins.
+- Do not begin acceptance verification while implementation failures, open corrections, or baseline
+  repair remain unresolved. The owner who starts baseline repair retains it until it passes or stops
+  at the escalation boundary.
+- Keep these phase boundaries explicit: investigate/reproduce; implement plus affected checks; then,
+  for substantial work, this separate full integration-verification phase.
 
-Do not repeat unchanged checks or reload the contract in the same thread. Existing evidence may
-guide scope, but only checks executed in the current run can be marked `passed`.
+## Escalation boundary
+
+During implementation follow-up or baseline repair, stop and report before broadening scope if any
+one of these occurs:
+
+- the fix breaks unrelated fixtures or would require changing them;
+- the fix must expand outside the module that owns the failing behavior; or
+- the affected suite still fails after two targeted correction attempts.
+
+Report the failing claim, relevant excerpt, corrections attempted, and the scope or fixture change
+that would be required. Do not silently turn acceptance verification into cross-module product work.
 
 ## API usage budget
 
@@ -53,6 +76,9 @@ guide scope, but only checks executed in the current run can be marked `passed`.
 - Normal application startup must not migrate or seed. Run administration commands explicitly.
 - Keep databases, logs, run notes, and evidence out of Git. Evidence shown to the user belongs
   under `.amp/in/artifacts/sayloom-verification/<run-id>/` and must contain synthetic data only.
+- Prefer quiet test modes and short tracebacks. Persist verbose browser, server, and test logs in the
+  run artifact directory rather than the conversation; report summaries and only failure-relevant
+  excerpts. Do not retain or reread unchanged output.
 - Cleanup may remove only resources created by the current run. Preserve evidence until the user
   has reviewed the report.
 
@@ -108,8 +134,8 @@ Plan only applicable lanes, but report every planned lane explicitly.
    map from filenames alone.
 2. **Create the ledger first.** List feature × lane checks and expected proof before running them.
    This makes omissions and intentional skips visible.
-3. **Run the Portable lane.** Use the smallest targeted check first, then the complete baseline
-   when the change can affect shared behavior:
+3. **Run the Portable lane.** The integration owner runs the complete baseline after all constituent
+   implementation checks are resolved:
 
    ```sh
    uv sync --locked
@@ -120,7 +146,9 @@ Plan only applicable lanes, but report every planned lane explicitly.
    git diff --check
    ```
 
-   Do not report the full baseline as passed if only targeted tests ran; name the target.
+   Capture concise summaries and exit status, writing verbose output to the run artifact directory.
+   Do not report the full baseline as passed if only targeted tests ran. If a baseline check fails,
+   diagnose it with the smallest affected command and follow the escalation boundary before repair.
 4. **Run Database/migration checks** when application state, models, prompts, import, startup,
    health, or migrations could be affected. Follow “Database proof” below.
 5. **Run the Isolated browser lane** for user-visible behavior. Follow “Browser and accessibility

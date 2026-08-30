@@ -11,11 +11,12 @@ This repository is local-first and public-safe from its first commit.
 - Keep features and abstractions limited to the current requirement.
 - Keep agent work to one bounded deliverable: clarify material ambiguity before editing; inspect exact
   anchors with narrow, capped output; diagnose failures before retrying; avoid delegating small
-  changes or work on a shared dirty worktree; do not replay unchanged context; and verify in stages
-  with preflight checks, affected checks after edits, then one final applicable baseline.
-- Hand off to a new focused thread before further implementation when the principal deliverable
-  changes or the visible conversation reaches 100 messages. Defer unrelated review findings and
-  follow-up changes to a separate focused thread rather than expanding the current deliverable.
+  changes or work on a shared dirty worktree; and do not replay unchanged context. Separate work
+  into investigate/reproduce, implement plus affected checks, and, for substantial work, a distinct
+  full integration-verification phase after implementation is resolved.
+- Hand off to a new focused thread before further implementation when the principal deliverable or
+  phase changes. Defer unrelated review findings and follow-up changes to a separate focused thread
+  rather than expanding the current deliverable.
   Start each fresh thread with a compact, self-contained prompt containing only confirmed decisions,
   current state, evidence, the exact next deliverable, and necessary references; never import or
   replay a long parent transcript. This is a reviewable checkpoint, not automatic token enforcement.
@@ -25,6 +26,11 @@ This repository is local-first and public-safe from its first commit.
   Request one coherent implementation pass followed by one verification pass; if verification fails,
   diagnose the new evidence, make a targeted correction, and then rerun instead of entering an
   open-ended implementation and verification loop.
+- Default implementation verification to affected checks. One integration owner runs any requested
+  full baseline once after constituent work is resolved; never overlap broad verification owners or
+  start acceptance verification while implementation or baseline repair remains unresolved.
+- Stop and report before broadening a fix when it breaks unrelated fixtures, leaves its owning
+  module, or its affected suite still fails after two targeted correction attempts.
 - Resolve ambiguous completion from the current owner and `git status`/`git diff`, not a duplicate
   cleanup thread. Validate test or browser commands before rerunning them, and do not repeat an
   unchanged failing command or poll unchanged status without new evidence or a meaningful wait.
