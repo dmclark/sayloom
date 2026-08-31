@@ -3,14 +3,15 @@
 - **Contract version:** `cleanup-evaluation-corpus-v1`
 - **Consent version:** `cleanup-evaluation-consent-v1`
 - **Export version:** `cleanup-evaluation-export-v1`
-- **Status:** Gate 5 contract frozen; Gate 6 implementation is not present
+- **Status:** Contract frozen; Stage 3 lifecycle implementation present
 - **Benchmark protocol:** [`cleanup-evaluation-benchmark-v1.json`](cleanup-evaluation-benchmark-v1.json)
 
 This contract governs a private corpus of user-confirmed polished cleanups. It does not authorize
-collection. Until Gate 6 implements and verifies every invariant below, Sayloom must expose no
-capture endpoint, create no evaluation database, and retain no dialog draft or operating text. Gate
-5 resolves interface details that the six confirmed product decisions left open, including
-optimistic revisions, bounded benchmark holds, and two-step export confirmation.
+passive collection. The Stage 3 implementation exposes capture only after a successful current
+cleanup supplies a short-lived proof and the user completes the separate confirmation. Ordinary
+startup still creates no evaluation database and retains no dialog draft or operating text. The
+contract resolves interface details including optimistic revisions, bounded benchmark holds, and
+two-step export confirmation.
 
 ## Fixed boundaries
 

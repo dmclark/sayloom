@@ -1,6 +1,6 @@
 # Cleanup resilience and local evaluation design
 
-- **Status:** Gates 1–5 implemented; later runtime and persistence gates remain deferred
+- **Status:** Gates 1–6 implemented; benchmark and canary gates remain deferred
 - **Code baseline:** `8599efa3c3ac65e50ff44a4ad43f31d68af5ae00`
 - **Provider evidence checked:** 2026-08-26
 - **Scope:** Cleanup routing and an explicitly confirmed, private evaluation corpus; no runtime,
@@ -318,16 +318,15 @@ Every harmful change receives blinded human review; aggregate edit distance cann
    expandable Workspace disclosure report sanitized routing status and state that fallback sends
    the same current text/instruction only after qualifying Gemini failure and saves no evaluation
    corpus. Legacy Gemini-only routing remains compatible; generic `OPENAI_API_KEY` is ignored.
-5. **Corpus contract and schema design (implemented, no migration):** the frozen
+5. **Corpus contract and schema design (implemented):** the frozen
    [corpus contract](cleanup-evaluation-corpus-contract.md) encodes the six confirmed decisions in
    API, separate storage, consent, expiry, transactional deletion, and JSONL export contracts. The
    machine-readable [benchmark protocol](cleanup-evaluation-benchmark-v1.json) pre-registers arms,
-   sampling, metrics, statistics, decision gates, and canary stops. No collection endpoint,
-   evaluation database, runtime integration, or migration exists before Gate 6.
-6. **Corpus persistence and lifecycle (migration required):** create the separate evaluation database,
-   explicit capture/confirm/review/delete/export, expiry, and transactional deletion. Verify fresh and
-   predecessor migration, no-migration startup, isolated browser consent paths, and synthetic-only
-   export/deletion evidence.
+   sampling, metrics, statistics, decision gates, and canary stops.
+6. **Corpus persistence and lifecycle (implemented):** the separate opt-in evaluation database,
+   proof-bound capture/confirm/review/delete/export, expiry command, and transactional deletion use
+   an explicit migration chain. Affected tests cover fresh and predecessor migration, no-migration
+   startup, consent paths, stale confirmation, and synthetic-only export/deletion evidence.
 7. **Offline benchmark runner (no stable migration):** import an explicit snapshot into pilot state,
    freeze the manifest, and compute paired metrics. Provider traffic requires dedicated paid test
    credentials and synthetic smoke cases before any approved private corpus.

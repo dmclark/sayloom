@@ -33,6 +33,7 @@ button, textarea, input, select { font: inherit; }
 button:focus-visible,
 textarea:focus-visible,
 select:focus-visible,
+input:focus-visible,
 .utility-rail-item:focus-visible,
 .workspace-resizer:focus-visible,
 input:focus-visible + .switch-track {
@@ -348,13 +349,15 @@ main { padding-top: 22px; }
 .workspace.is-original-collapsed .original-panel-footer,
 .workspace.is-original-collapsed .workspace-resizer { display: none; }
 
-.targets-manager {
+.targets-manager,
+.evaluation-manager {
   min-width: 0;
   min-height: 0;
   height: 100%;
 }
 
-.target-grid-sheet {
+.target-grid-sheet,
+.evaluation-sheet {
   height: 100%;
   min-width: 0;
   overflow: auto;
@@ -499,6 +502,105 @@ main { padding-top: 22px; }
 .danger-zone { border-bottom: 0; }
 .target-lifecycle-actions { gap: 10px; }
 .button-danger { border-color: var(--night); }
+
+.evaluation-sheet { display: flex; flex-direction: column; }
+.evaluation-status {
+  min-height: 1.25em;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.evaluation-sheet > .evaluation-status { padding: 0 20px 12px; }
+.evaluation-case-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 14px;
+  min-height: 0;
+  padding: 4px 20px 20px;
+  overflow: auto;
+}
+.evaluation-case-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--blue);
+  background: var(--paper-bright);
+}
+.evaluation-case-card.is-upcoming { border-left-color: var(--night); }
+.evaluation-case-card input { width: 18px; height: 18px; }
+.evaluation-case-card button {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.evaluation-case-card strong { display: block; margin-bottom: 8px; font-family: "Iowan Old Style", Palatino, serif; }
+.evaluation-case-card span { display: block; color: var(--muted); font-size: 0.7rem; line-height: 1.55; }
+.evaluation-actions { margin-top: auto; padding: 14px 20px 20px; border-top: 1px solid var(--line); }
+
+.evaluation-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-width: none;
+  max-height: min(92dvh, 960px);
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--night);
+  border-radius: 4px;
+  color: var(--ink);
+  background: var(--paper-bright);
+  box-shadow: 0 28px 90px rgba(11, 18, 27, 0.38);
+}
+.evaluation-dialog::backdrop { background: rgba(11, 18, 27, 0.64); backdrop-filter: blur(3px); }
+.evaluation-dialog-sheet { display: grid; gap: 12px; padding: 24px 28px 28px; }
+.evaluation-dialog-sheet > p { margin: 0; font-size: 0.78rem; line-height: 1.55; }
+.evaluation-dialog-sheet > label,
+.evaluation-retention label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.evaluation-dialog-sheet select,
+.evaluation-dialog-sheet input {
+  min-height: 38px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: var(--ink);
+  background: var(--paper-bright);
+}
+.evaluation-dialog-sheet textarea {
+  height: 112px;
+  min-height: 112px;
+  padding: 12px 14px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.evaluation-context {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.28fr) minmax(0, 1fr);
+  gap: 7px 14px;
+  margin: 4px 0;
+  font-size: 0.75rem;
+}
+.evaluation-context dt { color: var(--muted); font-weight: 700; }
+.evaluation-context dd { margin: 0; overflow-wrap: anywhere; }
+.evaluation-consent { padding: 14px 16px; border-left: 4px solid var(--blue); background: var(--blue-pale); font-size: 0.78rem; line-height: 1.55; }
+.evaluation-consent p { margin: 5px 0 0; }
+.evaluation-dialog-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.evaluation-retention { padding: 16px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.evaluation-retention h3 { margin: 0 0 12px; font-family: "Iowan Old Style", Palatino, serif; }
+.evaluation-retention form { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; margin-top: 12px; }
+.evaluation-retention form label { grid-column: 1 / -1; }
 
 .text-panel {
   display: grid;
@@ -822,7 +924,8 @@ textarea::placeholder { color: #9a988f; font-style: italic; }
     height: 4px;
   }
   .workspace { height: clamp(580px, calc(100vh - 250px), 780px); }
-  .targets-manager { height: auto; }
+  .targets-manager,
+  .evaluation-manager { height: auto; }
   .target-grid-sheet { min-height: calc(100vh - 190px); }
   .outgoing-strip {
     align-items: flex-start;
@@ -853,6 +956,10 @@ textarea::placeholder { color: #9a988f; font-style: italic; }
   .target-detail-heading { flex-wrap: wrap; }
   .target-dialog { width: calc(100vw - 18px); max-height: calc(100dvh - 18px); }
   .target-grid { grid-template-columns: 1fr; padding-inline: 12px; }
+  .evaluation-case-list { grid-template-columns: 1fr; padding-inline: 12px; }
+  .evaluation-dialog { width: calc(100vw - 18px); max-height: calc(100dvh - 18px); }
+  .evaluation-dialog-sheet { padding-inline: 18px; }
+  .evaluation-context { grid-template-columns: 1fr; }
   .readiness-ledger { grid-template-columns: 1fr; }
 }
 

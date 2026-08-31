@@ -27,6 +27,7 @@ class Settings:
     cleanup_timeout_seconds: float = 30.0
     database_path: Path | None = None
     raycast_directory: Path | None = None
+    evaluation_data_directory: Path | None = None
 
     @property
     def display_name(self) -> str:
@@ -84,5 +85,10 @@ def load_settings() -> Settings:
         ),
         raycast_directory=(
             Path(value) if (value := os.getenv("LOCAL_TEXT_RAYCAST_DIRECTORY")) else None
+        ),
+        evaluation_data_directory=(
+            Path(value)
+            if (value := os.getenv("LOCAL_TEXT_EVALUATION_DATA_DIRECTORY"))
+            else None
         ),
     )

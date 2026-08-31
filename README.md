@@ -46,6 +46,28 @@ executes that worktree's own runtime scripts.
 
 The local default is the `development` profile and displays **Sayloom Development**. A release process can explicitly select release branding with `LOCAL_TEXT_PROFILE=release`. Application startup performs no database migrations or seed writes. If the database is absent or at the wrong schema revision, `/health` reports `setup_required` with HTTP 503 rather than changing it.
 
+## Private cleanup evaluation corpus
+
+Evaluation capture is disabled unless `LOCAL_TEXT_EVALUATION_DATA_DIRECTORY` names an absolute,
+user-owned external directory that is separate from the repository and application state. The
+evaluation database has its own migration chain and is never created, migrated, or expired during
+normal application startup. Configure the directory, then use only the explicit administration
+commands:
+
+```sh
+uv run python -m local_text.evaluation_admin schema
+uv run python -m local_text.evaluation_admin migrate
+uv run python -m local_text.evaluation_admin expire
+```
+
+The Workspace issues a short-lived process-bound capture proof only for a successful current
+cleanup. **Save evaluation case** opens a client-local review and writes nothing until **Confirm and
+save**. Confirmed cases expire after 90 days, support earlier expiry or one fixed benchmark hold,
+and can be reviewed or deleted immediately. Export requires a field/count/privacy preview followed
+by an explicit browser-selected local destination; it streams deterministic UTF-8 JSONL without
+recording a path or export event. Saving is for polished-cleanup evaluation only and is not consent
+to training or personalization.
+
 ## Cleanup providers
 
 Cleanup is enabled by default for every Original update, regardless of whether it came from typing, ordinary paste, or compatible dictation. Replacing a fully selected Original clears the previous Cleaned result for the new session; incremental input keeps the last result visible while cleanup is waiting or running. During either kind of reprocessing, outgoing state immediately fails open to the current Original text. Reloading the page clears both editors and the process-local outgoing state without changing durable prompt or cleanup settings. Dictation tools that signal a write with an untrusted synthetic paste followed by a trusted input event receive compatible caret and focus handling, but that event sequence is not a required input API.

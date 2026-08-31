@@ -16,7 +16,7 @@ from enum import StrEnum
 from typing import Any, Literal, Protocol
 
 import httpx
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_serializer
 
 from local_text.prompts import effective_system_prompt
 
@@ -123,6 +123,15 @@ class CleanupAttempt(BaseModel):
     quota_group_id: str | None = None
 
 
+class EvaluationCaptureContext(BaseModel):
+    capture_proof: str
+    completed_at: str
+    prompt_version_id: int
+    prompt_content_sha256: str
+    prompt_text: str
+    cleanup_schema_version: str
+
+
 class CleanupResult(BaseModel):
     cleaned_text: str
     status: CleanupStatus
@@ -130,6 +139,14 @@ class CleanupResult(BaseModel):
     model: str
     error: SafeError | None = None
     attempts: list[CleanupAttempt] = Field(default_factory=list)
+    evaluation: EvaluationCaptureContext | None = None
+
+    @model_serializer(mode="wrap")
+    def omit_absent_evaluation_context(self, handler: Any) -> dict[str, Any]:
+        serialized = handler(self)
+        if self.evaluation is None:
+            serialized.pop("evaluation", None)
+        return serialized
 
 
 class CleanupProvider(Protocol):

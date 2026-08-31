@@ -22,6 +22,7 @@ def test_health_reports_development_profile(initialized_settings: Settings) -> N
     assert response.status_code == 200
     health = response.json()
     cleanup_configuration = health.pop("cleanup_configuration")
+    evaluation_configuration = health.pop("evaluation_configuration")
     assert health == {
         "status": "ok",
         "profile": "development",
@@ -37,6 +38,8 @@ def test_health_reports_development_profile(initialized_settings: Settings) -> N
     assert cleanup_configuration["available"] is False
     assert cleanup_configuration["routes"] == []
     assert cleanup_configuration["validation_error"] is None
+    assert evaluation_configuration["status"] == "unconfigured"
+    assert evaluation_configuration["available"] is False
 
 
 def test_health_reports_missing_schema_without_creating_database(tmp_path: Path) -> None:
@@ -212,6 +215,7 @@ def test_config_reports_cleanup_without_exposing_key(initialized_settings: Setti
 
     configuration = response.json()
     cleanup_configuration = configuration.pop("cleanup_configuration")
+    evaluation_configuration = configuration.pop("evaluation_configuration")
     assert configuration == {
         "display_name": "Sayloom Development",
         "profile": "development",
@@ -226,6 +230,7 @@ def test_config_reports_cleanup_without_exposing_key(initialized_settings: Setti
         {"provider": "gemini", "model": "gemini-2.5-flash"},
     ]
     assert cleanup_configuration["paid_data_acknowledgement"] is None
+    assert evaluation_configuration["status"] == "unconfigured"
     assert "not-a-real-key" not in response.text
 
 
