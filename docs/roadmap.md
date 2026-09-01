@@ -282,7 +282,7 @@ project.
 
 | Stable reference | Record status |
 | --- | --- |
-| `ref:sayloom-roadmap` | Confirmed; repository artifact remains uncommitted |
+| `ref:sayloom-roadmap` | Confirmed; committed on the topic branch and not merged to `main` |
 | `ref:sayloom-decision-fidelity-first` | Confirmed; outcome too early |
 | `ref:sayloom-decision-cleanup-boundary` | Confirmed and validated |
 | `ref:sayloom-decision-delivery-sequence` | Confirmed; in progress |
