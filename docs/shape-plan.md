@@ -1,7 +1,15 @@
 # Sayloom UX shape plan
 
-Status: proposed design brief for review. This document shapes behavior and
-information architecture only; it is not an implementation specification.
+> **Superseded product-scope document (2026-09-02).**
+> [`PRODUCT.md`](../PRODUCT.md) is the sole authority for Sayloom's product
+> direction and scope. This plan remains historical UX and information-
+> architecture evidence only. Its audience, outcome, object model, navigation,
+> version-one scope, and future-phase statements are not current product
+> commitments. Reuse a UX detail only after checking it against `PRODUCT.md`
+> and the current implementation.
+
+Status: superseded product brief; retained as historical UX evidence, not an
+implementation specification or source of product requirements.
 
 ## Assumptions used for this shape
 

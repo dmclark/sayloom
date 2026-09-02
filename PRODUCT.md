@@ -1,220 +1,259 @@
-# Product
+# Sayloom product contract
 
 <!-- impeccable:product-schema 1 -->
+
+- **Status:** Confirmed product authority
+- **Audience:** Product, design, engineering, research, and delivery contributors
+- **Authority:** This document is the sole authority for Sayloom's product
+  vision, positioning, roadmap direction, audience, and scope.
+- **Confirmed:** 2026-09-02
+
+## Authority and supersession
+
+This document supersedes every earlier statement of Sayloom product vision,
+positioning, roadmap, audience, long-term outcome, or feature scope in the
+repository and in Mandrel. Earlier product narratives are historical evidence
+only. They do not authorize work or override this contract.
+
+Technical, operational, evaluation, and design documentation remains
+authoritative for verified current implementation facts within its stated
+domain. When current behavior differs from this contract, describe the
+difference explicitly as an implementation gap; do not weaken the product
+direction to match the code.
 
 ## Platform
 
 web
 
-## Users
-
-People with non-standard voices who use Voiceitt for dictation and cannot
-rely on mainstream voice input tools. They need post-transcription cleanup
-that Voiceitt does not provide natively. Currently a single personal user on
-macOS; the long-term audience includes other Voiceitt users who handle
-hotkey integration in their own way.
-
 ## Product Purpose
 
-Sayloom is a local-first text cleanup workspace that takes raw input from
-typing, paste, or compatible dictation, applies configurable provider-guided
-copy-editing with immutable prompt versions and optional vocabulary profiles,
-and publishes the selected outgoing text for delivery into other applications.
-Current cleanup is source-preserving: it may normalize capitalization,
-punctuation, apostrophes, and whitespace or remove leading filler words, but it
-does not rewrite grammar, tone, or wording.
+Sayloom helps people with non-standard speech turn imperfect Voiceitt-generated
+text—including words Voiceitt misunderstood—into the text they intended, then
+prepare that text for copying or delivery to another application.
 
-It fills the gap between Voiceitt — which transcribes non-standard voices but
-does not clean up its output — and mainstream tools that clean up natively but
-cannot serve these users. Success means a person with a non-standard voice can
-dictate, copy-edit, and send trustworthy text as efficiently as someone using
-a mainstream tool.
+Sayloom receives text, never voice recordings. It cannot verify what a person
+said against audio. It instead uses the supplied text, surrounding context,
+user-controlled preferences, and user-specific knowledge to infer likely
+recognition errors. The user remains the authority on intended meaning.
+
+Sayloom is the product. Voiceitt Bridge is its predecessor. Sayloom is an
+independent, unaffiliated companion to Voiceitt; it is not part of the Voiceitt
+company or product.
 
 ## Positioning
 
-Mainstream voice input tools (built-in dictation, Otter, etc.) clean up
-transcripts natively but fail for non-standard voices. Voiceitt serves those
-voices but offers no cleanup. Sayloom is the layer that makes Voiceitt output
-usable as trustworthy outgoing text, with prompt-managed cleanup, vocabulary
-disambiguation, and one-action delivery to target applications.
+Sayloom is the intended-text correction and preparation layer between Voiceitt
+and the applications where a user communicates. It complements Voiceitt rather
+than replacing speech recognition, and it does not claim access to the original
+speech.
+
+## Users
+
+The primary audience is Voiceitt users with non-standard speech, beginning with
+one local macOS deployment and growing toward a public hosted service.
+
+Sayloom is Voiceitt-first, not Voiceitt-exclusive. Its processing boundary
+accepts text, so typed or pasted input from another source can use the same
+workflow. Product claims and optimization remain focused on Voiceitt users
+until broader support is demonstrated.
+
+## Core text model
+
+Sayloom uses three distinct values:
+
+- **Original:** The editable text received from Voiceitt, typing, or paste.
+- **Prepared:** Sayloom's generated result for the selected correction or
+  polishing mode.
+- **Outgoing:** The exact Original or Prepared value currently selected for
+  copying or delivery.
+
+The primary correction loop is:
+
+1. Voiceitt places text in Original.
+2. Sayloom generates Prepared text.
+3. The user reviews the result when needed.
+4. If Sayloom inferred the wrong wording, the user edits Original.
+5. Sayloom regenerates Prepared from the edited Original.
+
+This loop avoids requiring approval for every changed word while keeping the
+user in control of intended meaning.
+
+## Correction and polishing modes
+
+The ultimate product supports selectable modes. Each user has a remembered
+default and may override it for the current text.
+
+- **Conservative:** Correct capitalization, punctuation, apostrophes,
+  whitespace, and bounded filler handling without replacing lexical words.
+- **Smart correction:** May add, remove, or replace words to repair likely
+  Voiceitt recognition errors. Meaning-bearing changes remain reviewable, and
+  uncertain changes receive additional emphasis.
+- **Broader polishing — Deferred:** Future modes may change grammar, tone, or
+  wording beyond recognition-error correction. Their exact boundaries are not
+  yet decided.
+
+Version one may provide one combined improved result before the complete mode
+system exists. That simplification is an implementation stage, not the final
+product model.
+
+## Review and CART display
+
+When Original is visible, the review experience identifies every word addition,
+removal, or replacement and emphasizes uncertainty. AI confidence is assistance,
+not proof; the user can always edit Original and regenerate.
+
+When Original is hidden, the workspace is in CART-style display mode. Prepared
+or fail-open text uses the available output space without inline correction
+markings. Hiding Original changes presentation only: it does not change the
+selected correction mode or silently switch processing behavior.
+
+## User-specific personalization
+
+Personalization belongs exclusively to one user. Information learned from one
+person must never affect another person's corrections.
+
+Users choose whether automatic personalization is enabled. They can inspect,
+edit, or delete what Sayloom has learned. With personalization enabled,
+user-approved corrections, edits, vocabulary, spelling, capitalization, and
+similar preferences may improve later results.
+
+In the local application, personalization stays in the user's private local
+state. In the hosted service, it is isolated to the authenticated account.
+Personalization does not imply model training, cross-user learning, or consent
+to use private text for another purpose.
 
 ## Operating Context
 
-- **Current:** macOS desktop. Voiceitt runs as a Chrome extension and
-  transcribes dictation into text fields. Raycast provides global hotkeys that
-  send Sayloom's outgoing text into Amp, iTerm, Supacode, and VS Code without
-  pressing Return.
-- **Interim:** A downloadable version others can install and run on their own
-  systems, handling hotkeys in their own way.
-- **Future:** A hosted website offering cleanup processing, where users bring
-  their own hotkey or delivery integration.
-- **Predecessor:** Sayloom is the successor to Voiceitt Bridge, an independent,
-  unaffiliated companion system. The parity doc
-  (`docs/feature-workflow-parity.md`) reconstructs predecessor workflows as
-  design evidence, not binding requirements.
-- **Cross-project coordination:** The `voiceitt-orchestration` repository
-  tracks architecture, decisions, boundaries, and compatibility milestones
-  across related projects. Sayloom aligns with its privacy, boundary, and
-  contract rules.
+The hosted service is the intended primary public offering. The local
+application remains available as a privacy-focused option. Both forms implement
+the same product purpose but may use different delivery and provider adapters.
+
+### Local application
+
+- Optimized initially for a personal macOS workflow.
+- May use user-supplied provider credentials.
+- Can publish Outgoing text to local integrations such as Raycast commands.
+- Keeps operating data and personalization outside Git in private local state.
+
+### Initial hosted service
+
+- Provides correction, review, personalization, and copying of Prepared text.
+- May launch without automated delivery into target applications.
+- Allows limited anonymous evaluation, then requires an account for continued
+  use and personalization.
+- Uses Sayloom-managed third-party AI provider access by default, with clear
+  disclosure, appropriate privacy terms, and no provider training on user
+  content.
+- May support bring-your-own provider keys later.
+- Keeps Original and Prepared text ephemeral. It persists only the account
+  configuration and user-specific personalization needed for the service.
+
+## Delivery
+
+Local delivery currently uses one explicit command per target and never presses
+Return automatically. Outgoing must remain inspectable so the user knows the
+exact value an integration will consume.
+
+The initial hosted service may stop at copying Prepared text. Automated hosted
+delivery is a future integration problem and does not block the core hosted
+offering.
+
+## Success
+
+Sayloom succeeds when it:
+
+- produces text that more often matches what the user intended;
+- reduces the manual edits and time needed to prepare usable text;
+- makes meaning-bearing changes and uncertainty reviewable without disrupting
+  CART display;
+- prevents confident but harmful corrections from becoming invisible; and
+- keeps personalization private, controllable, and isolated to one user.
+
+Accuracy and efficiency are joint outcomes. Speed without intended-meaning
+accuracy does not solve the problem.
 
 ## Capabilities and Constraints
 
-### Present in current code (validation status varies)
+### Current implementation boundary
 
-This list reports what is visible in the checkout. It does not imply that each
-interaction has been fully exercised, accepted, or proven in regular use.
+The current checkout is a useful local-first stage, not the complete product
+described above. It provides an editable Original, a generated result currently
+named **Cleaned**, explicit outgoing selection, fail-open behavior, prompt
+versions, inspectable failures, and local target commands.
 
-- Editable, collapsible Original field and read-only Cleaned result, vertically
-  stacked with a resizable divider.
-- Automatic source-preserving copy-editing on every Original update with a 700
-  ms debounce. Provider output that adds, substitutes, reorders, or removes
-  source words other than leading fillers is rejected and fails open to
-  Original, as do unavailable or timed-out providers.
-- Immutable cleanup-prompt versions with exact active-version selection,
-  version history, and a full management dialog.
-- Compact prompt selector in the Cleaned header. The control is present and
-  currently writes the durable active version, but that behavior has not been
-  validated through regular use. The desired UX instead distinguishes a
-  durable default from a page-session selection.
-- Outgoing text published via HTTP for Raycast commands to fetch and insert.
-- Generic timeout, error, and unavailable states are visible, but the browser
-  currently discards API response details. Inspectable error details are not
-  implemented.
-- SQLite-first persistence for authored configuration only (prompts, settings,
-  seed state). No operating data in Git.
-- Controlled verify-then-restart workflow; no migrations or seeds at normal
-  startup.
+Current automatic cleanup is conservative and rejects lexical additions,
+removals, substitutions, duplication, or reordering. Smart correction,
+meaning-bearing change review, user-scoped learning, hosted accounts, hosted
+provider management, and the hosted service are not implemented in this
+checkout unless later technical evidence says otherwise.
 
-### Proposed (not implemented or user-validated)
-
-- Vocabulary profiles: durable local profiles with canonical terms and
-  recognition aliases, independently activated, framed as untrusted
-  disambiguation data during cleanup. No vocabulary model, API, or UI is present
-  in the current checkout.
-- Vocabulary suggestions: derive candidate recognition-alias → canonical-term
-  pairs from meaningful differences between a successful Original and Cleaned
-  result. Suggestions remain ephemeral until the user reviews and accepts or
-  edits them; Sayloom never writes vocabulary automatically from model output.
-
-### Version-one priority boundary
-
-- Expanded prompt-version management is low priority and outside version one.
-  Version one needs only the compact workspace selector and its page-session
-  behavior; prompt authoring, history management, and changing the configured
-  default do not need new UI work in this phase.
-
-### Known gaps from parity analysis
-
-- **Target management in web UI:** not implemented. Predecessor had a dedicated
-  editable master-detail target manager.
-- **Recording review and preparation:** not implemented. Predecessor had audio
-  playback, transcript review, re-recording, and import staging.
-- **Prompt model and lifecycle:** current code stores one global history of
-  immutable cleanup-instruction versions and activates one exact version. The
-  predecessor additionally modeled multiple stable logical prompts, each with
-  versions, plus archive, conflict panels, owner overlays, and target-scoped
-  activation. Those capabilities are not implemented in Sayloom.
-- **Inspectable API errors:** current generic status labels do not expose which
-  operation failed, the safe server-provided reason, or actionable detail.
-
-### Open decisions
-
-- The current main page is a positive reference, but its visual and interaction
-  details remain open to redesign. Predecessor interactions are evidence rather
-  than requirements unless confirmed separately.
-- Whether Sayloom will continue to have one evolving cleanup instruction with a
-  global version history, or eventually support multiple named prompts, each
-  with its own history. The simpler single-history model should remain until a
-  concrete workflow requires multiple prompt families.
-- How vocabulary selection should behave. The recommended current-phase model
-  keeps prompt selection and zero-or-more vocabulary-profile selection separate
-  because they have different cardinality and trust semantics, while applying
-  both to the same cleanup request.
-- Whether recording review belongs in Sayloom or is deferred. If included,
-  Sayloom would own the review and neutral snapshot export; training-specific
-  conversion would remain in the `model-training` project. The cost and rework
-  tradeoff of adding it now versus preserving extension points for later is
-  evaluated in the UX shape plan.
-- Whether Sayloom ever needs the predecessor's multiple logical prompts, owner
-  overlays, target-scoped activation, and archive lifecycle. None is required
-  for the current single-user phase without a concrete workflow that needs it.
+Implementation documentation may continue to use **Cleaned** when describing
+the current interface. New product design should use **Prepared** for the
+generated result and reserve **Outgoing** for the exact selected delivery value.
 
 ### Durable constraints
 
-- **Local-first and private:** All operating data (dictated text, cleaned text,
-  databases, logs, API keys) stays on the machine and never enters Git. Only
-  authored configuration is persisted.
-- **Neutral identifiers:** The Python package and machine-level service use
-  `local_text` / `local.local-text.development`, deliberately decoupled from
-  the display brand "Sayloom."
-- **No migrations at startup:** Normal app startup only checks schema state;
-  migrations and seeds are explicit admin commands.
-- **Controlled restarts:** Use `scripts/verify-then-restart.sh` for validated
-  changes, not hot reload.
-- **Fails open:** If cleanup is unavailable, times out, or returns output beyond
-  the source-preserving copy-edit contract, outgoing text falls back to the
-  original raw input. The user is never blocked.
-- **Visible and inspectable failures:** API failures show a concise summary at
-  the affected workflow and offer persistent, expandable safe details. Details
-  may include the operation, time, HTTP status, stable error code, sanitized
-  server message, and recovery action, but never credentials, request headers,
-  raw or cleaned text, private paths, provider payloads, or stack traces.
-- **Prompt selection scope:** One prompt version is the durable configured
-  default. Choosing another version in the workspace creates a page-session
-  selection that continues across cleanup runs, drafts, and in-app navigation.
-  A full page reload ends that selection and restores the configured default.
-- **Adaptable text workspace:** The Original/Cleaned split remains resizable,
-  and Original can be collapsed without discarding its contents. Collapsing it
-  is the CART-style open-caption interaction: the current cleaned or fail-open
-  text receives the available output space without creating persisted caption
-  history. This behavior remains in version one.
-- **One hotkey per target (current phase):** Sending to Amp/iTerm/Supacode/VS
-  Code is one fixed Raycast command per target, not a dispatcher. This is a
-  current-phase constraint, not a permanent product decision — the future
-  hosted version leaves hotkey integration to the user.
-- **Predecessor coexistence:** The predecessor continues to run locally on its
-  own port while it remains needed. Sayloom must use distinct service, port,
-  storage, window, Raycast-package, and command identities and must never
-  inspect, modify, stop, or reuse the predecessor's private runtime state.
-- **Public-safe from first commit:** The repository is local-first and
-  public-safe from its first commit. Never add real user content, credentials,
-  private machine paths, or copied legacy implementation.
-- **Independent identity:** Sayloom is an independent, unaffiliated companion
-  system that works with Voiceitt. It is not part of the Voiceitt company or
-  product. Voiceitt accounts, subscriptions, services, and branding remain
-  under Voiceitt's control.
+- **Never block the user:** Original remains available, and unavailable or
+  failed processing must leave a usable path forward.
+- **User authority:** Sayloom proposes intended wording; it does not claim to
+  know what was spoken or override the user's correction.
+- **Private by default:** Dictated text, generated text, credentials, databases,
+  logs, and other operating data never enter Git.
+- **Account isolation:** Hosted personalization and durable configuration are
+  isolated by authenticated user and never shared implicitly.
+- **Explicit learning control:** No cross-user learning, model training, or
+  repurposing of private text follows from ordinary product use.
+- **Public-safe repository:** Never add real user content, credentials, private
+  machine paths, or copied predecessor implementation.
+- **Neutral technical identity:** Package and machine-level identifiers remain
+  decoupled from the Sayloom display brand.
+- **No startup migrations:** Normal application startup checks schema state but
+  does not migrate or seed databases.
+- **Controlled local lifecycle:** Validated changes use the controlled
+  verify-then-restart workflow rather than hot reload.
+- **Predecessor isolation:** Sayloom never inspects, modifies, stops, or reuses
+  the predecessor's private runtime state.
+
+## Deferred decisions
+
+The following remain open and must not be presented as committed behavior:
+
+- Exact future correction and polishing modes beyond Conservative and Smart
+  correction.
+- The technical method for detecting and presenting uncertainty.
+- The hosted target-integration mechanism.
+- Optional private text history; initial hosted text remains ephemeral.
+- Timing and design of hosted bring-your-own-key support.
+- Exact personalization schema, inference method, and retention controls.
 
 ## Evidence on Hand
 
-- `docs/feature-workflow-parity.md`: parity inventory reconstructing
-  predecessor workflows from Amp threads, Mandrel records, and screenshots.
-  Treated as design evidence, not binding requirements.
-- `voiceitt-orchestration` README: cross-project architecture, repository
-  boundaries, privacy rules, and contract/data-flow decisions.
-- Committed code in this repository: current prompt core, cleanup, and UI
-  implementation.
-- Predecessor Amp threads and Mandrel records referenced in the parity doc.
-- No real user content, transcripts, recordings, or credentials are in this
-  repository. Future work must not fabricate testimonials, customers, or
-  deployment claims.
+- The confirmed product interview and decision ledger in
+  https://ampcode.com/threads/T-01a05f4e-9fac-71ec-96dc-2fea35b0d4e4.
+- `ref:sayloom-product-contract` in the existing `voiceitt-bridge` Mandrel
+  project.
+- The current repository implementation and its technical documentation for
+  verified shipped behavior.
+- Superseded roadmap, UX-shape, and transcript-fidelity documents retained as
+  historical evidence only.
 
 ## Product Principles
 
-1. **Never block the user.** Cleanup is optional and fails open. The user
-   always has their original text and can send it at any time.
-2. **Persist only what the user authored.** Prompts, settings, and vocabulary
-   profiles are durable. Dictated text, cleaned output, and transcripts are
-   ephemeral and private. A generated vocabulary suggestion becomes authored
-   configuration only after explicit user acceptance or editing.
-3. **Clean for non-standard voices.** Every design decision should serve users
-   whose voices mainstream tools cannot handle. Do not assume clean source
-   input.
-4. **Bridge, don't replace.** Sayloom sits between Voiceitt and the user's
-   target applications. It enhances transcription output without replacing
-   Voiceitt or the downstream tools.
-5. **Progressive delivery.** Start as a personal local tool, grow into a
-   downloadable version, then a hosted service. “Standalone” means that an
-   earlier phase has no runtime dependency on a later one; it does not mean
-   building separate copies. Reuse the same domain logic, contracts, and UI
-   components wherever their behavior is genuinely shared, with thin
-   platform-specific adapters at local delivery and hosting boundaries.
+1. **Correct intended text, not speech.** Sayloom works from imperfect text and
+   never claims to verify audio it does not receive.
+2. **Keep the user authoritative.** Users can edit Original, regenerate
+   Prepared, choose a correction mode, and control personalization.
+3. **Make meaning-bearing changes reviewable.** Review supports trust without
+   interrupting CART display.
+4. **Never mix users' learning.** Personalization remains isolated, inspectable,
+   and deletable.
+5. **Separate current behavior from product direction.** Verified implementation
+   facts do not silently narrow the confirmed product outcome.
+
+## Documentation rule
+
+Handoffs, plans, specifications, and Mandrel records should link to this file
+and quote only the clauses that constrain their bounded task. They must not
+restate a competing product narrative. Current implementation behavior,
+proposed work, and confirmed product direction must always be labeled
+separately.

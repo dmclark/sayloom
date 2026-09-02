@@ -1,6 +1,21 @@
 # Sayloom Development
 
-A local-first text cleanup workspace for typing, paste, and compatible dictation input. The daily surface keeps an editable, collapsible Original field and a read-only source-preserving Cleaned result, fails open to Original when cleanup is unavailable or rejected, publishes the selected outgoing text for Raycast, and manages immutable cleanup-prompt versions. The Python package and machine-level identifiers are deliberately neutral and independent of the display brand.
+This repository contains the current local Sayloom implementation. It accepts
+Voiceitt-generated, typed, or pasted text; provides an editable Original and a
+source-preserving Cleaned result; fails open to Original; and publishes the
+selected outgoing value for local Raycast delivery.
+
+The current implementation is one stage of the product described in
+[`PRODUCT.md`](PRODUCT.md), the sole authority for Sayloom's purpose, audience,
+positioning, roadmap direction, and feature scope. In particular, the intended
+product repairs likely Voiceitt word-recognition errors and calls its generated
+result **Prepared**. Smart correction, review of meaning-bearing changes,
+user-scoped personalization, and hosted operation are not implemented in this
+checkout. The implementation name **Cleaned** remains accurate for the current
+source-preserving interface.
+
+The Python package and machine-level identifiers are deliberately neutral and
+independent of the display brand.
 
 ![Sayloom Development workspace](docs/images/sayloom-development.png)
 

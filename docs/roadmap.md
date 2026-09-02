@@ -1,23 +1,32 @@
 # Sayloom product roadmap
 
-- **Status:** Confirmed roadmap; execution remains subject to the entry and authorization gates below
+> **Superseded product-direction document (2026-09-02).**
+> [`PRODUCT.md`](../PRODUCT.md) is now the sole authority for Sayloom's product
+> vision, positioning, audience, roadmap direction, and feature scope. This file
+> is retained as historical planning and implementation evidence. Its outcomes,
+> priorities, work board, and ready-to-paste prompts are not active commitments
+> and do not authorize work. Verified descriptions of shipped behavior remain
+> evidence of the implementation at the revisions they name.
+
+- **Status:** Superseded roadmap; historical evidence only
 - **Audience:** Sayloom product, delivery, investigation, maintenance, and cross-project reviewers
 - **Purpose:** Preserve one outcome-based roadmap, distinguish shipped work from proposals, and limit active work to one delivery milestone, one bounded investigation, and urgent maintenance
 - **Shipped baseline:** `834d2616aa245a8f4abcd45224406afcd10f56e9`
 
 ## Authority and use
 
-This document is the canonical source for Sayloom's current product outcomes,
-implementation sequencing, work lanes, and delivery status. It does not replace
-[`voiceitt-orchestration`](https://github.com/dmclark/voiceitt-orchestration),
-which continues to govern shared architecture, repository/data/privacy
-boundaries, and cross-project contracts. A conflict with those shared boundaries
-is a blocker, not permission for Sayloom to override them.
+When written, this document was treated as the canonical source for product
+outcomes, implementation sequencing, work lanes, and delivery status. That
+authority is superseded by [`PRODUCT.md`](../PRODUCT.md). The architecture,
+repository/data/privacy boundaries, and cross-project contracts recorded in
+[`voiceitt-orchestration`](https://github.com/dmclark/voiceitt-orchestration)
+remain separate technical evidence within their verified domains.
 
-Authority is ordered as follows:
+The historical authority order was:
 
 1. Explicitly confirmed user decisions and applicable cross-project contracts.
-2. This roadmap for Sayloom product direction and execution sequencing.
+2. This roadmap for the product direction and execution sequencing then in
+   effect.
 3. Shipped Sayloom commits for what currently exists.
 4. The specifications and plans linked from the inventory below for their stated
    domains.
@@ -31,9 +40,9 @@ The statuses used here are **Confirmed**, **Provisional**, **Unresolved**,
 **Superseded**, and **Rejected**. **Parked** describes confirmed deferral, not a
 sixth decision status.
 
-## Canonical product outcome
+## Superseded product outcome
 
-**Confirmed:** Sayloom's primary long-term outcome is improved fidelity of text
+**Historical:** This roadmap treated improved fidelity of text
 derived from Voiceitt for a user with non-standard speech, while retaining a
 source-agnostic text boundary. A faithful transcript and polished output are
 different artifacts: transcript recovery precedes optional polishing, and

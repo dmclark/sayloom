@@ -1,18 +1,24 @@
 # Transcript fidelity product and research specification
 
-- **Status:** Confirmed product direction; research design ready for pilot
-  planning; implementation blocked on the reconciliation items below
+> **Superseded product-direction document (2026-09-02).**
+> [`PRODUCT.md`](../PRODUCT.md) replaces this specification as the sole product
+> authority. Sayloom receives Voiceitt-generated text, not audio, and its
+> confirmed outcome is intended-text correction rather than recovery of a
+> provably faithful transcript. This file is retained only as historical
+> research evidence; it does not authorize a pilot or implementation.
+
+- **Status:** Superseded; historical research evidence only
 - **Audience:** Sayloom product, research, architecture, and implementation
   reviewers
-- **Purpose:** Define what transcript fidelity means, how Sayloom should pursue
-  it, and the finite evidence required before implementation
+- **Purpose:** Preserve the prior transcript-fidelity hypothesis and research
+  design for historical reference
 
 ## Authority and scope
 
-Sayloom's primary motivating outcome is improved fidelity of text derived from
-Voiceitt for a user with non-standard speech (F001). The input boundary remains
-source-agnostic: fidelity behavior must not require that text arrive through a
-particular Voiceitt integration.
+This specification previously treated improved fidelity of Voiceitt-derived
+text as Sayloom's primary motivating outcome (F001). That product framing is
+superseded. The source-agnostic input boundary remains useful historical
+research context, not current product authority.
 
 **Operating principle: Voiceitt-first, not Voiceitt-dependent.** Research,
 evaluation, and initial fidelity behavior optimize for the current user's
@@ -32,20 +38,16 @@ Authority is ordered as follows:
    [Sayloom fresh-start plan](https://github.com/dmclark/voiceitt-orchestration/blob/e17acb0e/docs/plans/sayloom-fresh-start.md),
    and the explicitly subordinate
    [version-one shape summary](https://github.com/dmclark/voiceitt-orchestration/blob/e17acb0e/docs/ui/sayloom-version-one-shape.md).
-2. This Sayloom specification governs the product outcome and fidelity
-   behavior. Cross-project conflicts are blockers, not permission to override
-   orchestration (F006).
-3. [`PRODUCT.md`](../PRODUCT.md) remains the broader product description.
-   [`docs/shape-plan.md`](shape-plan.md) remains UX evidence, not fidelity
-   authority. Its simple alias-to-canonical vocabulary and Original-to-Cleaned
-   suggestion assumptions require reconciliation before fidelity
-   implementation; diffs are not replacement truth (F003).
+2. [`PRODUCT.md`](../PRODUCT.md) governs Sayloom's product outcome, terminology,
+   and scope. This specification does not override it.
+3. [`docs/shape-plan.md`](shape-plan.md) and this file remain historical evidence
+   only. Their assumptions require fresh confirmation before reuse.
 
 Historical or superseded architecture is not authority for this work.
 
 ## Problem statement
 
-The product must distinguish three forms of text:
+The superseded research hypothesis distinguished three forms of text:
 
 - **Voiceitt output:** the text supplied by the upstream recognizer. Voiceitt's
   public APIs expose final text and, for streaming, limited segment and timing
