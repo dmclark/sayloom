@@ -595,13 +595,52 @@ def test_cleanup_endpoint_fails_open_when_provider_is_unconfigured(
 
     assert response.status_code == 200
     assert response.json() == {
+        "prepared_text": "synthetic source text",
         "cleaned_text": "synthetic source text",
+        "correction_mode": "conservative",
         "status": "disabled",
         "provider": "gemini",
         "model": "gemini-3.5-flash",
         "error": None,
         "attempts": [],
     }
+
+
+def test_cleanup_endpoint_accepts_original_and_returns_prepared_with_legacy_compatibility(
+    initialized_settings: Settings,
+) -> None:
+    class Provider:
+        provider_id = "gemini"
+        model = "test-model"
+
+        async def clean(self, original_text: str, system_prompt: str) -> ProviderOutput:
+            assert original_text == "synthetic source text"
+            return ProviderOutput(
+                text="Synthetic source text.",
+                provider_id=self.provider_id,
+                model_id=self.model,
+                elapsed_ms=3,
+            )
+
+    client = TestClient(
+        create_app(
+            initialized_settings,
+            CleanupService(provider=Provider(), model="test-model", timeout_seconds=1),
+        )
+    )
+
+    response = client.post(
+        "/api/cleanup",
+        json={
+            "original_text": "synthetic source text",
+            "correction_mode": "smart",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["prepared_text"] == "Synthetic source text."
+    assert response.json()["cleaned_text"] == "Synthetic source text."
+    assert response.json()["correction_mode"] == "smart"
 
 
 def test_cleanup_endpoint_returns_provider_result(initialized_settings: Settings) -> None:

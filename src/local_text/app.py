@@ -393,7 +393,7 @@ def create_app(
         }
 
     @application.post("/api/cleanup", response_model=CleanupResult)
-    async def clean_text(request: CleanupRequest) -> CleanupResult:
+    async def clean_text(request: CleanupRequest) -> CleanupResult | JSONResponse:
         require_configuration()
         try:
             prompt = (
@@ -441,6 +441,8 @@ def create_app(
                 prompt_text=prompt.system_text,
                 cleanup_schema_version=CLEANUP_SCHEMA_VERSION,
             )
+        if result.evaluation is None:
+            return JSONResponse(result.model_dump(mode="json", exclude={"evaluation"}))
         return result
 
     @application.get("/api/prompts")

@@ -6,8 +6,11 @@ import pytest
 import local_text.cleanup as cleanup_module
 from local_text.cleanup import (
     CleanupRequest,
+    CleanupResult,
+    CleanupRoute,
     CleanupService,
     CleanupStatus,
+    CorrectionMode,
     ProviderBusyError,
     ProviderCoolingDownError,
     ProviderError,
@@ -17,6 +20,7 @@ from local_text.cleanup import (
     ProviderOutput,
     ProviderRejectedOutputError,
     ProviderTransportError,
+    SequentialCleanupProvider,
     _extract_text,
     _parse_retry_after,
     _safe_error,
@@ -51,6 +55,65 @@ def run_cleanup(service: CleanupService, raw_text: str, *, enabled: bool = True)
             "Synthetic cleanup instruction",
         )
     )
+
+
+def test_text_contract_uses_original_and_prepared_with_legacy_compatibility() -> None:
+    canonical_request = CleanupRequest(
+        original_text="synthetic original", correction_mode=CorrectionMode.SMART
+    )
+    legacy_request = CleanupRequest(raw_text="synthetic original")
+    legacy_result = CleanupResult(
+        cleaned_text="Synthetic prepared.",
+        status=CleanupStatus.CLEANED,
+        provider="test-provider",
+        model="test-model",
+    )
+
+    assert canonical_request.original_text == "synthetic original"
+    assert canonical_request.raw_text == "synthetic original"
+    assert canonical_request.correction_mode is CorrectionMode.SMART
+    assert legacy_request.original_text == "synthetic original"
+    assert legacy_result.prepared_text == "Synthetic prepared."
+    assert legacy_result.cleaned_text == "Synthetic prepared."
+    assert legacy_result.model_dump()["cleaned_text"] == "Synthetic prepared."
+    assert "raw_text" in CleanupRequest.model_json_schema()["properties"]
+    assert "cleaned_text" in CleanupResult.model_json_schema(mode="serialization")["properties"]
+
+
+def test_smart_mode_keeps_the_conservative_lexical_boundary_until_its_contract_exists() -> None:
+    with pytest.raises(ProviderRejectedOutputError):
+        _validate_output(
+            "say hello",
+            "Hello!",
+            CorrectionMode.SMART,
+        )
+
+
+def test_sequential_provider_accepts_a_legacy_two_argument_output_validator() -> None:
+    observed: list[tuple[str, str]] = []
+
+    def legacy_validator(original_text: str, prepared_text: str) -> str:
+        observed.append((original_text, prepared_text))
+        return prepared_text
+
+    provider = SequentialCleanupProvider(
+        (
+            CleanupRoute(
+                adapter=StaticProvider("Synthetic source."),
+                attempt_budget_seconds=1,
+                quota_group_id="test-quota",
+            ),
+        ),
+        total_budget_seconds=1,
+        output_validator=legacy_validator,
+    )
+
+    result = asyncio.run(
+        provider.clean("synthetic source", "Synthetic instruction", CorrectionMode.SMART)
+    )
+
+    assert result.text == "Synthetic source."
+    assert observed == [("synthetic source", "Synthetic source.")]
 
 
 def test_empty_input_and_disabled_cleanup_do_not_call_provider() -> None:
