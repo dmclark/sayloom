@@ -68,3 +68,10 @@ Triage uses the default canonical label vocabulary. See `docs/agents/triage-labe
 ### Domain docs
 
 Domain documentation uses a single-context layout. See `docs/agents/domain.md`.
+
+<!-- personal-workflow-project:start -->
+## Personal workflow overrides
+
+Project-specific workflow preferences are in
+`docs/agents/workflow-preferences.md`.
+<!-- personal-workflow-project:end -->
