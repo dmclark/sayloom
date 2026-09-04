@@ -122,6 +122,11 @@ provider-order inference from model-quality arms
 
 ## Calls, tokens, and cost cap
 
+ChatGPT subscriptions and API usage have separate billing systems. A ChatGPT
+Plus subscription therefore does not provide API credit or authorize this paid
+experiment; the API organization still needs its own billing setup and explicit
+cost approval [O4].
+
 For the full matrix:
 
 - calls = **8N**;
@@ -200,6 +205,7 @@ All accessed 2026-09-04.
 - **[O1]** OpenAI, [GPT-5.6 Sol model page](https://developers.openai.com/api/docs/models/gpt-5.6-sol) — model ID, modalities, reasoning, Structured Outputs, endpoints, snapshots, and pricing qualifiers.
 - **[O2]** OpenAI, [API pricing](https://developers.openai.com/api/docs/pricing) — current standard rates, long-context rates, promotion, and GPT-6 Astra rollout status.
 - **[O3]** OpenAI, [Data controls in the OpenAI platform](https://developers.openai.com/api/docs/guides/your-data) — training policy, abuse-monitoring retention, Responses application state, `store=false`, and MAM/ZDR controls.
+- **[O4]** OpenAI, [Managing billing for ChatGPT and the API platform](https://help.openai.com/en/articles/8156019) — separate ChatGPT-subscription and API billing systems.
 - **[G1]** Google, [What's new in Gemini 3.8 Flash](https://ai.google.dev/gemini-api/docs/latest-model) — GA status, capabilities, reasoning levels, and introductory/standard pricing.
 - **[G2]** Google, [Gemini 3 Developer Guide](https://ai.google.dev/gemini-api/docs/gemini-3) — Gemini 3.1 Pro preview status and pricing.
 - **[G3]** Google, [Zero data retention in the Gemini Developer API](https://ai.google.dev/gemini-api/docs/zdr) — paid-service training restriction, logging, Interactions storage, and project ZDR requirements.
