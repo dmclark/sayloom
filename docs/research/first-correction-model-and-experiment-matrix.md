@@ -122,10 +122,11 @@ provider-order inference from model-quality arms
 
 ## Calls, tokens, and cost cap
 
-ChatGPT subscriptions and API usage have separate billing systems. A ChatGPT
-Plus subscription therefore does not provide API credit or authorize this paid
-experiment; the API organization still needs its own billing setup and explicit
-cost approval [O4].
+ChatGPT subscriptions and API usage have separate billing systems [O4], but
+account-specific API credits or promotions may still fund usage. Before the
+experiment, verify the API credit balance, expiration, and model eligibility.
+Available credits may cover the approved cap; exceeding them remains a new
+external cost requiring approval.
 
 For the full matrix:
 
