@@ -123,10 +123,26 @@
       del { color: #7a4b43; text-decoration-thickness: 2px; }
       .note { margin: 0; color: var(--muted); font-size: 0.84rem; }
 
-      .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-top: 26px; background: var(--line); border: 1px solid var(--line); }
+      .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; margin-top: 26px; background: var(--line); border: 1px solid var(--line); }
       .step { min-height: 178px; padding: 24px; background: var(--paper-bright); }
       .step strong { display: block; margin: 11px 0 8px; font-size: 1.05rem; }
       .step p { margin: 0; color: var(--muted); font-size: 0.9rem; }
+
+      .learning-loop {
+        display: grid;
+        grid-template-columns: 0.8fr 1.2fr;
+        gap: 38px;
+        align-items: center;
+        margin-top: 26px;
+        padding: 28px;
+        border: 1px solid var(--blue);
+        background: rgba(219, 234, 246, 0.48);
+      }
+      .learning-loop p { margin: 9px 0 0; color: #34404b; }
+      .memory-path { display: flex; align-items: stretch; gap: 9px; }
+      .memory-item { flex: 1; padding: 14px; border: 1px solid #9fb9cf; background: var(--paper-bright); font-size: 0.82rem; line-height: 1.35; }
+      .memory-item strong { display: block; margin-bottom: 5px; color: var(--blue-dark); }
+      .memory-arrow { display: grid; place-items: center; color: var(--blue-dark); font-weight: 800; }
 
       .trust-strip { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 26px; border: 1px solid var(--line); }
       .trust-item { padding: 18px 20px; }
@@ -200,9 +216,11 @@
         .masthead { align-items: flex-start; padding-top: 58px; padding-right: 0; }
         .hero, .variant-b .hero { display: block; padding: 48px 0 34px; }
         .variant-b .hero-copy { margin-bottom: 30px; }
-        .sentence-demo, .steps, .trust-strip, .feedback-grid, .proof-banner, .plain-language, .conversation { grid-template-columns: 1fr; }
+        .sentence-demo, .steps, .learning-loop, .trust-strip, .feedback-grid, .proof-banner, .plain-language, .conversation { grid-template-columns: 1fr; }
         .sentence + .sentence, .trust-item + .trust-item { border-left: 0; border-top: 1px solid var(--line); }
         .step { min-height: 0; }
+        .memory-path { flex-direction: column; }
+        .memory-arrow { transform: rotate(90deg); }
         .proof-banner { gap: 14px; }
         .prompt-card { padding: 28px 20px; }
         .switcher { top: 10px; right: 50%; transform: translateX(50%); }
@@ -226,8 +244,8 @@
       <main id="variant-a" class="variant variant-a">
         <section class="hero">
           <p class="eyebrow">A five-minute guided tryout</p>
-          <h1>Try one sentence.<br><span class="accent">Keep your meaning.</span></h1>
-          <p class="lede">Use Voiceitt as you normally do. Sayloom receives the resulting text, suggests likely word repairs, and prepares a version you can review and copy.</p>
+          <h1>Fix one sentence.<br><span class="accent">Make the next one easier.</span></h1>
+          <p class="lede">Use Voiceitt as you normally do. Sayloom receives the resulting text, suggests likely word repairs, and—with your permission—can remember an approved correction for future text.</p>
           <div class="actions">
             <span class="button">Try it together</span>
             <span class="button secondary">About the tryout</span>
@@ -250,13 +268,29 @@
         <section class="steps" aria-label="Tryout steps">
           <article class="step"><span class="label">01 · Speak</span><strong>Use your usual Voiceitt workflow</strong><p>Choose one ordinary, non-sensitive sentence you genuinely want to write.</p></article>
           <article class="step"><span class="label">02 · Review</span><strong>See every word-level suggestion</strong><p>If a suggestion is wrong, edit the received text and regenerate. You remain the authority.</p></article>
-          <article class="step"><span class="label">03 · Copy</span><strong>Use the version you prefer</strong><p>Copy the exact text you can already inspect. Nothing is sent automatically.</p></article>
+          <article class="step"><span class="label">03 · Remember</span><strong>Approve only what should recur</strong><p>Sayloom may offer to remember a confirmed term or confusion. It saves nothing unless you accept.</p></article>
+          <article class="step"><span class="label">04 · Copy</span><strong>Use the version you prefer</strong><p>Copy the exact text you can already inspect. Nothing is sent automatically.</p></article>
+        </section>
+
+        <section class="learning-loop" aria-label="How approved corrections help next time">
+          <div>
+            <p class="eyebrow">How it improves</p>
+            <h2>Approved knowledge helps with recurring text errors.</h2>
+            <p>Sayloom does not retrain Voiceitt or change its speech recognition. It uses what you explicitly approve to make better post-recognition suggestions for you.</p>
+          </div>
+          <div class="memory-path" aria-label="Confirm, approve, and reuse">
+            <div class="memory-item"><strong>Confirm</strong>“cash” meant “task” here</div>
+            <span class="memory-arrow" aria-hidden="true">→</span>
+            <div class="memory-item"><strong>Approve</strong>Remember this project-planning confusion</div>
+            <span class="memory-arrow" aria-hidden="true">→</span>
+            <div class="memory-item"><strong>Next time</strong>Use that knowledge when the context fits</div>
+          </div>
         </section>
 
         <section class="feedback">
           <div class="feedback-grid">
             <div><p class="eyebrow">After one sentence</p><h2>Three useful questions</h2><p class="lede">No survey, scoring exercise, or technical setup. The conversation is the feedback.</p></div>
-            <ol class="questions"><li>Did the suggestion preserve what you meant?</li><li>Was it clear what Sayloom changed?</li><li>Would this save effort in your normal writing?</li></ol>
+            <ol class="questions"><li>Did the suggestion preserve what you meant?</li><li>Was it clear what Sayloom changed and could remember?</li><li>Would approved corrections reduce repeat effort in your normal writing?</li></ol>
           </div>
         </section>
 
