@@ -595,10 +595,12 @@ def test_cleanup_endpoint_fails_open_when_provider_is_unconfigured(
 
     assert response.status_code == 200
     assert response.json() == {
+        "prepared_text": "synthetic source text",
         "cleaned_text": "synthetic source text",
         "status": "disabled",
         "provider": "gemini",
         "model": "gemini-3.5-flash",
+        "correction_mode": "conservative",
         "error": None,
         "attempts": [],
     }
@@ -624,11 +626,17 @@ def test_cleanup_endpoint_returns_provider_result(initialized_settings: Settings
 
     response = client.post(
         "/api/cleanup",
-        json={"raw_text": "synthetic source text", "enabled": True},
+        json={
+            "original_text": "synthetic source text",
+            "enabled": True,
+            "correction_mode": "smart",
+        },
     )
 
     assert response.status_code == 200
+    assert response.json()["prepared_text"] == "Synthetic source text."
     assert response.json()["cleaned_text"] == "Synthetic source text."
+    assert response.json()["correction_mode"] == "smart"
     assert response.json()["status"] == "cleaned"
     assert response.json()["provider"] == "gemini"
     assert response.json()["model"] == "test-model"
@@ -698,7 +706,7 @@ def test_cleanup_endpoint_rejects_instruction_like_output_before_publication(
 
     assert publication.status_code == 200
     assert publication.json()["outgoing_text"] == raw_text
-    assert publication.json()["outgoing_kind"] == "raw"
+    assert publication.json()["outgoing_kind"] == "original"
     assert rejected_output not in publication.text
 
 
@@ -861,14 +869,49 @@ def test_outgoing_state_is_published_and_cleared_in_memory(
     published = client.put("/api/outgoing-state", json=update)
 
     assert published.status_code == 200
-    assert published.json() == {**update, "revision": 1}
-    assert client.get("/api/outgoing-state").json() == {**update, "revision": 1}
+    expanded = {
+        **update,
+        "original_text": update["raw_text"],
+        "prepared_text": update["cleaned_text"],
+        "outgoing_kind": "prepared",
+        "correction_mode": "conservative",
+        "revision": 1,
+    }
+    assert published.json() == expanded
+    assert client.get("/api/outgoing-state").json() == expanded
 
     cleared = client.delete("/api/outgoing-state")
     assert cleared.status_code == 200
     assert cleared.json()["outgoing_text"] == ""
     assert cleared.json()["outgoing_kind"] == "empty"
+    assert cleared.json()["original_text"] == cleared.json()["raw_text"] == ""
+    assert cleared.json()["prepared_text"] == cleared.json()["cleaned_text"] == ""
     assert cleared.json()["revision"] == 2
+
+
+def test_outgoing_state_accepts_canonical_contract_and_smart_mode(
+    initialized_settings: Settings,
+) -> None:
+    client = TestClient(create_app(initialized_settings))
+
+    response = client.put(
+        "/api/outgoing-state",
+        json={
+            "cleanup_enabled": True,
+            "original_text": "synthetic original",
+            "prepared_text": "Synthetic original.",
+            "outgoing_text": "Synthetic original.",
+            "outgoing_kind": "prepared",
+            "status": "cleaned",
+            "correction_mode": "smart",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["original_text"] == response.json()["raw_text"]
+    assert response.json()["prepared_text"] == response.json()["cleaned_text"]
+    assert response.json()["outgoing_kind"] == "prepared"
+    assert response.json()["correction_mode"] == "smart"
 
 
 def test_outgoing_state_rejects_text_not_present_in_either_editor(

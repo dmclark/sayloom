@@ -16,6 +16,7 @@ from local_text.cleanup import (
     CleanupRoute,
     CleanupService,
     CleanupStatus,
+    CorrectionMode,
     ProviderBusyError,
     ProviderCoolingDownError,
     ProviderError,
@@ -179,6 +180,39 @@ def test_primary_success_uses_one_route_and_preserves_usage() -> None:
         (0, "success")
     ]
     assert (result.attempts[0].input_tokens, result.attempts[0].output_tokens) == (11, 7)
+
+
+def test_selected_correction_mode_reaches_route_output_validation() -> None:
+    observed: list[CorrectionMode] = []
+
+    def validate(
+        original_text: str,
+        prepared_text: str,
+        correction_mode: CorrectionMode,
+    ) -> str:
+        assert original_text == "synthetic source"
+        observed.append(correction_mode)
+        return prepared_text
+
+    adapter = FakeAdapter("primary")
+    provider = SequentialCleanupProvider(
+        (route(adapter),),
+        total_budget_seconds=20,
+        clock=FakeClock(),
+        jitter=lambda delay: delay,
+        output_validator=validate,
+    )
+    service = CleanupService(provider, provider.model, provider.total_budget_seconds)
+
+    result = asyncio.run(
+        service.clean(
+            CleanupRequest(original_text="synthetic source", correction_mode="smart"),
+            "Synthetic instruction",
+        )
+    )
+
+    assert observed == [CorrectionMode.SMART]
+    assert result.correction_mode is CorrectionMode.SMART
 
 
 def test_eligible_failure_advances_once_with_ordered_safe_attribution() -> None:

@@ -6,8 +6,10 @@ import pytest
 import local_text.cleanup as cleanup_module
 from local_text.cleanup import (
     CleanupRequest,
+    CleanupResult,
     CleanupService,
     CleanupStatus,
+    CorrectionMode,
     ProviderBusyError,
     ProviderCoolingDownError,
     ProviderError,
@@ -51,6 +53,39 @@ def run_cleanup(service: CleanupService, raw_text: str, *, enabled: bool = True)
             "Synthetic cleanup instruction",
         )
     )
+
+
+def test_original_prepared_contract_keeps_raw_and_cleaned_compatibility() -> None:
+    canonical = CleanupRequest(original_text="synthetic source", correction_mode="smart")
+    compatible = CleanupRequest(raw_text="synthetic source")
+
+    assert canonical.original_text == "synthetic source"
+    assert canonical.raw_text == "synthetic source"
+    assert canonical.correction_mode is CorrectionMode.SMART
+    assert compatible.original_text == "synthetic source"
+    assert compatible.correction_mode is CorrectionMode.CONSERVATIVE
+
+    result = run_cleanup(
+        CleanupService(
+            provider=StaticProvider("Synthetic source."),
+            model="test-model",
+            timeout_seconds=1,
+        ),
+        "synthetic source",
+    )
+    serialized = result.model_dump(mode="json")
+    compatible_result = CleanupResult(
+        cleaned_text="Synthetic source.",
+        status="cleaned",
+        provider="synthetic",
+        model="test-model",
+        correction_mode="conservative",
+    )
+
+    assert result.prepared_text == "Synthetic source."
+    assert result.cleaned_text == "Synthetic source."
+    assert serialized["prepared_text"] == serialized["cleaned_text"]
+    assert compatible_result.prepared_text == "Synthetic source."
 
 
 def test_empty_input_and_disabled_cleanup_do_not_call_provider() -> None:
@@ -105,7 +140,10 @@ def test_successful_and_unchanged_cleanup_are_distinguished() -> None:
 def test_output_validator_accepts_source_preserving_cleanup(
     raw_text: str, cleaned_text: str
 ) -> None:
-    assert _validate_output(raw_text, cleaned_text) == cleaned_text
+    assert (
+        _validate_output(raw_text, cleaned_text, CorrectionMode.CONSERVATIVE)
+        == cleaned_text
+    )
 
 
 @pytest.mark.parametrize(
@@ -144,7 +182,7 @@ def test_output_validator_rejects_instruction_following_and_novel_language(
     raw_text: str, provider_output: str
 ) -> None:
     with pytest.raises(ProviderRejectedOutputError):
-        _validate_output(raw_text, provider_output)
+        _validate_output(raw_text, provider_output, CorrectionMode.CONSERVATIVE)
 
 
 def test_cleanup_applies_fixed_source_preserving_rules_before_configured_prompt() -> None:

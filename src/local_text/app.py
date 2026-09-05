@@ -433,7 +433,7 @@ def create_app(
             )
             result.evaluation = EvaluationCaptureContext(
                 capture_proof=capture_proofs.issue(
-                    request.raw_text, result.cleaned_text, cleanup
+                    request.original_text, result.prepared_text, cleanup
                 ),
                 completed_at=completed_at.isoformat().replace("+00:00", "Z"),
                 prompt_version_id=prompt.id,
@@ -476,19 +476,19 @@ def create_app(
     @application.get("/api/outgoing-state")
     def outgoing_state() -> dict[str, object]:
         require_configuration()
-        return asdict(state.read())
+        return state.read().public()
 
     @application.put("/api/outgoing-state")
     def publish_outgoing_state(update: OutgoingStateUpdate) -> dict[str, object]:
         require_configuration()
         if update.cleanup_enabled != prompts.cleanup_enabled_by_default():
             prompts.set_cleanup_enabled_by_default(update.cleanup_enabled)
-        return asdict(state.update(update))
+        return state.update(update).public()
 
     @application.delete("/api/outgoing-state")
     def clear_outgoing_state() -> dict[str, object]:
         require_configuration()
-        return asdict(state.clear())
+        return state.clear().public()
 
     def require_evaluation() -> EvaluationStore:
         require_configuration()

@@ -16,7 +16,7 @@ from enum import StrEnum
 from typing import Any, Literal, Protocol
 
 import httpx
-from pydantic import BaseModel, Field, model_serializer
+from pydantic import AliasChoices, BaseModel, Field, model_serializer
 
 from local_text.prompts import effective_system_prompt
 
@@ -67,10 +67,24 @@ class CleanupStatus(StrEnum):
     PROVIDER_ERROR = "provider_error"
 
 
+class CorrectionMode(StrEnum):
+    CONSERVATIVE = "conservative"
+    SMART = "smart"
+
+
 class CleanupRequest(BaseModel):
-    raw_text: str = Field(max_length=100_000)
+    original_text: str = Field(
+        max_length=100_000,
+        validation_alias=AliasChoices("original_text", "raw_text"),
+    )
     enabled: bool = True
     prompt_version_id: int | None = Field(default=None, ge=1)
+    correction_mode: CorrectionMode = CorrectionMode.CONSERVATIVE
+
+    @property
+    def raw_text(self) -> str:
+        """Temporary domain compatibility for callers using the former name."""
+        return self.original_text
 
 
 class SafeError(BaseModel):
@@ -133,17 +147,26 @@ class EvaluationCaptureContext(BaseModel):
 
 
 class CleanupResult(BaseModel):
-    cleaned_text: str
+    prepared_text: str = Field(
+        validation_alias=AliasChoices("prepared_text", "cleaned_text")
+    )
     status: CleanupStatus
     provider: str
     model: str
+    correction_mode: CorrectionMode
     error: SafeError | None = None
     attempts: list[CleanupAttempt] = Field(default_factory=list)
     evaluation: EvaluationCaptureContext | None = None
 
+    @property
+    def cleaned_text(self) -> str:
+        """Temporary domain compatibility for callers using the former name."""
+        return self.prepared_text
+
     @model_serializer(mode="wrap")
-    def omit_absent_evaluation_context(self, handler: Any) -> dict[str, Any]:
+    def include_compatibility_contract(self, handler: Any) -> dict[str, Any]:
         serialized = handler(self)
+        serialized["cleaned_text"] = self.prepared_text
         if self.evaluation is None:
             serialized.pop("evaluation", None)
         return serialized
@@ -580,7 +603,7 @@ class SequentialCleanupProvider:
         timeout_runner: Callable[
             [Awaitable[ProviderOutput], float], Awaitable[ProviderOutput]
         ] = asyncio.wait_for,
-        output_validator: Callable[[str, str], str] | None = None,
+        output_validator: Callable[[str, str, CorrectionMode], str] | None = None,
     ) -> None:
         if not routes:
             raise ValueError("at least one cleanup route is required")
@@ -606,18 +629,28 @@ class SequentialCleanupProvider:
         }
         self._active_cleanups = 0
 
-    async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
+    async def clean(
+        self,
+        raw_text: str,
+        system_prompt: str,
+        correction_mode: CorrectionMode = CorrectionMode.CONSERVATIVE,
+    ) -> ProviderOutput:
         if self._active_cleanups >= self.max_active_cleanups:
             error = ProviderBusyError("local cleanup capacity is full", model=self.model)
             error.provider_id = self.provider_id
             raise error
         self._active_cleanups += 1
         try:
-            return await self._clean_with_routes(raw_text, system_prompt)
+            return await self._clean_with_routes(raw_text, system_prompt, correction_mode)
         finally:
             self._active_cleanups -= 1
 
-    async def _clean_with_routes(self, raw_text: str, system_prompt: str) -> ProviderOutput:
+    async def _clean_with_routes(
+        self,
+        raw_text: str,
+        system_prompt: str,
+        correction_mode: CorrectionMode,
+    ) -> ProviderOutput:
         deadline = self._clock() + self.total_budget_seconds
         failures: list[ProviderFailure] = []
         last_failure: ProviderFailure | None = None
@@ -668,7 +701,9 @@ class SequentialCleanupProvider:
                 raise failure from error
             else:
                 try:
-                    cleaned_text = self._output_validator(raw_text, output.text)
+                    cleaned_text = self._output_validator(
+                        raw_text, output.text, correction_mode
+                    )
                 except ProviderRejectedOutputError as error:
                     failure = error
                     self._attribute_route_failure(failure, route, route_index, attempt_started)
@@ -1022,19 +1057,26 @@ def _response_was_rejected(payload: Any) -> bool:
     }
 
 
-def _validate_output(raw_text: str, cleaned_text: str) -> str:
-    cleaned = cleaned_text.strip()
+def _validate_output(
+    original_text: str,
+    prepared_text: str,
+    correction_mode: CorrectionMode = CorrectionMode.CONSERVATIVE,
+) -> str:
+    # Smart is contract-only in this gate. Until its correction behavior lands,
+    # every selected mode retains the existing Conservative lexical boundary.
+    _ = correction_mode
+    cleaned = prepared_text.strip()
     if not cleaned:
         raise ProviderRejectedOutputError("The cleanup result was empty")
     if any(ord(character) < 32 and character not in "\n\r\t" for character in cleaned):
         raise ProviderRejectedOutputError("The cleanup result contained control characters")
     if len(cleaned) > MAX_CLEANED_TEXT_CHARACTERS:
         raise ProviderRejectedOutputError("The cleanup result exceeded the character limit")
-    maximum_length = max(len(raw_text) * 4, len(raw_text) + 1_000)
+    maximum_length = max(len(original_text) * 4, len(original_text) + 1_000)
     if len(cleaned) > maximum_length:
         raise ProviderRejectedOutputError("The cleanup result expanded beyond the safety limit")
 
-    raw_words = _lexical_word_forms(raw_text)
+    raw_words = _lexical_word_forms(original_text)
     cleaned_words = _lexical_word_forms(cleaned)
     removable_prefix = 0
     while (
@@ -1075,11 +1117,16 @@ class CleanupService:
     provider_id: str = "unconfigured"
 
     async def clean(self, request: CleanupRequest, system_prompt: str) -> CleanupResult:
-        raw_text = request.raw_text
-        if not raw_text.strip():
-            return self._result(raw_text, CleanupStatus.EMPTY_INPUT)
+        original_text = request.original_text
+        correction_mode = request.correction_mode
+        if not original_text.strip():
+            return self._result(
+                original_text, CleanupStatus.EMPTY_INPUT, correction_mode=correction_mode
+            )
         if not request.enabled or self.provider is None:
-            return self._result(raw_text, CleanupStatus.DISABLED)
+            return self._result(
+                original_text, CleanupStatus.DISABLED, correction_mode=correction_mode
+            )
 
         provider_prompt = effective_system_prompt(system_prompt)
         started = time.monotonic()
@@ -1090,17 +1137,21 @@ class CleanupService:
         attempts: list[CleanupAttempt] = []
         try:
             if isinstance(self.provider, SequentialCleanupProvider):
-                provider_output = await self.provider.clean(raw_text, provider_prompt)
+                provider_output = await self.provider.clean(
+                    original_text, provider_prompt, correction_mode
+                )
             else:
                 provider_output = await asyncio.wait_for(
-                    self.provider.clean(raw_text, provider_prompt),
+                    self.provider.clean(original_text, provider_prompt),
                     timeout=self.timeout_seconds,
                 )
             selected_provider = provider_output.provider_id
             selected_model = provider_output.model_id
             attempts.extend(_failure_attempt(failure) for failure in provider_output.prior_failures)
             try:
-                cleaned_text = _validate_output(raw_text, provider_output.text)
+                prepared_text = _validate_output(
+                    original_text, provider_output.text, correction_mode
+                )
             except ProviderRejectedOutputError as error:
                 error.provider_id = selected_provider
                 error.model = selected_model
@@ -1120,8 +1171,9 @@ class CleanupService:
             attempts.append(_failure_attempt(failure))
             category = failure.failure_class
             result = self._result(
-                raw_text,
+                original_text,
                 CleanupStatus.TIMEOUT,
+                correction_mode=correction_mode,
                 error=SafeError(
                     code="cleanup_timeout",
                     message="Cleanup did not finish before the time limit.",
@@ -1146,8 +1198,9 @@ class CleanupService:
                 else CleanupStatus.PROVIDER_ERROR
             )
             result = self._result(
-                raw_text,
+                original_text,
                 status,
+                correction_mode=correction_mode,
                 error=_safe_error(error),
                 provider=selected_provider,
                 model=selected_model,
@@ -1163,8 +1216,9 @@ class CleanupService:
             attempts.append(_failure_attempt(failure))
             category = failure.failure_class
             result = self._result(
-                raw_text,
+                original_text,
                 CleanupStatus.PROVIDER_ERROR,
+                correction_mode=correction_mode,
                 error=SafeError(
                     code="cleanup_provider_error",
                     message="The cleanup provider failed for an unknown reason.",
@@ -1174,10 +1228,15 @@ class CleanupService:
                 attempts=attempts,
             )
         else:
-            status = CleanupStatus.UNCHANGED if cleaned_text == raw_text else CleanupStatus.CLEANED
+            status = (
+                CleanupStatus.UNCHANGED
+                if prepared_text == original_text
+                else CleanupStatus.CLEANED
+            )
             result = self._result(
-                cleaned_text,
+                prepared_text,
                 status,
+                correction_mode=correction_mode,
                 provider=selected_provider,
                 model=selected_model,
                 attempts=attempts,
@@ -1189,7 +1248,7 @@ class CleanupService:
                 category=str(category),
                 http_status=http_status,
                 duration_ms=round((time.monotonic() - started) * 1_000),
-                input_length=len(raw_text),
+                input_length=len(original_text),
                 attempts=attempts,
             )
         return result
@@ -1199,19 +1258,21 @@ class CleanupService:
         text: str,
         status: CleanupStatus,
         *,
+        correction_mode: CorrectionMode,
         error: SafeError | None = None,
         provider: str | None = None,
         model: str | None = None,
         attempts: list[CleanupAttempt] | None = None,
     ) -> CleanupResult:
         return CleanupResult(
-            cleaned_text=text,
+            prepared_text=text,
             status=status,
             provider=_safe_identifier(
                 provider
                 or (self.provider.provider_id if self.provider is not None else self.provider_id)
             ),
             model=_safe_model(model or self.model),
+            correction_mode=correction_mode,
             error=error,
             attempts=attempts or [],
         )
