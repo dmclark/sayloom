@@ -25,6 +25,7 @@ from local_text.cleanup import (
     CleanupRoute,
     CleanupService,
     CleanupStatus,
+    CorrectionMode,
     EvaluationCaptureContext,
     GeminiAdapter,
     OpenAIAdapter,
@@ -203,6 +204,10 @@ class PromptCreateRequest(BaseModel):
         return value
 
 
+class CorrectionModePreferenceRequest(BaseModel):
+    correction_mode: CorrectionMode
+
+
 def _prompt_response(prompt: PromptRecord, *, active: bool) -> dict[str, object]:
     created_at = prompt.created_at
     if created_at.tzinfo is None:
@@ -234,13 +239,18 @@ def create_app(
     adapter = target_adapter or TargetAdapter(runtime.resolved_raycast_directory)
     configuration_error: str | None = None
     cleanup_enabled = True
+    default_correction_mode = CorrectionMode.CONSERVATIVE
     if schema.ready:
         try:
             cleanup_enabled = prompts.cleanup_enabled_by_default()
+            default_correction_mode = prompts.default_correction_mode()
             prompts.active()
         except SeedStateError as exc:
             configuration_error = str(exc)
-    state = OutgoingStateStore(cleanup_enabled=cleanup_enabled)
+    state = OutgoingStateStore(
+        cleanup_enabled=cleanup_enabled,
+        correction_mode=default_correction_mode,
+    )
     cleanup_configuration = _cleanup_runtime_configuration(runtime)
     disabled_cleanup = CleanupService(
         provider=None,
@@ -384,6 +394,7 @@ def create_app(
             "profile": runtime.profile,
             "development_state": runtime.development_state_name,
             "cleanup_enabled_by_default": prompts.cleanup_enabled_by_default(),
+            "default_correction_mode": prompts.default_correction_mode(),
             "cleanup_available": cleanup_available,
             "cleanup_model": cleanup_configuration.routes[0][1]
             if cleanup_configuration.routes
@@ -391,6 +402,14 @@ def create_app(
             "cleanup_configuration": cleanup_configuration.public(),
             "evaluation_configuration": evaluation.public(),
         }
+
+    @application.put("/api/preferences/correction-mode")
+    def update_correction_mode_preference(
+        request: CorrectionModePreferenceRequest,
+    ) -> dict[str, CorrectionMode]:
+        require_configuration()
+        prompts.set_default_correction_mode(request.correction_mode)
+        return {"default_correction_mode": request.correction_mode}
 
     @application.post("/api/cleanup", response_model=CleanupResult)
     async def clean_text(request: CleanupRequest) -> CleanupResult:
@@ -488,7 +507,7 @@ def create_app(
     @application.delete("/api/outgoing-state")
     def clear_outgoing_state() -> dict[str, object]:
         require_configuration()
-        return state.clear().public()
+        return state.clear(correction_mode=prompts.default_correction_mode()).public()
 
     def require_evaluation() -> EvaluationStore:
         require_configuration()

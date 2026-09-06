@@ -101,6 +101,9 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="select-cleaned"' in response.text
     assert 'id="select-original"' in response.text
     assert 'id="toggle-original"' in response.text
+    assert 'id="default-correction-mode"' in response.text
+    assert 'id="current-correction-mode"' in response.text
+    assert 'id="active-correction-mode"' in response.text
     assert 'id="cleanup-disclosure"' in response.text
     assert 'id="cleanup-route-list"' in response.text
     assert "This does not save an evaluation corpus." not in response.text
@@ -221,6 +224,7 @@ def test_config_reports_cleanup_without_exposing_key(initialized_settings: Setti
         "profile": "development",
         "development_state": None,
         "cleanup_enabled_by_default": True,
+        "default_correction_mode": "conservative",
         "cleanup_available": True,
         "cleanup_model": "gemini-3.5-flash",
     }
@@ -853,6 +857,44 @@ def test_cleanup_toggle_is_durable_configuration(initialized_settings: Settings)
     assert restarted.get("/api/outgoing-state").json()["cleanup_enabled"] is False
 
 
+def test_correction_mode_preference_is_durable_and_separate_from_workspace_state(
+    initialized_settings: Settings,
+) -> None:
+    client = TestClient(create_app(initialized_settings))
+
+    saved = client.put(
+        "/api/preferences/correction-mode",
+        json={"correction_mode": "smart"},
+    )
+    assert saved.status_code == 200
+    assert saved.json() == {"default_correction_mode": "smart"}
+
+    workspace_override = client.put(
+        "/api/outgoing-state",
+        json={
+            "cleanup_enabled": True,
+            "original_text": "synthetic original",
+            "prepared_text": "Synthetic original.",
+            "outgoing_text": "Synthetic original.",
+            "outgoing_kind": "prepared",
+            "status": "cleaned",
+            "correction_mode": "conservative",
+        },
+    )
+    assert workspace_override.status_code == 200
+    assert workspace_override.json()["correction_mode"] == "conservative"
+
+    restarted = TestClient(create_app(initialized_settings))
+    assert restarted.get("/api/config").json()["default_correction_mode"] == "smart"
+    assert restarted.get("/api/outgoing-state").json()["correction_mode"] == "smart"
+
+    invalid = client.put(
+        "/api/preferences/correction-mode",
+        json={"correction_mode": "polished"},
+    )
+    assert invalid.status_code == 422
+
+
 def test_outgoing_state_is_published_and_cleared_in_memory(
     initialized_settings: Settings,
 ) -> None:
@@ -977,6 +1019,10 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     assert 'message: "The browser could not connect to the local API."' in script.text
     assert "cancelCleanup" not in script.text
     assert "setOriginalCollapsed" in script.text
+    assert "correction_mode: effectiveCorrectionMode()" in script.text
+    assert 'fetch("/api/preferences/correction-mode"' in script.text
+    assert "currentCorrectionModeOverride = null" in script.text
+    assert "renderCorrectionMode();" in script.text
     assert 'elements.cleaned.addEventListener("input"' not in script.text
     run_cleanup = script.text.split("async function runCleanup()", maxsplit=1)[1].split(
         "function scheduleCleanup()", maxsplit=1
@@ -1014,6 +1060,7 @@ async function run(originalValue) {
       this.checked = true;
       this.dataset = {};
       this.open = false;
+      this.options = [{ textContent: "" }];
       this.style = { setProperty() {} };
       this.classList = { add() {}, remove() {}, toggle() {}, contains() { return false; } };
       this.lastElementChild = new ElementText();

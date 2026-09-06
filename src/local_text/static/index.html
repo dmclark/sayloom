@@ -30,6 +30,28 @@
           <span class="switch-track" aria-hidden="true"><span></span></span>
           <span>Clean automatically</span>
         </label>
+        <fieldset class="correction-mode-controls">
+          <legend>Correction mode</legend>
+          <label for="default-correction-mode">
+            Default
+            <select id="default-correction-mode">
+              <option value="conservative">Conservative</option>
+              <option value="smart">Smart</option>
+            </select>
+          </label>
+          <label for="current-correction-mode">
+            This Original
+            <select id="current-correction-mode">
+              <option value="default">Use default</option>
+              <option value="conservative">Conservative</option>
+              <option value="smart">Smart</option>
+            </select>
+          </label>
+          <span id="active-correction-mode" class="mode-state" role="status" aria-live="polite">
+            Conservative · default
+          </span>
+          <span id="mode-save-state" class="visually-hidden" role="status" aria-live="polite"></span>
+        </fieldset>
         <button
           id="toggle-original"
           class="panel-toggle"

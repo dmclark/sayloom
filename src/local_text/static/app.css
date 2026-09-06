@@ -41,6 +41,17 @@ input:focus-visible + .switch-track {
   outline-offset: 3px;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .page-grain {
   position: fixed;
   inset: 0;
@@ -185,9 +196,62 @@ h2 { font-size: 1.45rem; letter-spacing: -0.02em; }
 main { padding-top: 22px; }
 
 .control-rail {
-  justify-content: space-between;
+  gap: 20px;
   min-height: 48px;
   animation: settle-in 450ms 80ms ease-out both;
+}
+
+.control-rail > .panel-toggle { margin-left: auto; }
+
+.correction-mode-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.correction-mode-controls legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+.correction-mode-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.correction-mode-controls select {
+  min-height: 34px;
+  padding: 5px 28px 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: var(--ink);
+  background: rgba(255, 253, 247, 0.8);
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.mode-state {
+  padding-left: 10px;
+  border-left: 1px solid var(--line);
+  color: var(--blue-dark);
+  font-size: 0.68rem;
+  font-weight: 750;
+  white-space: nowrap;
 }
 
 .switch-control {
@@ -889,6 +953,7 @@ textarea::placeholder { color: #9a988f; font-style: italic; }
 @media (max-width: 920px) {
   .masthead, main { width: calc(100% - 36px); }
   .control-rail { align-items: flex-start; gap: 12px; }
+  .correction-mode-controls { flex: 1 1 100%; order: 3; }
   .panel-note { display: none; }
   textarea { padding-inline: 22px; }
   .outgoing-statuses { gap: 14px; }
@@ -946,6 +1011,10 @@ textarea::placeholder { color: #9a988f; font-style: italic; }
   .panel-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
   .panel-prompt-control { width: 100%; }
   .panel-prompt-control select { width: 100%; }
+  .correction-mode-controls { align-items: stretch; flex-direction: column; }
+  .correction-mode-controls label { justify-content: space-between; }
+  .correction-mode-controls select { width: min(68vw, 260px); }
+  .mode-state { padding: 8px 0 0; border-top: 1px solid var(--line); border-left: 0; }
   .error-sheet dl {
     grid-template-columns: minmax(82px, 0.3fr) minmax(0, 1fr);
     gap: 6px 10px;

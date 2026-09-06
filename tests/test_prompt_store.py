@@ -6,6 +6,7 @@ from conftest import initialize_database
 from sqlalchemy import text
 from sqlalchemy.exc import DatabaseError
 
+from local_text.cleanup import CorrectionMode
 from local_text.database import ApplicationDatabase, SchemaState
 from local_text.prompt_store import PromptNotFoundError, PromptStore
 from local_text.prompts import DEFAULT_SYSTEM_PROMPT
@@ -86,3 +87,15 @@ def test_cleanup_setting_is_typed_and_durable(tmp_path: Path) -> None:
     store.set_cleanup_enabled_by_default(False)
 
     assert PromptStore(ApplicationDatabase(database.path)).cleanup_enabled_by_default() is False
+
+
+def test_correction_mode_defaults_compatibly_and_is_durable(tmp_path: Path) -> None:
+    database = initialize_database(tmp_path / "local-text.sqlite3")
+    store = PromptStore(database)
+
+    assert store.default_correction_mode() is CorrectionMode.CONSERVATIVE
+
+    store.set_default_correction_mode(CorrectionMode.SMART)
+
+    restarted = PromptStore(ApplicationDatabase(database.path))
+    assert restarted.default_correction_mode() is CorrectionMode.SMART

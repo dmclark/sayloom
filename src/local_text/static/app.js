@@ -11,6 +11,10 @@
     original: document.querySelector("#original-text"),
     cleaned: document.querySelector("#cleaned-text"),
     cleanupEnabled: document.querySelector("#cleanup-enabled"),
+    defaultCorrectionMode: document.querySelector("#default-correction-mode"),
+    currentCorrectionMode: document.querySelector("#current-correction-mode"),
+    activeCorrectionMode: document.querySelector("#active-correction-mode"),
+    modeSaveState: document.querySelector("#mode-save-state"),
     runCleanup: document.querySelector("#run-cleanup"),
     clear: document.querySelector("#clear-text"),
     toggleOriginal: document.querySelector("#toggle-original"),
@@ -132,6 +136,8 @@
   let selectedPromptVersionId = null;
   let activeResizePointer = null;
   let originalOutgoingOverride = false;
+  let defaultCorrectionMode = "conservative";
+  let currentCorrectionModeOverride = null;
   let targetRecords = [];
   let selectedTargetId = null;
   let targetDirty = false;
@@ -155,6 +161,29 @@
     status = nextStatus;
     elements.status.dataset.state = nextStatus;
     elements.statusText.textContent = statusLabels[nextStatus] || nextStatus;
+  }
+
+  function effectiveCorrectionMode() {
+    return currentCorrectionModeOverride || defaultCorrectionMode;
+  }
+
+  function renderCorrectionMode() {
+    const mode = effectiveCorrectionMode();
+    const source = currentCorrectionModeOverride ? "this Original" : "default";
+    elements.defaultCorrectionMode.value = defaultCorrectionMode;
+    elements.currentCorrectionMode.value = currentCorrectionModeOverride || "default";
+    elements.currentCorrectionMode.options[0].textContent = `Use default (${titleCaseState(defaultCorrectionMode)})`;
+    elements.activeCorrectionMode.textContent = `${titleCaseState(mode)} · ${source}`;
+    elements.activeCorrectionMode.dataset.mode = mode;
+    elements.activeCorrectionMode.dataset.source = currentCorrectionModeOverride ? "override" : "default";
+  }
+
+  function applyCorrectionModeChange() {
+    renderCorrectionMode();
+    invalidateEvaluationCapture();
+    setCleanupError(null);
+    if (elements.original.value) scheduleCleanup();
+    else publishNow();
   }
 
   function setOriginalCollapsed(collapsed) {
@@ -224,6 +253,7 @@
       outgoing_text: outgoingText,
       outgoing_kind: outgoingKind,
       status,
+      correction_mode: effectiveCorrectionMode(),
     };
   }
 
@@ -558,6 +588,7 @@
         body: JSON.stringify({
           raw_text: rawText,
           enabled: true,
+          correction_mode: effectiveCorrectionMode(),
           prompt_version_id: selectedPromptVersionId,
         }),
         signal: controller.signal,
@@ -720,6 +751,44 @@
     }
   });
 
+  elements.defaultCorrectionMode.addEventListener("change", async () => {
+    const previousMode = defaultCorrectionMode;
+    const nextMode = elements.defaultCorrectionMode.value;
+    elements.defaultCorrectionMode.disabled = true;
+    elements.modeSaveState.textContent = "Saving default correction mode…";
+    try {
+      const response = await fetch("/api/preferences/correction-mode", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ correction_mode: nextMode }),
+      });
+      if (!response.ok) throw await safeHttpError(response, "Correction mode preference");
+      const result = await readJson(response, "Correction mode preference");
+      if (!result || result.default_correction_mode !== nextMode) {
+        throw malformedResponseError("Correction mode preference", response.status);
+      }
+      defaultCorrectionMode = nextMode;
+      elements.modeSaveState.textContent = `${titleCaseState(nextMode)} saved as default.`;
+      applyCorrectionModeChange();
+    } catch (error) {
+      defaultCorrectionMode = previousMode;
+      elements.modeSaveState.textContent = `${error.message} ${error.retryAction}`;
+      renderCorrectionMode();
+    } finally {
+      elements.defaultCorrectionMode.disabled = false;
+    }
+  });
+
+  elements.currentCorrectionMode.addEventListener("change", () => {
+    currentCorrectionModeOverride = elements.currentCorrectionMode.value === "default"
+      ? null
+      : elements.currentCorrectionMode.value;
+    elements.modeSaveState.textContent = currentCorrectionModeOverride
+      ? `${titleCaseState(currentCorrectionModeOverride)} applies only to this Original.`
+      : `${titleCaseState(defaultCorrectionMode)} default applies to this Original.`;
+    applyCorrectionModeChange();
+  });
+
   elements.toggleOriginal.addEventListener("click", () => {
     setOriginalCollapsed(!elements.workspace.classList.contains("is-original-collapsed"));
   });
@@ -739,11 +808,13 @@
     abortActiveRequest();
     replaceAllPending = false;
     originalOutgoingOverride = false;
+    currentCorrectionModeOverride = null;
     invalidateEvaluationCapture();
     elements.original.value = "";
     elements.cleaned.value = "";
     setCleanupError(null);
     setStatus("unchanged");
+    renderCorrectionMode();
     renderCountsAndSelection();
     clearPublishedState();
     elements.original.focus();
@@ -1494,6 +1565,11 @@
       const config = await readJson(configResponse, "Workspace configuration");
 
       elements.cleanupEnabled.checked = config.cleanup_enabled_by_default ?? true;
+      defaultCorrectionMode = ["conservative", "smart"].includes(config.default_correction_mode)
+        ? config.default_correction_mode
+        : "conservative";
+      currentCorrectionModeOverride = null;
+      renderCorrectionMode();
       renderCleanupConfiguration(config.cleanup_configuration);
       evaluationAvailable = config.evaluation_configuration?.available === true;
       elements.evaluationStatus.textContent = evaluationAvailable
