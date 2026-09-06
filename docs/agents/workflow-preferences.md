@@ -20,6 +20,8 @@ or explicit instructions in the current request.
 - For validated runtime changes, use the controlled `scripts/dev.py restart`
   workflow rather than hot reload. Never inspect, modify, start, stop, or
   otherwise interact with the stable application or its state and integrations.
-- Require review and explicit authorization before integrating changes into
-  `main`. Preserve the repository's restrictions on private data, credentials,
-  operating state, and shared or external actions.
+- Keep changes uncommitted until the user has reviewed the working-tree diff
+  and explicitly authorized a commit. After authorization, commit only the
+  reviewed changes. Require separate explicit authorization before integrating
+  changes into `main`. Preserve the repository's restrictions on private data,
+  credentials, operating state, and shared or external actions.
