@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-19T21:30:37Z",
+  "generatedAt": "2026-09-06T22:42:47Z",
   "title": "Design System: Sayloom",
   "extensions": {
     "colorMeta": {
@@ -106,10 +106,73 @@
       { "name": "stacked-panel-heading", "value": "540px" }
     ]
   },
-  "components": [],
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The compact blue action used for the workflow's decisive next step.",
+      "html": "<button class=\"ds-button ds-button-primary\">Run cleanup</button>",
+      "css": ".ds-button { min-height: 36px; padding: 7px 14px; border: 1px solid var(--blue-dark, #0b3f6b); border-radius: 3px; color: #fff; background: var(--blue, #1769aa); cursor: pointer; font-family: \"Avenir Next\", Avenir, sans-serif; font-size: 0.74rem; font-weight: 700; transition: transform 120ms ease, border-color 120ms ease, background 120ms ease; } .ds-button:hover { transform: translateY(-1px); border-color: var(--night, #0b121b); background: var(--blue-dark, #0b3f6b); } .ds-button:active { transform: translateY(0); } .ds-button:focus-visible { outline: 3px solid rgba(23, 105, 170, 0.32); outline-offset: 3px; }"
+    },
+    {
+      "name": "Quiet Button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "A low-emphasis text action that stays visually subordinate to the primary workflow.",
+      "html": "<button class=\"ds-button-quiet\">Clear</button>",
+      "css": ".ds-button-quiet { min-height: 36px; padding: 7px 14px; border: 1px solid transparent; border-radius: 3px; color: var(--muted, #5e6874); background: transparent; cursor: pointer; font-family: \"Avenir Next\", Avenir, sans-serif; font-size: 0.74rem; font-weight: 700; transition: transform 120ms ease, border-color 120ms ease; } .ds-button-quiet:hover { transform: translateY(-1px); border-color: #8f8b80; } .ds-button-quiet:active { transform: translateY(0); } .ds-button-quiet:focus-visible { outline: 3px solid rgba(23, 105, 170, 0.32); outline-offset: 3px; }"
+    },
+    {
+      "name": "Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "A bright-paper field with a fine rule and restrained square geometry.",
+      "html": "<label class=\"ds-field-label\">Display name<input class=\"ds-field\" value=\"Sample target\"></label>",
+      "css": ".ds-field-label { display: grid; gap: 6px; color: var(--muted, #5e6874); font-family: \"Avenir Next\", Avenir, sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.05em; } .ds-field { width: 100%; min-height: 38px; padding: 7px 9px; border: 1px solid var(--line, #b9bec6); border-radius: 2px; color: var(--ink, #111820); background: var(--paper-bright, #fffdf7); font: inherit; font-size: 1rem; font-weight: 400; letter-spacing: 0.005em; } .ds-field:focus-visible { outline: 3px solid rgba(23, 105, 170, 0.32); outline-offset: 3px; }"
+    },
+    {
+      "name": "Active Navigation Item",
+      "kind": "nav",
+      "refersTo": "navigation-active",
+      "description": "The numbered Night-rail destination with a written label and blue active edge.",
+      "html": "<button class=\"ds-nav-item\" aria-current=\"page\"><span class=\"ds-nav-index\">01</span><span>Workspace</span></button>",
+      "css": ".ds-nav-item { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; min-width: 108px; min-height: 78px; padding: 18px 14px; border: 0; color: #fff; background: var(--blue-dark, #0b3f6b); cursor: pointer; font-family: \"Avenir Next\", Avenir, sans-serif; font-size: 0.74rem; font-weight: 720; text-align: left; } .ds-nav-item::before { position: absolute; inset: 13px auto 13px 0; width: 4px; background: #63b3ed; content: \"\"; } .ds-nav-index { color: #79bce9; font-size: 0.58rem; font-weight: 800; letter-spacing: 0.14em; } .ds-nav-item:hover { background: var(--night, #0b121b); } .ds-nav-item:focus-visible { outline: 3px solid rgba(23, 105, 170, 0.48); outline-offset: 3px; }"
+    },
+    {
+      "name": "Working Text Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "A complete ruled sheet for editable or generated working text.",
+      "html": "<article class=\"ds-panel\"><header class=\"ds-panel-heading\"><span>01</span><h2>Original</h2></header><p>Sample working text remains neutral and public-safe.</p></article>",
+      "css": ".ds-panel { overflow: hidden; border: 1px solid var(--line, #b9bec6); border-radius: 2px; color: var(--ink, #111820); background: rgba(255, 253, 247, 0.92); box-shadow: 0 14px 42px rgba(11, 18, 27, 0.15); } .ds-panel-heading { display: flex; align-items: center; gap: 12px; padding: 13px 20px 12px; border-bottom: 1px solid var(--line, #b9bec6); } .ds-panel-heading span { color: var(--blue, #1769aa); font-family: \"Avenir Next\", Avenir, sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.15em; } .ds-panel-heading h2 { margin: 0; font-family: \"Iowan Old Style\", Palatino, serif; font-size: 1.45rem; font-weight: 500; letter-spacing: -0.02em; } .ds-panel p { min-height: 92px; margin: 0; padding: 24px 28px 32px; font-family: Charter, \"Iowan Old Style\", Georgia, serif; font-size: 1.03rem; line-height: 1.7; }"
+    },
+    {
+      "name": "Status Pill",
+      "kind": "chip",
+      "description": "A compact written state paired with a restrained blue status light.",
+      "html": "<span class=\"ds-status-pill\"><i></i>Ready</span>",
+      "css": ".ds-status-pill { display: inline-flex; align-items: center; gap: 8px; min-width: 144px; padding: 8px 12px; border: 1px solid var(--line, #b9bec6); border-radius: 999px; color: var(--ink, #111820); background: rgba(250, 247, 239, 0.6); font-family: \"Avenir Next\", Avenir, sans-serif; font-size: 0.78rem; font-weight: 650; } .ds-status-pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--blue, #1769aa); box-shadow: 0 0 0 4px rgba(23, 105, 170, 0.13); }"
+    },
+    {
+      "name": "Outgoing Source Selector",
+      "kind": "custom",
+      "description": "The signature two-option selector that states which text is currently outgoing.",
+      "html": "<div class=\"ds-outgoing-selector\" aria-label=\"Outgoing source\"><button aria-pressed=\"true\">Cleaned</button><button aria-pressed=\"false\">Original</button></div>",
+      "css": ".ds-outgoing-selector { display: inline-flex; } .ds-outgoing-selector button { min-height: 34px; padding: 6px 11px; border: 1px solid var(--line, #b9bec6); color: var(--ink, #111820); background: var(--paper-bright, #fffdf7); cursor: pointer; font-family: \"Avenir Next\", Avenir, sans-serif; font-size: 0.7rem; font-weight: 750; } .ds-outgoing-selector button + button { border-left: 0; } .ds-outgoing-selector button[aria-pressed=\"true\"] { color: var(--paper-bright, #fffdf7); border-color: var(--blue, #1769aa); background: var(--blue, #1769aa); } .ds-outgoing-selector button:hover { background: var(--blue-pale, #dbeaf6); color: var(--ink, #111820); } .ds-outgoing-selector button[aria-pressed=\"true\"]:hover { background: var(--blue-dark, #0b3f6b); color: var(--paper-bright, #fffdf7); } .ds-outgoing-selector button:focus-visible { position: relative; outline: 3px solid rgba(23, 105, 170, 0.32); outline-offset: 3px; }"
+    },
+    {
+      "name": "Inspectable Error Record",
+      "kind": "custom",
+      "refersTo": "error-record",
+      "description": "A persistent ruled failure summary that stays with the workflow that owns it.",
+      "html": "<article class=\"ds-error-record\"><strong>Target update failed</strong><p>The saved definition is unchanged. Review safe details and try again.</p><button>View details</button></article>",
+      "css": ".ds-error-record { padding: 12px 16px; border-left: 4px solid var(--night, #0b121b); border-radius: 2px; color: var(--ink, #111820); background: var(--paper-bright, #fffdf7); font-family: \"Avenir Next\", Avenir, sans-serif; font-size: 0.78rem; line-height: 1.5; } .ds-error-record p { margin: 6px 0 10px; } .ds-error-record button { min-height: 34px; padding: 6px 11px; border: 1px solid var(--line, #b9bec6); border-radius: 3px; color: var(--muted, #5e6874); background: transparent; cursor: pointer; font: inherit; font-size: 0.72rem; font-weight: 700; } .ds-error-record button:hover { border-color: var(--blue, #1769aa); color: var(--blue-dark, #0b3f6b); } .ds-error-record button:focus-visible { outline: 3px solid rgba(23, 105, 170, 0.32); outline-offset: 3px; }"
+    }
+  ],
   "narrative": {
     "northStar": "The Threaded Work Sheet",
-    "overview": "Sayloom feels like a carefully prepared working sheet: warm paper, exact rules, ink-led typography, and a blue thread that connects source, transformation, outgoing state, and safe recovery detail. It is a quiet macOS utility rather than a generic dashboard. The interface should disappear during repeated use while remaining legible enough to trust at a glance. This is an extension of the incumbent code-defined world, not a replacement. New setup surfaces and inspectable failures inherit the same paper, rule, rail, heading, field, and control language.",
+    "overview": "Sayloom feels like a carefully prepared working sheet: warm paper, exact rules, ink-led typography, and a blue thread that connects source, transformation, and outgoing state. It is a quiet macOS utility rather than a generic dashboard. The interface should disappear during repeated use while remaining legible enough to trust at a glance. This is an extension of the incumbent code-defined world, not a replacement. New setup surfaces inherit the same paper, rule, rail, heading, field, and control language. Expression stays in small details—the thread mark, numbered sections, serif working text, and restrained grain—while standard controls keep their familiar behavior.",
     "keyCharacteristics": [
       "Warm paper and cool output surfaces bounded by fine, functional rules.",
       "Near-black utility chrome with one restrained thread-blue accent.",
