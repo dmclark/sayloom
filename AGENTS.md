@@ -1,9 +1,10 @@
 # Repository Guidance
 
-This repository is local-first and public-safe from its first commit.
+This repository is private and local-first. Commit project context deliberately;
+keep runtime and secret material outside Git.
 
 - Keep operating data, API keys, dictated or cleaned text, databases, and logs outside Git.
-- Never add real user content, credentials, private machine paths, or copied legacy implementation.
+- Never add credentials, private machine paths, or copied legacy implementation.
 - Never inspect, modify, start, stop, or otherwise interact with the existing stable application or any of its checkouts, services, ports, configuration, databases, logs, or integrations.
 - Use neutral technical identifiers such as `local_text`; keep them decoupled from the display brand.
 - Normal application startup must not run database migrations.
