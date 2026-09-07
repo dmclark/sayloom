@@ -203,8 +203,8 @@ generated result and reserve **Outgoing** for the exact selected delivery value.
   isolated by authenticated user and never shared implicitly.
 - **Explicit learning control:** No cross-user learning, model training, or
   repurposing of private text follows from ordinary product use.
-- **Public-safe repository:** Never add real user content, credentials, private
-  machine paths, or copied predecessor implementation.
+- **Repository hygiene:** Commit project context deliberately; never add
+  credentials, private machine paths, or copied predecessor implementation.
 - **Neutral technical identity:** Package and machine-level identifiers remain
   decoupled from the Sayloom display brand.
 - **No startup migrations:** Normal application startup checks schema state but
