@@ -82,29 +82,59 @@ changing conservative correction behavior.
 Deliver the primary intended-text correction loop with reviewable lexical
 changes and uncertainty assistance.
 
-### Decision required before implementation
+### Confirmed local-proof contract
 
-Select the technical contract for reporting and presenting uncertainty. AI
-confidence remains assistance rather than proof, and malformed or unverifiable
-metadata must not bypass fail-open behavior.
+The local proof uses an explicit Smart path for least-change intended-word
+repairs and then applies Conservative preparation. Original, optional
+request-scoped task context, and approved user knowledge are untrusted evidence,
+not instructions. Ambiguous wording is preserved instead of guessed, and any
+provider, deadline, validation, or malformed-response failure leaves Original
+usable. Smart correction never widens Conservative mode's source-preserving
+lexical boundary.
 
-### Provisional local-proof review contract
-
-This contract is approved for self-pilot validation and may revise the visible
-interaction before Gate 2 implementation:
+The review interaction follows these rules:
 
 - Every Smart lexical repair starts **Not reviewed**.
 - **Looks right** confirms only that repair and its current result.
 - Copying the result or taking no action never confirms a repair or authorizes
   learning from it.
-- The review signal makes no claim about model confidence or what the source
-  audio contained.
-- Self-pilot findings may refine the interaction, but implicit acceptance must
-  remain impossible.
+- Every lexical addition, removal, and replacement appears in Prepared and in a
+  compact repair queue with sentence context and a short inspection reason.
+- The review signal makes no claim about model confidence or source audio.
+- Editing or regenerating Original invalidates obsolete repairs, confirmations,
+  and memory proposals.
+- Prepared remains copyable before review is complete, and Outgoing remains the
+  exact visible Original or Prepared selection.
+
+Task context is bounded to one request and is never retained in durable state
+or logs. Curated preferred terms and known confusions are disabled by default,
+owned by the local principal, inspectable, editable, deletable, and supplied
+only when relevant and explicitly enabled. A confirmed repair may produce a
+conservative memory proposal, but saving it requires a separate explicit
+approval; confirmation, copying, dismissal, and ordinary preparation save
+nothing.
+
+The controlled local proof uses Voiceitt Chrome insertion into Original, with
+paste as a labeled fallback. Its private text-only benchmark freezes cases,
+prompts, context, knowledge, model settings, arm order, rubric, and gates before
+execution; compares the prompt/context/knowledge arms blindly; permits no paid
+retry or output selection; and treats any introduced meaning error as a hard
+failure. Private cases, outputs, profile data, and judgments remain outside Git,
+Mandrel, and routine logs. Provider privacy posture, participant consent, and
+any new or increased spend require verification and explicit approval before a
+run. Automatic latency and lexical repair spans are diagnostics; personal
+review time is not measured.
 
 Legacy source: Mandrel record `ec7191dc`; qualifying Sayloom evidence: explicit
 `sayloom` tag. This is a provisional local-proof contract, not an ADR or a
 claim about current implementation.
+
+Additional legacy sources: Mandrel records `18411a92`, `a534b682`, `f289d8d3`,
+`94f93120`, `d782f58e`, `d458148f`, `0259247a`, `35c6341e`, `42d56bd7`, and
+`64d4aa31`. Qualifying Sayloom evidence is the approved explicit `sayloom` tag,
+selected Sayloom completion, or approved Sayloom dependency recorded for each
+source. This summary preserves only the approved current contract; private
+benchmark material and superseded alternatives remain in read-only Mandrel.
 
 ### In scope
 
