@@ -12,14 +12,13 @@ or explicit instructions in the current request.
 - Prefer an Amp orb for isolated work. Read-only research, planning, review, and
   documentation-only changes may run in an orb when their inputs are available
   there.
-- Track issues as Mandrel tasks in the existing `voiceitt-bridge` project. Do
-  not create a separate project for Sayloom.
-- **Prepared tracker cutover — not active:** after the migration pilot and
-  final manifest are approved and an authority cutoff is recorded, track
-  actionable work in GitHub Issues for `dmclark/sayloom`, use the private
-  user-owned **Sayloom** Project for workflow state, and keep Mandrel unchanged
-  as read-only provenance. Before that cutoff, GitHub pilot Issues are
-  migration-validation artifacts only; do not dual-write active work.
+- Track actionable work in GitHub Issues for the private `dmclark/sayloom`
+  repository and use the private user-owned **Sayloom** Project for workflow
+  state. Repository documents and ADRs own durable current knowledge and
+  decisions.
+- Keep Mandrel project `voiceitt-bridge` unchanged as read-only legacy
+  provenance. Do not create a separate Sayloom Mandrel project or dual-write to
+  Mandrel.
 - Default implementation verification to affected checks, including
   `uv run ruff check .` and the relevant `uv run pytest` coverage. Reserve a
   full integration baseline for the designated integration owner when needed.

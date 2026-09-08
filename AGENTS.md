@@ -38,25 +38,14 @@ keep runtime and secret material outside Git.
 
 ## Mandrel project
 
-- All durable memory for this repository belongs to the existing Mandrel project
-  `voiceitt-bridge` (`c875b2af-9020-41b7-9595-d70221603464`).
-- Sayloom is part of the Voiceitt Bridge product memory. It is not a separate Mandrel project.
-- Before the first Mandrel read or write in a thread, verify that `voiceitt-bridge` is active and
-  switch only if needed. Reuse that confirmed selection unless the connection changes or there is
-  evidence that the active project changed; do not repeatedly reload project-selection guidance.
-- Never create or suggest a separate Sayloom Mandrel project.
-
-### Prepared tracker cutover policy — not active
-
-Until the migration pilot and final manifest receive approval and an authority
-cutoff is recorded, Mandrel remains the active Sayloom tracker. GitHub pilot
-Issues are migration-validation artifacts only; do not dual-write active work.
-
-After that explicit cutoff, GitHub Issues in `dmclark/sayloom` will own
-actionable work, the private user-owned **Sayloom** Project will own workflow
-state, and repository documents and ADRs will own durable current knowledge and
-decisions. Mandrel will remain unchanged as read-only provenance. Do not apply
-this paragraph before the cutoff.
+- Mandrel project `voiceitt-bridge`
+  (`c875b2af-9020-41b7-9595-d70221603464`) is unchanged, read-only legacy
+  provenance for Sayloom and cross-product history.
+- Never create, update, archive, or delete Sayloom records in Mandrel, and never
+  create or suggest a separate Sayloom Mandrel project.
+- GitHub Issues in `dmclark/sayloom` own actionable work, the private user-owned
+  **Sayloom** Project owns workflow state, and repository documents and ADRs own
+  durable current knowledge and decisions. Do not dual-write.
 
 ## Local worktree workflow
 
@@ -72,9 +61,8 @@ this paragraph before the cutoff.
 
 ### Issue tracker
 
-Issues are tracked as Mandrel project tasks in `voiceitt-bridge`. See `docs/agents/issue-tracker.md`.
-The prepared GitHub replacement in that document is not active before the
-approved authority cutoff.
+Issues are tracked in GitHub for `dmclark/sayloom`. See
+`docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
