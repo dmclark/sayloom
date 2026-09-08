@@ -1008,9 +1008,16 @@ textarea::placeholder { color: #9a988f; font-style: italic; }
   .brand-lockup { gap: 12px; }
   .thread-mark { width: 40px; height: 40px; }
   .thread-mark i { width: 34px; }
+  .workspace { height: 720px; }
   .panel-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
   .panel-prompt-control { width: 100%; }
   .panel-prompt-control select { width: 100%; }
+  .cleaned-panel .panel-footer { flex-wrap: wrap; gap: 6px 12px; }
+  .cleaned-panel .panel-footer-actions {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
   .correction-mode-controls { align-items: stretch; flex-direction: column; }
   .correction-mode-controls label { justify-content: space-between; }
   .correction-mode-controls select { width: min(68vw, 260px); }

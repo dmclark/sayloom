@@ -32,6 +32,7 @@ from local_text.cleanup import (
     SequentialCleanupProvider,
 )
 from local_text.config import Profile, Settings, load_settings
+from local_text.correction_benchmark import BenchmarkError, capture_example
 from local_text.database import ApplicationDatabase
 from local_text.evaluation import (
     CLEANUP_SCHEMA_VERSION,
@@ -208,6 +209,18 @@ class CorrectionModePreferenceRequest(BaseModel):
     correction_mode: CorrectionMode
 
 
+class BenchmarkExampleRequest(BaseModel):
+    original_text: str = Field(min_length=1, max_length=100_000)
+    intended_text: str = Field(min_length=1, max_length=100_000)
+
+    @field_validator("original_text", "intended_text")
+    @classmethod
+    def not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must not be blank")
+        return value
+
+
 def _prompt_response(prompt: PromptRecord, *, active: bool) -> dict[str, object]:
     created_at = prompt.created_at
     if created_at.tzinfo is None:
@@ -322,14 +335,21 @@ def create_app(
     async def privacy_safe_validation_error(
         request: Request, exc: RequestValidationError
     ) -> Response:
-        if request.url.path.startswith("/api/evaluation/"):
+        if request.url.path.startswith(("/api/evaluation/", "/api/correction-benchmark/")):
+            benchmark_request = request.url.path.startswith("/api/correction-benchmark/")
             return JSONResponse(
                 status_code=422,
                 content={
                     "detail": {
-                        "code": "invalid_evaluation_request",
+                        "code": (
+                            "invalid_private_corpus_request"
+                            if benchmark_request
+                            else "invalid_evaluation_request"
+                        ),
                         "message": (
-                            "The evaluation request did not match the private corpus contract."
+                            "The request did not match the private corpus contract."
+                            if benchmark_request
+                            else "The evaluation request did not match the private corpus contract."
                         ),
                         "retry_action": "Review the current form values and retry.",
                     }
@@ -354,6 +374,10 @@ def create_app(
             "configuration_error": configuration_error,
             "cleanup_configuration": cleanup_configuration.public(),
             "evaluation_configuration": evaluation.public(),
+            "correction_benchmark_configuration": {
+                "available": runtime.correction_benchmark_cases_path is not None,
+                "destination": "configured private benchmark corpus",
+            },
         }
 
     def require_configuration() -> None:
@@ -401,6 +425,10 @@ def create_app(
             else runtime.gemini_model,
             "cleanup_configuration": cleanup_configuration.public(),
             "evaluation_configuration": evaluation.public(),
+            "correction_benchmark_configuration": {
+                "available": runtime.correction_benchmark_cases_path is not None,
+                "destination": "configured private benchmark corpus",
+            },
         }
 
     @application.put("/api/preferences/correction-mode")
@@ -508,6 +536,41 @@ def create_app(
     def clear_outgoing_state() -> dict[str, object]:
         require_configuration()
         return state.clear(correction_mode=prompts.default_correction_mode()).public()
+
+    @application.post("/api/correction-benchmark/examples", status_code=status.HTTP_201_CREATED)
+    def capture_correction_benchmark_example(
+        request: BenchmarkExampleRequest,
+    ) -> dict[str, str]:
+        require_configuration()
+        if runtime.correction_benchmark_cases_path is None:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "benchmark_storage_unavailable",
+                    "message": "Private benchmark storage is not configured.",
+                    "retry_action": "Configure the private benchmark corpus and retry.",
+                },
+            )
+        try:
+            capture_example(
+                cases_path=runtime.correction_benchmark_cases_path,
+                application_database_path=runtime.resolved_database_path,
+                source_text=request.original_text,
+                intended_text=request.intended_text,
+            )
+        except BenchmarkError:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "benchmark_write_failed",
+                    "message": "The example was not added to the private benchmark corpus.",
+                    "retry_action": "Check the configured private destination and retry.",
+                },
+            ) from None
+        return {
+            "status": "saved",
+            "destination": "configured private benchmark corpus",
+        }
 
     def require_evaluation() -> EvaluationStore:
         require_configuration()

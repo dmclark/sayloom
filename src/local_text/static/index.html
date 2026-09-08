@@ -156,6 +156,12 @@
               <div class="panel-footer-actions">
                 <span id="model-label">Gemini</span>
                 <button
+                  id="correct-and-add-example"
+                  class="button button-quiet"
+                  type="button"
+                  disabled
+                >Correct and add example</button>
+                <button
                   id="save-evaluation-case"
                   class="button button-quiet"
                   type="button"
@@ -345,6 +351,26 @@
         <dl id="error-details-ledger"></dl>
         <button id="copy-error-details" class="button" type="button">Copy details</button>
       </div>
+    </dialog>
+
+    <dialog id="benchmark-capture-dialog" class="evaluation-dialog" aria-labelledby="benchmark-capture-title">
+      <form id="benchmark-capture-form" class="evaluation-dialog-sheet">
+        <header class="error-sheet-header">
+          <div>
+            <span class="eyebrow">Explicit confirmation</span>
+            <h2 id="benchmark-capture-title">Correct and add example</h2>
+          </div>
+          <button id="cancel-benchmark-capture" class="dialog-close" type="button" aria-label="Cancel adding benchmark example">×</button>
+        </header>
+        <p>The current Original and your intended wording will be added to the configured private benchmark corpus. Nothing is saved until you confirm.</p>
+        <label for="benchmark-intended-text">Intended wording</label>
+        <textarea id="benchmark-intended-text" required maxlength="100000"></textarea>
+        <p id="benchmark-capture-status" class="evaluation-status" role="status" aria-live="polite"></p>
+        <div class="evaluation-dialog-actions">
+          <button class="button button-primary" type="submit">Add example and use correction</button>
+          <button id="cancel-benchmark-capture-secondary" class="button button-quiet" type="button">Cancel</button>
+        </div>
+      </form>
     </dialog>
 
     <dialog id="evaluation-capture-dialog" class="evaluation-dialog" aria-labelledby="evaluation-capture-title">

@@ -83,6 +83,17 @@ by an explicit browser-selected local destination; it streams deterministic UTF-
 recording a path or export event. Saving is for polished-cleanup evaluation only and is not consent
 to training or personalization.
 
+The separate, provider-free [correction benchmark pipeline](docs/correction-benchmark-pipeline.md)
+freezes the 2 × 2 × 2 Smart-correction experiment and validates external-only run registration,
+single-attempt output import, blind scoring, aggregate reporting, and the hard fidelity gate before
+any private corpus or provider execution.
+
+Set `LOCAL_TEXT_CORRECTION_BENCHMARK_CASES_PATH` to an absolute cases-file path outside both the
+repository and application state to enable **Correct and add example**. Explicit confirmation adds
+the current Original and corrected intended wording as an ineligible practice candidate using the
+benchmark case schema. The private corpus must be curated before run registration; capture does not
+make a case eligible or assign it to the unseen set.
+
 ## Cleanup providers
 
 Cleanup is enabled by default for every Original update, regardless of whether it came from typing, ordinary paste, or compatible dictation. Replacing a fully selected Original clears the previous Cleaned result for the new session; incremental input keeps the last result visible while cleanup is waiting or running. During either kind of reprocessing, outgoing state immediately fails open to the current Original text. Reloading the page clears both editors and the process-local outgoing state without changing durable prompt or cleanup settings. Dictation tools that signal a write with an untrusted synthetic paste followed by a trusted input event receive compatible caret and focus handling, but that event sequence is not a required input API.

@@ -72,6 +72,13 @@
     checkTarget: document.querySelector("#check-target"),
     toggleTargetEnabled: document.querySelector("#toggle-target-enabled"),
     removeTarget: document.querySelector("#remove-target"),
+    correctAndAddExample: document.querySelector("#correct-and-add-example"),
+    benchmarkCaptureDialog: document.querySelector("#benchmark-capture-dialog"),
+    benchmarkCaptureForm: document.querySelector("#benchmark-capture-form"),
+    benchmarkIntendedText: document.querySelector("#benchmark-intended-text"),
+    benchmarkCaptureStatus: document.querySelector("#benchmark-capture-status"),
+    cancelBenchmarkCapture: document.querySelector("#cancel-benchmark-capture"),
+    cancelBenchmarkCaptureSecondary: document.querySelector("#cancel-benchmark-capture-secondary"),
     saveEvaluationCase: document.querySelector("#save-evaluation-case"),
     evaluationManager: document.querySelector("#evaluation-manager"),
     evaluationStatus: document.querySelector("#evaluation-status"),
@@ -143,6 +150,9 @@
   let targetDirty = false;
   let targetDraftIsNew = false;
   let targetLocalError = null;
+  let benchmarkAvailable = false;
+  let benchmarkCapturedForCurrentCleaned = false;
+  let benchmarkOriginalText = null;
   let evaluationAvailable = false;
   let currentEvaluation = null;
   let evaluationCases = [];
@@ -265,6 +275,9 @@
     elements.selectCleaned.setAttribute("aria-pressed", String(useCleaned));
     elements.selectOriginal.setAttribute("aria-pressed", String(!useCleaned));
     elements.outgoingKind.textContent = fallbackLabel();
+    elements.correctAndAddExample.disabled = !benchmarkAvailable
+      || !cleanedIsCurrent()
+      || benchmarkCapturedForCurrentCleaned;
   }
 
   function setPublicationState(nextState, label) {
@@ -555,6 +568,7 @@
     abortActiveRequest();
     setCleanupError(null);
     invalidateEvaluationCapture();
+    benchmarkCapturedForCurrentCleaned = false;
 
     const rawText = elements.original.value;
     if (!rawText.trim()) {
@@ -830,6 +844,66 @@
     elements.errorDialog.dataset.kind = "";
   });
   elements.copyError.addEventListener("click", copyError);
+
+  function clearBenchmarkCaptureDialog() {
+    benchmarkOriginalText = null;
+    elements.benchmarkIntendedText.value = "";
+    elements.benchmarkCaptureStatus.textContent = "";
+  }
+
+  function closeBenchmarkCapture() {
+    if (elements.benchmarkCaptureDialog.open) elements.benchmarkCaptureDialog.close();
+    clearBenchmarkCaptureDialog();
+  }
+
+  function openBenchmarkCapture() {
+    if (!benchmarkAvailable || !cleanedIsCurrent()) return;
+    benchmarkOriginalText = elements.original.value;
+    elements.benchmarkIntendedText.value = elements.cleaned.value;
+    elements.benchmarkCaptureStatus.textContent = "";
+    elements.benchmarkCaptureDialog.showModal();
+    elements.benchmarkIntendedText.focus();
+    elements.benchmarkIntendedText.select();
+  }
+
+  elements.correctAndAddExample.addEventListener("click", openBenchmarkCapture);
+  elements.cancelBenchmarkCapture.addEventListener("click", closeBenchmarkCapture);
+  elements.cancelBenchmarkCaptureSecondary.addEventListener("click", closeBenchmarkCapture);
+  elements.benchmarkCaptureDialog.addEventListener("close", clearBenchmarkCaptureDialog);
+  elements.benchmarkCaptureForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (benchmarkOriginalText === null || !elements.benchmarkCaptureForm.reportValidity()) return;
+    const intendedText = elements.benchmarkIntendedText.value;
+    elements.benchmarkCaptureStatus.textContent = "Adding example…";
+    let response;
+    try {
+      response = await fetch("/api/correction-benchmark/examples", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          original_text: benchmarkOriginalText,
+          intended_text: intendedText,
+        }),
+      });
+      if (!response.ok) throw await safeHttpError(response, "Benchmark example save");
+      const result = await readJson(response, "Benchmark example save");
+      if (result?.status !== "saved" || typeof result.destination !== "string") {
+        throw malformedResponseError("Benchmark example save", response.status);
+      }
+      benchmarkCapturedForCurrentCleaned = true;
+      elements.cleaned.value = intendedText;
+      setStatus(intendedText === elements.original.value ? "unchanged" : "cleaned");
+      closeBenchmarkCapture();
+      renderCountsAndSelection();
+      await publishNow();
+      elements.benchmarkCaptureStatus.textContent = "";
+      elements.correctAndAddExample.title = `Example added to ${result.destination}.`;
+      elements.outgoingKind.textContent = `${fallbackLabel()} · Example added to private corpus`;
+    } catch (error) {
+      const safe = error?.code ? error : networkError("Benchmark example save");
+      elements.benchmarkCaptureStatus.textContent = `${safe.message} ${safe.retryAction}`;
+    }
+  });
 
   elements.workspaceResizer.addEventListener("pointerdown", (event) => {
     activeResizePointer = event.pointerId;
@@ -1571,6 +1645,10 @@
       currentCorrectionModeOverride = null;
       renderCorrectionMode();
       renderCleanupConfiguration(config.cleanup_configuration);
+      benchmarkAvailable = config.correction_benchmark_configuration?.available === true;
+      elements.correctAndAddExample.title = benchmarkAvailable
+        ? "Correct Prepared wording and add the pair to the private benchmark corpus"
+        : "Private benchmark storage is not configured";
       evaluationAvailable = config.evaluation_configuration?.available === true;
       elements.evaluationStatus.textContent = evaluationAvailable
         ? "Evaluation storage is configured and current."
