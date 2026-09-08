@@ -117,12 +117,12 @@
             class="workspace-resizer"
             role="separator"
             tabindex="0"
-            aria-label="Resize Original and Cleaned fields"
+            aria-label="Resize Original and Prepared fields"
             aria-orientation="horizontal"
             aria-valuemin="45"
             aria-valuemax="80"
             aria-valuenow="65"
-            aria-valuetext="Original 65 percent, Cleaned 35 percent"
+            aria-valuetext="Original 65 percent, Prepared 35 percent"
           >
             <span aria-hidden="true"></span><i aria-hidden="true"></i><span aria-hidden="true"></span>
           </div>
@@ -131,7 +131,7 @@
             <header class="panel-heading">
               <div class="panel-title">
                 <span class="panel-number">02</span>
-                <h2>Cleaned</h2>
+                <h2>Prepared</h2>
               </div>
               <div class="panel-prompt-control">
                 <label for="active-prompt-selector">Prompt</label>
@@ -144,9 +144,9 @@
             <div class="editor-wrap">
               <textarea
                 id="cleaned-text"
-                aria-label="Cleaned outgoing text"
+                aria-label="Prepared text"
                 autocomplete="off"
-                placeholder="Cleaned text appears here."
+                placeholder="Prepared text appears here."
                 readonly
                 spellcheck="true"
               ></textarea>
@@ -310,7 +310,7 @@
           <div class="outgoing-summary">
             <span class="outgoing-label">Outgoing</span>
             <div class="outgoing-selector" role="group" aria-label="Outgoing text source">
-              <button id="select-cleaned" type="button" aria-pressed="false">Cleaned</button>
+              <button id="select-cleaned" type="button" aria-pressed="false">Prepared</button>
               <button id="select-original" type="button" aria-pressed="true">Original</button>
             </div>
             <strong id="outgoing-kind">Nothing yet</strong>

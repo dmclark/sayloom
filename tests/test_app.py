@@ -107,6 +107,12 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="workspace-resizer"' in response.text
     assert 'id="select-cleaned"' in response.text
     assert 'id="select-original"' in response.text
+    assert '<h2>Prepared</h2>' in response.text
+    assert '>Prepared</button>' in response.text
+    assert 'aria-label="Resize Original and Prepared fields"' in response.text
+    assert 'aria-valuetext="Original 65 percent, Prepared 35 percent"' in response.text
+    assert '<h2>Cleaned</h2>' not in response.text
+    assert '>Cleaned</button>' not in response.text
     assert 'id="toggle-original"' in response.text
     assert 'id="default-correction-mode"' in response.text
     assert 'id="current-correction-mode"' in response.text
@@ -1092,7 +1098,15 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     assert "prompt_version_id: selectedPromptVersionId" in script.text
     assert "originalOutgoingOverride = true" in script.text
     assert "originalOutgoingOverride = false" in script.text
-    assert "Original fallback · replacement Cleaned pending" in script.text
+    assert "Original fallback · replacement Prepared pending" in script.text
+    assert "original_text: originalText" in script.text
+    assert "prepared_text: preparedText" in script.text
+    assert 'usePrepared ? "prepared" : "original"' in script.text
+    outgoing_selection = script.text.split(
+        "function selectedOutgoingState()", maxsplit=1
+    )[1].split("function renderCountsAndSelection()", maxsplit=1)[0]
+    assert "raw_text:" not in outgoing_selection
+    assert "cleaned_text:" not in outgoing_selection
     assert "setCleanupError" in script.text
     assert "setPublicationError" in script.text
     assert 'message: "The browser could not connect to the local API."' in script.text
@@ -1436,6 +1450,15 @@ async function run({ cancel = false, originalSelected = false, fail = false, new
     }
     assert observed["prepared"]["capturedCleaned"] == "Synthetic corrected wording."
     assert observed["prepared"]["outgoingAfterSuccess"] == "Synthetic corrected wording."
+    assert observed["prepared"]["requests"][-1]["body"]["outgoing_kind"] == "prepared"
+    assert observed["prepared"]["requests"][-1]["body"]["original_text"] == (
+        "Synthetic original wording."
+    )
+    assert observed["prepared"]["requests"][-1]["body"]["prepared_text"] == (
+        "Synthetic corrected wording."
+    )
+    assert "raw_text" not in observed["prepared"]["requests"][-1]["body"]
+    assert "cleaned_text" not in observed["prepared"]["requests"][-1]["body"]
     benchmark_request = next(
         request
         for request in observed["prepared"]["requests"]
@@ -1449,6 +1472,7 @@ async function run({ cancel = false, originalSelected = false, fail = false, new
     assert observed["original"]["requests"][-1]["body"]["outgoing_text"] == (
         "Synthetic original wording."
     )
+    assert observed["original"]["requests"][-1]["body"]["outgoing_kind"] == "original"
     assert observed["failure"]["open"] is True
     assert observed["failure"]["cleaned"] == "Synthetic prepared wording."
     assert "was not added" in observed["failure"]["feedback"]
