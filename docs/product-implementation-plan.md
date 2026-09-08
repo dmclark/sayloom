@@ -88,6 +88,24 @@ Select the technical contract for reporting and presenting uncertainty. AI
 confidence remains assistance rather than proof, and malformed or unverifiable
 metadata must not bypass fail-open behavior.
 
+### Provisional local-proof review contract
+
+This contract is approved for self-pilot validation and may revise the visible
+interaction before Gate 2 implementation:
+
+- Every Smart lexical repair starts **Not reviewed**.
+- **Looks right** confirms only that repair and its current result.
+- Copying the result or taking no action never confirms a repair or authorizes
+  learning from it.
+- The review signal makes no claim about model confidence or what the source
+  audio contained.
+- Self-pilot findings may refine the interaction, but implicit acceptance must
+  remain impossible.
+
+Legacy source: Mandrel record `ec7191dc`; qualifying Sayloom evidence: explicit
+`sayloom` tag. This is a provisional local-proof contract, not an ADR or a
+claim about current implementation.
+
 ### In scope
 
 - Return Prepared text and bounded uncertainty metadata from Smart correction.

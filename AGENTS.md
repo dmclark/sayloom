@@ -46,6 +46,18 @@ keep runtime and secret material outside Git.
   evidence that the active project changed; do not repeatedly reload project-selection guidance.
 - Never create or suggest a separate Sayloom Mandrel project.
 
+### Prepared tracker cutover policy — not active
+
+Until the migration pilot and final manifest receive approval and an authority
+cutoff is recorded, Mandrel remains the active Sayloom tracker. GitHub pilot
+Issues are migration-validation artifacts only; do not dual-write active work.
+
+After that explicit cutoff, GitHub Issues in `dmclark/sayloom` will own
+actionable work, the private user-owned **Sayloom** Project will own workflow
+state, and repository documents and ADRs will own durable current knowledge and
+decisions. Mandrel will remain unchanged as read-only provenance. Do not apply
+this paragraph before the cutoff.
+
 ## Local worktree workflow
 
 - Worktrees are per independently changing topic, not per Amp thread or Orb. Code changes must occur on an appropriate topic branch rather than the protected primary `main` checkout.
@@ -61,6 +73,8 @@ keep runtime and secret material outside Git.
 ### Issue tracker
 
 Issues are tracked as Mandrel project tasks in `voiceitt-bridge`. See `docs/agents/issue-tracker.md`.
+The prepared GitHub replacement in that document is not active before the
+approved authority cutoff.
 
 ### Triage labels
 
