@@ -122,7 +122,7 @@
     unchanged: "Unchanged",
     waiting: "Waiting",
     cleaning: "Cleaning…",
-    cleaned: "Cleaned",
+    cleaned: "Prepared",
     disabled: "Disabled · Original",
     timeout: "Timeout · Original",
     error: "Error · Original",
@@ -218,7 +218,7 @@
     elements.workspaceResizer.setAttribute("aria-valuenow", String(originalShare));
     elements.workspaceResizer.setAttribute(
       "aria-valuetext",
-      `Original ${originalShare} percent, Cleaned ${100 - originalShare} percent`,
+      `Original ${originalShare} percent, Prepared ${100 - originalShare} percent`,
     );
   }
 
@@ -238,28 +238,28 @@
     if (!elements.original.value) return "Nothing yet";
     if (originalOutgoingOverride) return "Original selected for this draft";
     if (cleanedIsCurrent()) return status === "unchanged"
-      ? "Cleaned selected · result unchanged"
-      : "Cleaned selected · current result";
+      ? "Prepared selected · result unchanged"
+      : "Prepared selected · current result";
     return {
-      waiting: "Original fallback · replacement Cleaned pending",
+      waiting: "Original fallback · replacement Prepared pending",
       cleaning: "Original fallback · cleanup in progress",
       disabled: "Original fallback · cleanup disabled",
       timeout: "Original fallback · cleanup timed out",
       error: "Original fallback · cleanup unavailable",
-    }[status] || "Original fallback · Cleaned unavailable";
+    }[status] || "Original fallback · Prepared unavailable";
   }
 
   function selectedOutgoingState() {
-    const rawText = elements.original.value;
-    const cleanedText = elements.cleaned.value;
-    const useCleaned = !originalOutgoingOverride && cleanedIsCurrent();
-    const outgoingText = useCleaned ? cleanedText : rawText;
-    const outgoingKind = outgoingText ? (useCleaned ? "cleaned" : "raw") : "empty";
+    const originalText = elements.original.value;
+    const preparedText = elements.cleaned.value;
+    const usePrepared = !originalOutgoingOverride && cleanedIsCurrent();
+    const outgoingText = usePrepared ? preparedText : originalText;
+    const outgoingKind = outgoingText ? (usePrepared ? "prepared" : "original") : "empty";
 
     return {
       cleanup_enabled: elements.cleanupEnabled.checked,
-      raw_text: rawText,
-      cleaned_text: cleanedText,
+      original_text: originalText,
+      prepared_text: preparedText,
       outgoing_text: outgoingText,
       outgoing_kind: outgoingKind,
       status,
@@ -270,10 +270,10 @@
   function renderCountsAndSelection() {
     elements.originalCount.textContent = String(elements.original.value.length);
     elements.cleanedCount.textContent = String(elements.cleaned.value.length);
-    const useCleaned = selectedOutgoingState().outgoing_kind === "cleaned";
+    const usePrepared = selectedOutgoingState().outgoing_kind === "prepared";
     elements.selectCleaned.disabled = !cleanedIsCurrent();
-    elements.selectCleaned.setAttribute("aria-pressed", String(useCleaned));
-    elements.selectOriginal.setAttribute("aria-pressed", String(!useCleaned));
+    elements.selectCleaned.setAttribute("aria-pressed", String(usePrepared));
+    elements.selectOriginal.setAttribute("aria-pressed", String(!usePrepared));
     elements.outgoingKind.textContent = fallbackLabel();
     elements.correctAndAddExample.disabled = !benchmarkAvailable
       || !cleanedIsCurrent()
