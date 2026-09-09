@@ -67,10 +67,10 @@ contract.
 | Former fresh-start Gate 3 | Browser-local scratchpad plus resilience and sustained-use evidence | **Superseded in part** — scratchpad restoration and sustained-use gate are no longer required; bounded resilience checks remain in readiness | Confirmed decisions D018 and D023 |
 | [Version-one shape](shape-plan.md) | Workspace, Cleanup/Vocabulary, Targets, inspectable failures, and visual direction | **Confirmed as UX evidence; partially shipped** — Workspace and Targets exist; Vocabulary and the Cleanup destination do not | `84dbf8c`, `4724fbc`, `61a1c39`, `68bd6c6`, `62987a6` |
 | [Transcript-fidelity specification](transcript-fidelity-spec.md) | Fidelity-first product direction and bounded research design | **Confirmed direction; parked study** — no efficacy pilot has run | `7fe37bc` and the specification's readiness gate |
-| [Cleanup resilience and evaluation](cleanup-resilience-evaluation.md) | Provider resilience, explicit cleanup corpus, benchmark, and canary | **Confirmed through Gates 1–6; Gates 7–8 deferred** | `9045482`, `1cf0525`, `7de0efd`, `5dd652e`, `487584e`, `834d261` |
+| [Cleanup resilience and evaluation](cleanup-resilience-evaluation.md) | Provider resilience, explicit cleanup corpus, benchmark, and canary | **Gates 1–6 shipped; successor benchmark/canary protocol approved as documentation only; Gates 7–8 not implemented or operationally authorized** | `9045482`, `1cf0525`, `7de0efd`, `5dd652e`, `487584e`, `834d261`; [version 2](cleanup-evaluation-successor-protocol.md) |
 | Semantic-output safety recovery stage | Deterministic source-preserving envelope and fail-open rejection | **Confirmed — shipped** | `0c1b2e8` |
 | Cleanup-evaluation corpus lifecycle recovery stage | Explicit external store, consent, review, expiry, deletion, and export | **Confirmed — shipped** | `834d261` |
-| “Stage 4” benchmark proposal | Implement an isolated offline benchmark runner | **Superseded as an implementation assignment** — protocol reconciliation must happen first | Confirmed decisions D017 and D022 |
+| “Stage 4” benchmark proposal | Implement an isolated offline benchmark runner | **Superseded as an implementation assignment** — reconciliation is complete, but version 2 still authorizes documentation only | Confirmed decisions D017 and D022; [version 2](cleanup-evaluation-successor-protocol.md) |
 | Public pilot-interest drafts | Non-processing public information and expression of interest | **Confirmed as the delivery milestone after readiness; prior drafts remain unshipped history** | Public-pilot planning thread; no shipped commit |
 | Old prompt-program and parity branches | Expanded prompt lifecycle and predecessor-parity reconstruction | **Superseded or cancelled** — reference only; never resume or merge automatically | Archived work history |
 
@@ -160,7 +160,7 @@ protocol. Cleanup benchmark evidence cannot complete this outcome.
 | Lane | Current item | Status | Exit condition |
 | --- | --- | --- | --- |
 | Delivery | Outcome 1 — dependable current local product | **Confirmed — active, with blocked prerequisites** | All readiness checks pass and no urgent blocker remains |
-| Investigation | Cleanup benchmark protocol reconciliation | **Confirmed — ready, planning-only** | One evidence-backed disposition and proposed frozen successor protocol are presented for approval |
+| Investigation | Cleanup benchmark protocol reconciliation | **Confirmed — complete** | Version-one audit, chosen disposition, and decision-complete successor protocol are approved and documented; implementation and operation remain unauthorized |
 | Urgent maintenance | None | **Confirmed — empty** | Work enters only under the threshold below |
 
 Urgent maintenance is limited to security, privacy, data-loss, stable-product
@@ -168,14 +168,14 @@ outage, or readiness-blocking defects. Other defects and usability improvements
 remain parked. A qualifying defect receives one owner and one bounded task; it
 does not create a fourth active lane.
 
-## Active investigation contract
+## Completed investigation record
 
-### Outcome
+### Chosen outcome
 
-Determine whether cleanup benchmarking should evaluate only current
-source-preserving cleanup, add an isolated review-required rewrite arm, or stop
-because no bounded cleanup benchmark would answer a worthwhile product
-question.
+Benchmark only current source-preserving cleanup. Do not add a rewrite arm and do not conflate
+polished-output evidence with Smart correction or transcript fidelity. The
+[approved successor protocol](cleanup-evaluation-successor-protocol.md) explains why this bounded
+comparison wins over the rewrite and stop dispositions.
 
 ### Boundaries
 
@@ -186,29 +186,32 @@ question.
 - Assess product relevance, measurable outcomes, safety, privacy, cost,
   statistical validity, and overlap with transcript fidelity.
 
-### Completion gate
+### Completion gate — satisfied
 
-The investigation is complete only when it:
+The investigation:
 
-1. Audits protocol version 1 against current shipped behavior.
-2. Identifies obsolete assumptions, categories, arms, metrics, model references,
-   budgets, and terminology.
-3. Evaluates all three allowed dispositions against the same criteria.
-4. Recommends exactly one disposition and explains why the others do not win.
-5. Produces a proposed successor protocol with explicit entry, stopping,
-   verification, and completion gates.
-6. Preserves the superseded protocol and links its replacement.
-7. Stops for explicit approval before implementation or operation.
+1. audited protocol version 1 against current shipped behavior;
+2. identified obsolete assumptions, categories, arms, metrics, model references, budgets, and
+   terminology;
+3. evaluated all three allowed dispositions against product relevance, measurement, safety,
+   privacy, cost, statistical validity, and transcript-fidelity separation;
+4. selected current source-preserving cleanup and explained why rewrite and stop do not win;
+5. produced narrative and machine-readable version 2 with explicit entry, stopping, verification,
+   reporting, lifecycle, benchmark-to-canary, and completion gates;
+6. preserved [version 1](cleanup-evaluation-benchmark-v1.json) unchanged and linked its
+   [replacement](cleanup-evaluation-benchmark-v2.json); and
+7. received explicit documentation approval while withholding implementation and operation
+   authority.
 
 ## Actionable execution table
 
 | Priority | Lane | Outcome | Task | Owner | Dependencies | Entry criteria | Verification | Completion gate | Status | Source |
-| ---: | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| ---: | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Delivery | Dependable local delivery | In a local Supacode-managed Mac worktree and exact-worktree runner, verify Raycast delivery to Amp, iTerm, Supacode, and VS Code | Readiness owner | Safe isolated local environment; authorization to exercise integrations | Repository, branch, runner, and isolation verified; stable and predecessor resources excluded | Selected outgoing text reaches every target; no Return; clipboard, focus, application, permission, and command-collision behavior recorded | All target assertions pass, or one reproducible readiness blocker is isolated for maintenance | **Blocked — local environment and authorization required** | D005, D016; fresh-start Gate 1 |
 | 2 | Delivery | Dependable dictation and cleanup | In the local Supacode environment, verify Voiceitt/Chrome input and representative provider states | Readiness owner | Priority 1 complete; dedicated credentials and explicit provider-call authorization where needed | Request cap and data boundary approved; isolated state ready | Exercise success, rejection, timeout, unavailable, safe details, and fail-open behavior | Every required state passes without leaking operating text | **Blocked — Priority 1 and authorization required** | D002, D016 |
 | 3 | Delivery | Safe lifecycle | In the local Supacode environment, verify controlled restart and bounded resilience behavior | Readiness owner | Priority 2 complete; isolated development state | Backup, migration, restart, and stable-resource exclusion reviewed | Exercise start/restart, schema mismatch, migration failure, provider outage, and interruption paths | Lifecycle checks pass, or one reproducible readiness blocker is isolated | **Blocked — Priority 2 required** | Outcome 1 completion gate |
 | 4 | Delivery | Accessible current product | In the local Supacode/browser environment, complete bounded keyboard and accessibility acceptance | Readiness owner | Priority 3 complete; representative states available | Required browser/manual tooling identified | Verify keyboard, focus, labels, dialogs, details, resize/collapse, narrow viewport, and available automation | No unresolved serious accessibility failure | **Blocked — Priority 3 required** | D016; shape and verification contracts |
-| 1 | Investigation | Valid cleanup experiment | In an isolated Orb, reconcile the cleanup benchmark protocol without private data or provider traffic | Cleanup investigation owner | Shipped code/docs through `834d261`; D022 | Fixed read-only source set and comparison criteria recorded | Source-to-recommendation traceability, contradiction inventory, and complete successor gates | One recommendation and proposed protocol are presented for approval | **Ready — planning-only** | D017, D022 |
+| 1 | Investigation | Valid cleanup experiment | In an isolated Orb, reconcile the cleanup benchmark protocol without private data or provider traffic | Cleanup investigation owner | Shipped code/docs through `834d261`; D022 | Fixed read-only source set and comparison criteria recorded | Source-to-recommendation traceability, contradiction inventory, and complete successor gates | One recommendation and protocol approved for documentation only | **Complete — implementation and operation unauthorized** | D017, D022; [version 2](cleanup-evaluation-successor-protocol.md) |
 | After readiness | Delivery | Measure public interest | In an isolated Orb for planning, shape the non-processing public-interest surface before any implementation | Product owner | Outcome 1 complete | Claims, audience, data boundary, retention, and success threshold approved | Content, privacy, and accessibility review | One bounded implementation contract approved | **Queued** | D019 |
 
 Every task has one accountable role. Work remains forbidden until its entry
@@ -312,8 +315,9 @@ The following items are **Confirmed — parked**, not active commitments:
 - Vocabulary profiles, aliases, activation, and evidence-tiered suggestions;
 - Cleanup destination and information architecture;
 - benchmark-runner implementation, private benchmark operation, and paid
-  provider traffic pending protocol approval;
-- non-shadow 10/25/100 canary and stable-provider promotion;
+  provider traffic pending separate implementation and run authorization under version 2;
+- the single non-shadow 10-cleanup canary pending benchmark passage and separate confirmation;
+- any 25/100 continuation, repeat canary, automatic routing/fallback, or stable-provider promotion;
 - broader rewrite product mode;
 - recording review, re-recording, and neutral export;
 - expanded prompt lifecycle and multiple named prompt families;

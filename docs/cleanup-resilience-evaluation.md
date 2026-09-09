@@ -1,10 +1,20 @@
 # Cleanup resilience and local evaluation design
 
-- **Status:** Gates 1–6 implemented; benchmark and canary gates remain deferred
+- **Status:** Gates 1–6 implemented; version-one benchmark/canary design superseded; successor
+  implementation and operation unauthorized
 - **Code baseline:** `8599efa3c3ac65e50ff44a4ad43f31d68af5ae00`
 - **Provider evidence checked:** 2026-08-26
 - **Scope:** Cleanup routing and an explicitly confirmed, private evaluation corpus; no runtime,
   persistence, migration, provider, or stable-application change is authorized by this document
+
+The benchmark, scoring, sample, and canary sections originally recorded here are version-one
+history. The approved documentation-only successor is the
+[source-preserving cleanup benchmark and canary protocol](cleanup-evaluation-successor-protocol.md),
+with its [machine-readable version 2](cleanup-evaluation-benchmark-v2.json). Version 2 authorizes no
+runner implementation, corpus access, provider call, spending, benchmark, canary, routing change,
+or stable-product change. The original
+[machine-readable version 1](cleanup-evaluation-benchmark-v1.json) remains unchanged as superseded
+history.
 
 ## Decision summary
 
@@ -22,7 +32,11 @@
   **polished cleanup**. It must not be described or reused as transcript truth, a correction episode,
   or personalized evidence.
 
-### Recommendations
+### Historical version-one recommendations
+
+The routing and benchmark recommendations below explain Gates 1–6 and version-one history. They do
+not override version 2's two single-model arms, 30-second deadlines, fixed 60-case sample, or finite
+10-cleanup canary.
 
 1. Put a small sequential router behind `CleanupProvider`. Start with
    `gemini-3.7-flash`, then `gpt-5.6-luna`, only when both paid credentials and the disclosure are
@@ -38,7 +52,7 @@
    60-case feasibility set; expand toward 300 only to fill pre-registered strata and narrow uncertain
    confidence intervals, without changing scoring or thresholds after results are visible.
 
-### Assumptions to test
+### Historical version-one assumptions
 
 - A sequential cross-provider fallback improves availability enough to justify sending a failed
   request to a second processor.
@@ -60,8 +74,8 @@
    field/count preview, and no automatic export or sharing.
 5. **Provider disclosure:** After the disclosure is explicitly configured, cleanup may send text to
    paid Gemini and, only after a qualifying failure, to paid OpenAI.
-6. **Benchmark thresholds:** Use the non-inferiority margins and harmful-change gate below without
-   tuning them after candidate results are visible.
+6. **Historical benchmark thresholds:** Version 1 froze the non-inferiority margins and harmful-
+   change gate below. Version 2 replaces them for any future cleanup benchmark.
 
 ## Reconciliation with transcript fidelity
 
@@ -238,67 +252,18 @@ This persistence gate requires a migration, but only in the new evaluation datab
 transcript tables to the current application-configuration migration chain unless the governing
 storage decision explicitly chooses that ownership.
 
-## Pre-registered benchmark
+## Historical version-one benchmark and canary
 
-Freeze the manifest, strata, prompts, candidate model snapshots/aliases, route order, scoring code,
-review rubric, and thresholds before the first candidate result is examined. Run each case once per
-candidate in an isolated, non-shadow pilot. Provider order is evaluated separately from model quality:
-single-model arms establish quality; routed arms establish availability, latency, and cost.
+Version 1 proposed broader transformation strata, a routed arm, 12-second/8-second/20-second route
+budgets, possible expansion toward 300 cases, several compensating metrics, and a 10/25/100 canary
+progression. Those rules are superseded and must not be used for implementation or operation.
 
-### Candidate size and strata
-
-Use 60 cases for feasibility, balanced as far as available across the following non-exclusive tags.
-Expand toward 300 only to reach at least 30 cases in each critical tag and 50 must-preserve cases;
-report overlaps rather than pretending the strata are independent.
-
-- length: short (≤20 words), medium (21–80), long (>80);
-- source: dictation, typed, pasted, unknown;
-- transformation need: unchanged, punctuation/casing, grammar, disfluency removal, recognition-like
-  term correction, and mixed;
-- must-preserve: names/terms, numbers/dates, negation/modality, links/code/identifiers, quotations,
-  line/paragraph structure, and already-correct text;
-- risk/challenge: ambiguous wording, multilingual/code-switching, safety-sensitive surface text,
-  near the product length limit, and prior provider failure where explicitly saved.
-
-No tag is inferred from private identity. A reviewer assigns content tags locally during corpus
-review, and can remove a case that cannot be safely categorized.
-
-### Scoring and gates
-
-Report paired per-case results and 95% bootstrap confidence intervals:
-
-- exact match and normalized character/word edit distance to expected cleanup;
-- must-preserve token accuracy, with names/terms, numbers, and negation reported separately;
-- blinded user preference among candidate, baseline, and expected text;
-- correction effort: substantive edits and user actions to reach expected cleanup;
-- harmful change: meaning change, invented content, removed qualification/negation, corrupted
-  identifier/number/name, or damaging formatting change;
-- reliability: success, safety refusal, timeout, transient/permanent failure, fallback rate;
-- end-to-end and per-attempt p50/p95 latency, input/output tokens, estimated cost, and provider calls.
-
-**Confirmed non-inferiority gate:** express every comparison as candidate degradation from the
-current Gemini baseline. Mean correction effort may increase by at most 5%, must-preserve accuracy
-may fall by at most 1 percentage point, and p95 latency may increase by at most 20% or 1 second
-(whichever is larger). The upper 95% confidence bound on each degradation must stay inside its
-margin. The candidate must also improve either mean correction effort by at least 10% or absolute
-successful-cleanup rate by at least 2 percentage points.
-
-**Hard harmful-change gate:** zero severe meaning/negation/number/name corruptions in the feasibility
-set. At larger size, no statistically credible increase over baseline and no unresolved severe case.
-Every harmful change receives blinded human review; aggregate edit distance cannot override it.
-
-### Non-shadow canary
-
-1. Offline benchmark only.
-2. Explicit pilot, 10 user-initiated cleanups, candidate available as a manual choice; no stable text
-   duplication and no automatic fallback.
-3. If all hard gates hold, 25 pilot cleanups with candidate as pilot primary and baseline available as
-   a manual rerun. Never call both for one cleanup unless the user explicitly requests comparison.
-4. Then 100 pilot cleanups with the proposed sequential route. Review after 10, 25, and 100. Stop on
-   one severe harmful change, disclosure/storage violation, more than two consecutive total failures,
-   or budget/cost breach.
-5. A stable primary switch is a separate reviewed decision based on the frozen benchmark and canary;
-   it is not automatic promotion.
+The [successor protocol](cleanup-evaluation-successor-protocol.md) records the full audit and the
+approved replacement: exactly 60 challenge-balanced dictation cases within the shipped lexical
+boundary; two one-attempt arms under the same prompt, validator, and 30-second deadline; paired
+normalized code-point Levenshtein effort and non-compensating hard gates; and, only after passage and
+new explicit confirmation, one terminal 10-cleanup manual-candidate canary. It has no route arm,
+sample expansion, automatic fallback, 25/100 continuation, or stable promotion.
 
 ## Later implementation gates
 
@@ -320,23 +285,27 @@ Every harmful change receives blinded human review; aggregate edit distance cann
    corpus. Legacy Gemini-only routing remains compatible; generic `OPENAI_API_KEY` is ignored.
 5. **Corpus contract and schema design (implemented):** the frozen
    [corpus contract](cleanup-evaluation-corpus-contract.md) encodes the six confirmed decisions in
-   API, separate storage, consent, expiry, transactional deletion, and JSONL export contracts. The
-   machine-readable [benchmark protocol](cleanup-evaluation-benchmark-v1.json) pre-registers arms,
-   sampling, metrics, statistics, decision gates, and canary stops.
+   API, separate storage, consent, expiry, transactional deletion, and JSONL export contracts.
+   [Version 1](cleanup-evaluation-benchmark-v1.json) is preserved unchanged as historical evidence;
+   [version 2](cleanup-evaluation-benchmark-v2.json) is the canonical protocol but authorizes no
+   implementation or operation.
 6. **Corpus persistence and lifecycle (implemented):** the separate opt-in evaluation database,
    proof-bound capture/confirm/review/delete/export, expiry command, and transactional deletion use
    an explicit migration chain. Affected tests cover fresh and predecessor migration, no-migration
    startup, consent paths, stale confirmation, and synthetic-only export/deletion evidence.
-7. **Offline benchmark runner (no stable migration):** import an explicit snapshot into pilot state,
-   freeze the manifest, and compute paired metrics. Provider traffic requires dedicated paid test
-   credentials and synthetic smoke cases before any approved private corpus.
-8. **Non-shadow canary (no stable migration):** run only after benchmark approval under distinct
-   pilot service, storage, logs, window, configuration, and delivery identities.
+7. **Offline benchmark runner (not implemented or authorized):** a future separately approved task
+   may implement version 2 without a stable migration. Operation still requires its exact private
+   manifest, run confirmation, dedicated identities, synthetic smoke, and provider-call approval.
+8. **Non-shadow canary (not implemented or authorized):** eligibility requires every benchmark gate
+   to pass. Operation then requires separate explicit confirmation and distinct pilot identities for
+   the single terminal 10-cleanup manual-candidate canary.
 
-## Authoritative provider evidence
+## Historical provider-evidence snapshot
 
-All provider facts below were checked on 2026-08-26. Prices describe cost, not Sayloom cleanup
-quality.
+All provider facts below were checked on 2026-08-26. They are provenance for the earlier design, not
+current entry evidence. Version 2 requires official availability, exact IDs/reported versions,
+pricing, and retention/data-use terms to be refreshed within 24 hours before registration. Prices
+describe cost, not Sayloom cleanup quality.
 
 - **[G1]** Google, [Gemini 3.7 Flash model](https://ai.google.dev/gemini-api/docs/models/gemini-3.7-flash),
   updated 2026-08-13: stable model ID, structured-output support, and supported thinking levels;

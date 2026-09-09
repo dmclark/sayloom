@@ -4,7 +4,11 @@
 - **Consent version:** `cleanup-evaluation-consent-v1`
 - **Export version:** `cleanup-evaluation-export-v1`
 - **Status:** Contract frozen; Stage 3 lifecycle implementation present
-- **Benchmark protocol:** [`cleanup-evaluation-benchmark-v1.json`](cleanup-evaluation-benchmark-v1.json)
+- **Canonical benchmark protocol:**
+  [`cleanup-evaluation-benchmark-v2.json`](cleanup-evaluation-benchmark-v2.json) — approved protocol
+  only; no implementation or operation authorized
+- **Superseded history:**
+  [`cleanup-evaluation-benchmark-v1.json`](cleanup-evaluation-benchmark-v1.json) — preserved unchanged
 
 This contract governs a private corpus of user-confirmed polished cleanups. It does not authorize
 passive collection. The Stage 3 implementation exposes capture only after a successful current
@@ -32,9 +36,12 @@ The six confirmed decisions in the resilience design resolve to these invariants
 5. **Provider disclosure:** saving is separate from provider processing. The saved case records the
    completed cleanup's safe provider attribution, but saving, reviewing, deleting, and exporting
    never invoke a provider.
-6. **Benchmark decision:** the public protocol is frozen in the linked machine-readable file.
-   Before execution, a private run manifest must bind it to an exact corpus snapshot, prompt
-   snapshots, annotations, model identifiers, and scoring-code revision.
+6. **Benchmark decision:** the canonical public protocol is frozen in version 2 and its
+   [narrative authority](cleanup-evaluation-successor-protocol.md). Before execution, a private run
+   manifest must bind it to the exact eligible pool and selection, corpus snapshot, prompts,
+   annotations, model identifiers and reported versions, settings, scoring code, consent, budgets,
+   storage locations, and lifecycle rules. Version 2's documentation approval is not execution
+   consent.
 
 Persisted lifecycle timestamps are server-generated UTC instants serialized as RFC 3339 with `Z`;
 the cleanup completion time comes from the server-authenticated cleanup proof described below. Case
