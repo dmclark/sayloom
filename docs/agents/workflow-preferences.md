@@ -19,14 +19,14 @@ or explicit instructions in the current request.
 - Keep Mandrel project `voiceitt-bridge` unchanged as read-only legacy
   provenance. Do not create a separate Sayloom Mandrel project or dual-write to
   Mandrel.
-- Default implementation verification to affected checks, including
-  `uv run ruff check .` and the relevant `uv run pytest` coverage. Reserve a
-  full integration baseline for the designated integration owner when needed.
+- For implementation changes, affected checks usually include
+  `uv run ruff check .` and relevant `uv run pytest` coverage. Follow the root
+  guidance for test frequency and scope-appropriate verification.
 - For validated runtime changes, use the controlled `scripts/dev.py restart`
   workflow rather than hot reload. Never inspect, modify, start, stop, or
   otherwise interact with the stable application or its state and integrations.
-- Keep changes uncommitted until the user has reviewed the working-tree diff
-  and explicitly authorized a commit. After authorization, commit only the
-  reviewed changes. Require separate explicit authorization before integrating
-  changes into `main`. Preserve the repository's restrictions on private data,
-  credentials, operating state, and shared or external actions.
+- Keep changes uncommitted unless a commit is explicitly requested or clearly
+  required by repository policy. Commit only reviewed, in-scope changes. Require
+  separate explicit authorization before integrating changes into `main`.
+  Preserve the repository's restrictions on private data, credentials,
+  operating state, and shared or external actions.
