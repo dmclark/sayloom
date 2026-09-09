@@ -105,6 +105,18 @@ removal are rejected locally and fail open to Original. Configured prompt
 versions provide guidance only within this fixed boundary; broader grammar,
 tone, or wording rewriting is not a current cleanup mode.
 
+The purpose-built cleanup benchmark can freeze that shipped execution contract
+without loading application state, credentials, corpus text, or provider clients. It reads the
+exact configured prompt bytes from standard input and writes canonical JSON containing the prompt,
+framing, schema, validator, output-cap, provider-request, and dependency-lock bytes and hashes:
+
+```sh
+uv run python -m local_text.cleanup_contract \
+  --configured-prompt-id PROMPT_ID < configured-prompt.txt > cleanup-contract.json
+```
+
+The snapshot command does not run the benchmark or authorize provider calls.
+
 Development configuration uses one shared file and an optional state-specific
 file inside the external state directory:
 

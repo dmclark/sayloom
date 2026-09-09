@@ -25,6 +25,9 @@ MODEL_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 SAFE_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 GEMINI_37_FLASH = "gemini-3.7-flash"
 OPENAI_GPT_56_LUNA = "gpt-5.6-luna"
+GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta"
+OPENAI_ENDPOINT = "https://api.openai.com/v1/responses"
+SOURCE_TEXT_FRAME = "<SOURCE_TEXT>\n{original_text}\n</SOURCE_TEXT>"
 MAX_PREPARED_TEXT_CHARACTERS = 100_000
 GEMINI_MAX_OUTPUT_TOKENS = 65_536
 OPENAI_MAX_OUTPUT_TOKENS = 128_000
@@ -337,6 +340,64 @@ class ProviderBusyError(ProviderError):
         )
 
 
+def frame_source_text(original_text: str) -> str:
+    """Frame untrusted source text identically for every cleanup provider."""
+    return SOURCE_TEXT_FRAME.format(original_text=original_text)
+
+
+def gemini_request_payload(
+    original_text: str,
+    system_prompt: str,
+    model: str,
+) -> dict[str, Any]:
+    generation_config = {
+        "thinkingConfig": _thinking_config(model),
+        "maxOutputTokens": _output_token_cap(
+            original_text,
+            provider_max=GEMINI_MAX_OUTPUT_TOKENS,
+            thinking_headroom=2_048,
+        ),
+        "responseMimeType": "application/json",
+        "responseJsonSchema": PREPARED_TEXT_SCHEMA,
+    }
+    if model != GEMINI_37_FLASH:
+        generation_config["temperature"] = 0.2
+    return {
+        "system_instruction": {"parts": [{"text": system_prompt}]},
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": frame_source_text(original_text)}],
+            }
+        ],
+        "generationConfig": generation_config,
+    }
+
+
+def openai_request_payload(original_text: str, system_prompt: str, model: str) -> dict[str, Any]:
+    return {
+        "model": model,
+        "input": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": frame_source_text(original_text)},
+        ],
+        "max_output_tokens": _output_token_cap(
+            original_text,
+            provider_max=OPENAI_MAX_OUTPUT_TOKENS,
+        ),
+        "reasoning": {"effort": "none"},
+        "store": False,
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "cleanup_result",
+                "strict": True,
+                "schema": PREPARED_TEXT_SCHEMA,
+            }
+        },
+    }
+
+
 @dataclass(frozen=True)
 class GeminiAdapter:
     """One Gemini model and one HTTP request per cleanup call."""
@@ -344,7 +405,7 @@ class GeminiAdapter:
     api_key: str
     model: str
     client: httpx.AsyncClient
-    endpoint: str = "https://generativelanguage.googleapis.com/v1beta"
+    endpoint: str = GEMINI_ENDPOINT
     provider_id: str = "gemini"
     quota_group_id: str | None = None
 
@@ -363,28 +424,7 @@ class GeminiAdapter:
             _attribute_failure(error, self, started)
             raise error
         url = f"{self.endpoint}/models/{self.model}:generateContent"
-        generation_config = {
-            "thinkingConfig": _thinking_config(self.model),
-            "maxOutputTokens": _output_token_cap(
-                original_text,
-                provider_max=GEMINI_MAX_OUTPUT_TOKENS,
-                thinking_headroom=2_048,
-            ),
-            "responseMimeType": "application/json",
-            "responseJsonSchema": PREPARED_TEXT_SCHEMA,
-        }
-        if self.model != GEMINI_37_FLASH:
-            generation_config["temperature"] = 0.2
-        payload = {
-            "system_instruction": {"parts": [{"text": system_prompt}]},
-            "contents": [
-                {
-                    "role": "user",
-                    "parts": [{"text": f"<SOURCE_TEXT>\n{original_text}\n</SOURCE_TEXT>"}],
-                }
-            ],
-            "generationConfig": generation_config,
-        }
+        payload = gemini_request_payload(original_text, system_prompt, self.model)
         try:
             response = await self.client.post(
                 url,
@@ -442,7 +482,7 @@ class OpenAIAdapter:
     api_key: str
     client: httpx.AsyncClient
     model: str = OPENAI_GPT_56_LUNA
-    endpoint: str = "https://api.openai.com/v1/responses"
+    endpoint: str = OPENAI_ENDPOINT
     provider_id: str = "openai"
     quota_group_id: str | None = None
 
@@ -460,30 +500,7 @@ class OpenAIAdapter:
             )
             _attribute_failure(error, self, started)
             raise error
-        payload = {
-            "model": self.model,
-            "input": [
-                {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": f"<SOURCE_TEXT>\n{original_text}\n</SOURCE_TEXT>",
-                },
-            ],
-            "max_output_tokens": _output_token_cap(
-                original_text,
-                provider_max=OPENAI_MAX_OUTPUT_TOKENS,
-            ),
-            "reasoning": {"effort": "none"},
-            "store": False,
-            "text": {
-                "format": {
-                    "type": "json_schema",
-                    "name": "cleanup_result",
-                    "strict": True,
-                    "schema": PREPARED_TEXT_SCHEMA,
-                }
-            },
-        }
+        payload = openai_request_payload(original_text, system_prompt, self.model)
         try:
             response = await self.client.post(
                 self.endpoint,
