@@ -14,7 +14,7 @@ exit criteria; implementation should complete affected checks before moving to
 the next gate.
 
 The current application already provides conservative cleanup, provider
-routing, editable Original text, a generated result currently named Cleaned,
+routing, editable Original text, a generated result named Prepared,
 explicit Outgoing selection, fail-open behavior, prompt versions, inspectable
 failures, and local Raycast delivery. Smart correction, meaning-bearing change
 review, user-scoped personalization, hosted identity, managed hosted provider
@@ -54,8 +54,8 @@ changing conservative correction behavior.
 
 ### In scope
 
-- Rename current Cleaned and raw concepts to Prepared and Original across the
-  application API, state model, interface, and tests.
+- Use Prepared and Original consistently across the application API, state
+  model, interface, and tests.
 - Add the confirmed `conservative` and `smart` correction modes to the domain
   contract.
 - Persist the user's default mode and allow an override for the current text.

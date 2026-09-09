@@ -177,8 +177,8 @@ accuracy does not solve the problem.
 ### Current implementation boundary
 
 The current checkout is a useful local-first stage, not the complete product
-described above. It provides an editable Original, a generated result currently
-named **Cleaned**, explicit outgoing selection, fail-open behavior, prompt
+described above. It provides an editable Original, a generated result named
+**Prepared**, explicit outgoing selection, fail-open behavior, prompt
 versions, inspectable failures, and local target commands.
 
 Current automatic cleanup is conservative and rejects lexical additions,
@@ -187,9 +187,8 @@ meaning-bearing change review, user-scoped learning, hosted accounts, hosted
 provider management, and the hosted service are not implemented in this
 checkout unless later technical evidence says otherwise.
 
-Implementation documentation may continue to use **Cleaned** when describing
-the current interface. New product design should use **Prepared** for the
-generated result and reserve **Outgoing** for the exact selected delivery value.
+Implementation and product design use **Prepared** for the generated result and
+reserve **Outgoing** for the exact selected delivery value.
 
 ### Durable constraints
 

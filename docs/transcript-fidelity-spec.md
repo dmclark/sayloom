@@ -60,8 +60,8 @@ The superseded research hypothesis distinguished three forms of text:
 
 These three forms of text do not have one-to-one word correspondence. A
 polished result can be useful without proving what was spoken, and an
-Original-to-Cleaned diff cannot prove that one phrase is the correct replacement
-for another (F002, F003). The current Cleaned output is source-preserving
+Original-to-Prepared diff cannot prove that one phrase is the correct replacement
+for another (F002, F003). The current Prepared output is source-preserving
 copy-editing, limited to case, punctuation, apostrophe, and whitespace
 normalization plus leading-filler removal. Broader grammar, tone, or wording
 polishing is deferred to a separately approved user preference and remains
@@ -335,7 +335,7 @@ Before implementation planning:
    episodes: ownership, explicit consent, allowed purpose, local persistence,
    retention, deletion, export, and separation from model-training consent.
 2. Reconcile `docs/shape-plan.md` so alias-to-canonical vocabulary and
-   Original-to-Cleaned suggestions are advisory evidence, not replacement
+   Original-to-Prepared suggestions are advisory evidence, not replacement
    truth; preserve the useful UX evidence that does not conflict.
 3. Define product language and states for Voiceitt output, faithful transcript,
    ambiguity, Sayloom evidence tier, polished output, and fail-open behavior.

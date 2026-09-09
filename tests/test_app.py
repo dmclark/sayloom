@@ -95,7 +95,7 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert "<title>Sayloom Development</title>" in response.text
     assert 'aria-label="Development profile"' in response.text
     assert 'id="original-text"' in response.text
-    assert 'id="cleaned-text"' in response.text
+    assert 'id="prepared-text"' in response.text
     assert f'href="/static/app.css?v={STATIC_VERSION}"' in response.text
     assert f'src="/static/app.js?v={STATIC_VERSION}"' in response.text
     assert 'id="cleanup-status"' in response.text
@@ -105,7 +105,7 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="prompt-manager"' not in response.text
     assert 'id="save-prompt"' not in response.text
     assert 'id="workspace-resizer"' in response.text
-    assert 'id="select-cleaned"' in response.text
+    assert 'id="select-prepared"' in response.text
     assert 'id="select-original"' in response.text
     assert '<h2>Prepared</h2>' in response.text
     assert '>Prepared</button>' in response.text
@@ -136,10 +136,10 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'class="panel-footer original-panel-footer"' in original_panel
     assert 'id="run-cleanup"' in original_panel
     assert 'id="clear-text"' in original_panel
-    cleaned_panel = response.text.split('class="text-panel cleaned-panel"', maxsplit=1)[
+    prepared_panel = response.text.split('class="text-panel prepared-panel"', maxsplit=1)[
         1
     ].split("</article>", maxsplit=1)[0]
-    assert "readonly" in cleaned_panel
+    assert "readonly" in prepared_panel
     assert response.text.index('class="outgoing-strip"') < response.text.index(
         'id="cleanup-status"'
     )
@@ -289,7 +289,7 @@ def test_acknowledged_cross_provider_route_is_exact_sanitized_and_falls_back_onc
                         "content": [
                             {
                                 "type": "output_text",
-                                "text": '{"cleaned_text":"Synthetic source."}',
+                                "text": '{"prepared_text":"Synthetic source."}',
                             }
                         ],
                     }
@@ -312,7 +312,7 @@ def test_acknowledged_cross_provider_route_is_exact_sanitized_and_falls_back_onc
         configuration_response = client.get("/api/config")
         health_response = client.get("/health")
         result = client.post(
-            "/api/cleanup", json={"raw_text": "synthetic source", "enabled": True}
+            "/api/cleanup", json={"original_text": "synthetic source", "enabled": True}
         )
         provider = client.app.state.cleanup_service.provider
         assert isinstance(provider, SequentialCleanupProvider)
@@ -362,7 +362,7 @@ def test_unacknowledged_cross_provider_configuration_creates_no_client_and_fails
     with TestClient(create_app(settings)) as client:
         configuration_response = client.get("/api/config")
         result = client.post(
-            "/api/cleanup", json={"raw_text": "synthetic source", "enabled": True}
+            "/api/cleanup", json={"original_text": "synthetic source", "enabled": True}
         )
 
     configuration = configuration_response.json()["cleanup_configuration"]
@@ -371,7 +371,7 @@ def test_unacknowledged_cross_provider_configuration_creates_no_client_and_fails
     assert configuration["routes"] == []
     assert configuration["validation_error"] == "paid_data_acknowledgement_required"
     assert result.json()["status"] == "disabled"
-    assert result.json()["cleaned_text"] == "synthetic source"
+    assert result.json()["prepared_text"] == "synthetic source"
     assert calls == 0
     assert "synthetic-gemini-key" not in configuration_response.text
     assert "synthetic-openai-key" not in configuration_response.text
@@ -477,7 +477,7 @@ def test_app_lifespan_reuses_and_closes_the_gemini_client(
     def respond(request: httpx.Request) -> httpx.Response:
         nonlocal calls
         calls += 1
-        cleaned_text = f"Synthetic source {'one' if calls == 1 else 'two'}."
+        prepared_text = f"Synthetic source {'one' if calls == 1 else 'two'}."
         return httpx.Response(
             200,
             json={
@@ -485,7 +485,7 @@ def test_app_lifespan_reuses_and_closes_the_gemini_client(
                     {
                         "content": {
                             "parts": [
-                                {"text": json.dumps({"cleaned_text": cleaned_text})}
+                                {"text": json.dumps({"prepared_text": prepared_text})}
                             ]
                         }
                     }
@@ -516,9 +516,11 @@ def test_app_lifespan_reuses_and_closes_the_gemini_client(
         assert [route.attempt_budget_seconds for route in provider.routes] == [30, 30]
         assert {route.quota_group_id for route in provider.routes} == {"gemini-default"}
         for source in ("synthetic source one", "synthetic source two"):
-            response = client.post("/api/cleanup", json={"raw_text": source, "enabled": True})
+            response = client.post(
+                "/api/cleanup", json={"original_text": source, "enabled": True}
+            )
             assert response.status_code == 200
-            assert response.json()["status"] == "cleaned"
+            assert response.json()["status"] == "prepared"
         assert not provider_client.is_closed
 
     assert calls == 2
@@ -539,7 +541,7 @@ def test_active_gemini_router_falls_back_once_on_route_transient_failure(
             200,
             json={
                 "candidates": [
-                    {"content": {"parts": [{"text": '{"cleaned_text":"Synthetic source."}'}]}}
+                    {"content": {"parts": [{"text": '{"prepared_text":"Synthetic source."}'}]}}
                 ]
             },
         )
@@ -554,11 +556,11 @@ def test_active_gemini_router_falls_back_once_on_route_transient_failure(
 
     with TestClient(create_app(settings)) as client:
         response = client.post(
-            "/api/cleanup", json={"raw_text": "synthetic source", "enabled": True}
+            "/api/cleanup", json={"original_text": "synthetic source", "enabled": True}
         )
 
     assert response.status_code == 200
-    assert response.json()["status"] == "cleaned"
+    assert response.json()["status"] == "prepared"
     assert response.json()["model"] == "gemini-2.5-flash"
     assert [
         (attempt["route_index"], attempt["outcome"]) for attempt in response.json()["attempts"]
@@ -590,11 +592,11 @@ def test_active_gemini_shared_quota_failure_fails_open_without_replayed_call(
 
     with TestClient(create_app(settings)) as client:
         response = client.post(
-            "/api/cleanup", json={"raw_text": "synthetic source", "enabled": True}
+            "/api/cleanup", json={"original_text": "synthetic source", "enabled": True}
         )
 
     assert response.status_code == 200
-    assert response.json()["cleaned_text"] == "synthetic source"
+    assert response.json()["prepared_text"] == "synthetic source"
     assert response.json()["status"] == "provider_error"
     assert response.json()["error"]["code"] == "cleanup_provider_quota_error"
     assert len(response.json()["attempts"]) == 1
@@ -609,13 +611,12 @@ def test_cleanup_endpoint_fails_open_when_provider_is_unconfigured(
 
     response = client.post(
         "/api/cleanup",
-        json={"raw_text": "synthetic source text", "enabled": True},
+        json={"original_text": "synthetic source text", "enabled": True},
     )
 
     assert response.status_code == 200
     assert response.json() == {
         "prepared_text": "synthetic source text",
-        "cleaned_text": "synthetic source text",
         "status": "disabled",
         "provider": "gemini",
         "model": "gemini-3.5-flash",
@@ -630,8 +631,8 @@ def test_cleanup_endpoint_returns_provider_result(initialized_settings: Settings
         provider_id = "gemini"
         model = "test-model"
 
-        async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
-            assert raw_text == "synthetic source text"
+        async def clean(self, original_text: str, system_prompt: str) -> ProviderOutput:
+            assert original_text == "synthetic source text"
             assert "untrusted input data" in system_prompt
             return ProviderOutput(
                 text="Synthetic source text.",
@@ -654,9 +655,9 @@ def test_cleanup_endpoint_returns_provider_result(initialized_settings: Settings
 
     assert response.status_code == 200
     assert response.json()["prepared_text"] == "Synthetic source text."
-    assert response.json()["cleaned_text"] == "Synthetic source text."
+    assert "cleaned_text" not in response.json()
     assert response.json()["correction_mode"] == "smart"
-    assert response.json()["status"] == "cleaned"
+    assert response.json()["status"] == "prepared"
     assert response.json()["provider"] == "gemini"
     assert response.json()["model"] == "test-model"
     assert response.json()["attempts"] == [
@@ -680,7 +681,7 @@ def test_cleanup_endpoint_returns_provider_result(initialized_settings: Settings
 def test_cleanup_endpoint_rejects_instruction_like_output_before_publication(
     initialized_settings: Settings,
 ) -> None:
-    raw_text = "Process the ASR article from today capture"
+    original_text = "Process the ASR article from today capture"
     rejected_output = (
         "Sure, I can help with that. Please provide the ASR article to process."
     )
@@ -689,7 +690,7 @@ def test_cleanup_endpoint_rejects_instruction_like_output_before_publication(
         provider_id = "gemini"
         model = "test-model"
 
-        async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
+        async def clean(self, original_text: str, system_prompt: str) -> ProviderOutput:
             return ProviderOutput(
                 text=rejected_output,
                 provider_id=self.provider_id,
@@ -702,11 +703,11 @@ def test_cleanup_endpoint_rejects_instruction_like_output_before_publication(
 
     cleanup = client.post(
         "/api/cleanup",
-        json={"raw_text": raw_text, "enabled": True},
+        json={"original_text": original_text, "enabled": True},
     )
 
     assert cleanup.status_code == 200
-    assert cleanup.json()["cleaned_text"] == raw_text
+    assert cleanup.json()["prepared_text"] == original_text
     assert cleanup.json()["status"] == "provider_error"
     assert cleanup.json()["error"]["code"] == "cleanup_output_rejected"
     assert rejected_output not in cleanup.text
@@ -715,16 +716,16 @@ def test_cleanup_endpoint_rejects_instruction_like_output_before_publication(
         "/api/outgoing-state",
         json={
             "cleanup_enabled": True,
-            "raw_text": raw_text,
-            "cleaned_text": raw_text,
-            "outgoing_text": raw_text,
-            "outgoing_kind": "raw",
+            "original_text": original_text,
+            "prepared_text": original_text,
+            "outgoing_text": original_text,
+            "outgoing_kind": "original",
             "status": "error",
         },
     )
 
     assert publication.status_code == 200
-    assert publication.json()["outgoing_text"] == raw_text
+    assert publication.json()["outgoing_text"] == original_text
     assert publication.json()["outgoing_kind"] == "original"
     assert rejected_output not in publication.text
 
@@ -768,10 +769,10 @@ def test_cleanup_uses_the_durable_active_prompt(initialized_settings: Settings) 
         provider_id = "gemini"
         model = "test-model"
 
-        async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
+        async def clean(self, original_text: str, system_prompt: str) -> ProviderOutput:
             observed.append(system_prompt)
             return ProviderOutput(
-                text=raw_text,
+                text=original_text,
                 provider_id="gemini",
                 model_id=self.model,
                 elapsed_ms=3,
@@ -790,7 +791,7 @@ def test_cleanup_uses_the_durable_active_prompt(initialized_settings: Settings) 
 
     response = client.post(
         "/api/cleanup",
-        json={"raw_text": "synthetic source text", "enabled": True},
+        json={"original_text": "synthetic source text", "enabled": True},
     )
 
     assert response.status_code == 200
@@ -806,10 +807,10 @@ def test_cleanup_can_use_a_session_prompt_without_changing_the_durable_default(
         provider_id = "gemini"
         model = "test-model"
 
-        async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
+        async def clean(self, original_text: str, system_prompt: str) -> ProviderOutput:
             observed.append(system_prompt)
             return ProviderOutput(
-                text=raw_text,
+                text=original_text,
                 provider_id="gemini",
                 model_id=self.model,
                 elapsed_ms=3,
@@ -830,7 +831,7 @@ def test_cleanup_can_use_a_session_prompt_without_changing_the_durable_default(
     response = client.post(
         "/api/cleanup",
         json={
-            "raw_text": "synthetic source text",
+            "original_text": "synthetic source text",
             "enabled": True,
             "prompt_version_id": session_prompt["id"],
         },
@@ -845,7 +846,7 @@ def test_cleanup_can_use_a_session_prompt_without_changing_the_durable_default(
     missing = client.post(
         "/api/cleanup",
         json={
-            "raw_text": "synthetic source text",
+            "original_text": "synthetic source text",
             "enabled": True,
             "prompt_version_id": 9999,
         },
@@ -858,10 +859,10 @@ def test_cleanup_toggle_is_durable_configuration(initialized_settings: Settings)
     client = TestClient(create_app(initialized_settings))
     update = {
         "cleanup_enabled": False,
-        "raw_text": "synthetic raw text",
-        "cleaned_text": "synthetic raw text",
-        "outgoing_text": "synthetic raw text",
-        "outgoing_kind": "raw",
+        "original_text": "synthetic original text",
+        "prepared_text": "synthetic original text",
+        "outgoing_text": "synthetic original text",
+        "outgoing_kind": "original",
         "status": "disabled",
     }
 
@@ -892,7 +893,7 @@ def test_correction_mode_preference_is_durable_and_separate_from_workspace_state
             "prepared_text": "Synthetic original.",
             "outgoing_text": "Synthetic original.",
             "outgoing_kind": "prepared",
-            "status": "cleaned",
+            "status": "prepared",
             "correction_mode": "conservative",
         },
     )
@@ -916,11 +917,11 @@ def test_outgoing_state_is_published_and_cleared_in_memory(
     client = TestClient(create_app(initialized_settings))
     update = {
         "cleanup_enabled": True,
-        "raw_text": "synthetic raw text",
-        "cleaned_text": "Synthetic clean text.",
-        "outgoing_text": "Synthetic clean text.",
-        "outgoing_kind": "cleaned",
-        "status": "cleaned",
+        "original_text": "synthetic original text",
+        "prepared_text": "Synthetic prepared text.",
+        "outgoing_text": "Synthetic prepared text.",
+        "outgoing_kind": "prepared",
+        "status": "prepared",
     }
 
     published = client.put("/api/outgoing-state", json=update)
@@ -928,9 +929,6 @@ def test_outgoing_state_is_published_and_cleared_in_memory(
     assert published.status_code == 200
     expanded = {
         **update,
-        "original_text": update["raw_text"],
-        "prepared_text": update["cleaned_text"],
-        "outgoing_kind": "prepared",
         "correction_mode": "conservative",
         "revision": 1,
     }
@@ -941,8 +939,10 @@ def test_outgoing_state_is_published_and_cleared_in_memory(
     assert cleared.status_code == 200
     assert cleared.json()["outgoing_text"] == ""
     assert cleared.json()["outgoing_kind"] == "empty"
-    assert cleared.json()["original_text"] == cleared.json()["raw_text"] == ""
-    assert cleared.json()["prepared_text"] == cleared.json()["cleaned_text"] == ""
+    assert cleared.json()["original_text"] == ""
+    assert cleared.json()["prepared_text"] == ""
+    assert "raw_text" not in cleared.json()
+    assert "cleaned_text" not in cleared.json()
     assert cleared.json()["revision"] == 2
 
 
@@ -959,16 +959,38 @@ def test_outgoing_state_accepts_canonical_contract_and_smart_mode(
             "prepared_text": "Synthetic original.",
             "outgoing_text": "Synthetic original.",
             "outgoing_kind": "prepared",
-            "status": "cleaned",
+            "status": "prepared",
             "correction_mode": "smart",
         },
     )
 
     assert response.status_code == 200
-    assert response.json()["original_text"] == response.json()["raw_text"]
-    assert response.json()["prepared_text"] == response.json()["cleaned_text"]
+    assert response.json()["original_text"] == "synthetic original"
+    assert response.json()["prepared_text"] == "Synthetic original."
+    assert "raw_text" not in response.json()
+    assert "cleaned_text" not in response.json()
     assert response.json()["outgoing_kind"] == "prepared"
     assert response.json()["correction_mode"] == "smart"
+
+    legacy_cleanup = client.post(
+        "/api/cleanup",
+        json={"raw_text": "synthetic original", "enabled": True},
+    )
+    legacy_outgoing = client.put(
+        "/api/outgoing-state",
+        json={
+            "cleanup_enabled": True,
+            "original_text": "synthetic original",
+            "prepared_text": "Synthetic original.",
+            "raw_text": "synthetic original",
+            "outgoing_text": "Synthetic original.",
+            "outgoing_kind": "prepared",
+            "status": "prepared",
+        },
+    )
+
+    assert legacy_cleanup.status_code == 422
+    assert legacy_outgoing.status_code == 422
 
 
 def test_outgoing_state_rejects_text_not_present_in_either_editor(
@@ -980,11 +1002,11 @@ def test_outgoing_state_rejects_text_not_present_in_either_editor(
         "/api/outgoing-state",
         json={
             "cleanup_enabled": True,
-            "raw_text": "current raw",
-            "cleaned_text": "current cleaned",
+            "original_text": "current original",
+            "prepared_text": "current prepared",
             "outgoing_text": "stale text",
-            "outgoing_kind": "cleaned",
-            "status": "cleaned",
+            "outgoing_kind": "prepared",
+            "status": "prepared",
         },
     )
 
@@ -994,11 +1016,11 @@ def test_outgoing_state_rejects_text_not_present_in_either_editor(
         "/api/outgoing-state",
         json={
             "cleanup_enabled": True,
-            "raw_text": "current raw",
-            "cleaned_text": "current cleaned",
-            "outgoing_text": "current raw",
-            "outgoing_kind": "cleaned",
-            "status": "cleaned",
+            "original_text": "current original",
+            "prepared_text": "current prepared",
+            "outgoing_text": "current original",
+            "outgoing_kind": "prepared",
+            "status": "prepared",
         },
     )
     assert mismatched_source.status_code == 422
@@ -1116,22 +1138,22 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     assert 'fetch("/api/preferences/correction-mode"' in script.text
     assert "currentCorrectionModeOverride = null" in script.text
     assert "renderCorrectionMode();" in script.text
-    assert 'elements.cleaned.addEventListener("input"' not in script.text
+    assert 'elements.prepared.addEventListener("input"' not in script.text
     run_cleanup = script.text.split("async function runCleanup()", maxsplit=1)[1].split(
         "function scheduleCleanup()", maxsplit=1
     )[0]
     scheduled_cleanup = script.text.split("function scheduleCleanup()", maxsplit=1)[1].split(
         "function originalIsFullySelected", maxsplit=1
     )[0]
-    assert 'elements.cleaned.value = "";' not in run_cleanup
-    assert 'elements.cleaned.value = "";' not in scheduled_cleanup
-    assert '(status === "cleaned" || status === "unchanged")' in script.text
+    assert 'elements.prepared.value = "";' not in run_cleanup
+    assert 'elements.prepared.value = "";' not in scheduled_cleanup
+    assert '(status === "prepared" || status === "unchanged")' in script.text
     initialization = script.text.split("async function initialize()", maxsplit=1)[1].split(
         "initialize();", maxsplit=1
     )[0]
     assert "clearPublishedState()" in initialization
     assert 'elements.original.value = "";' not in initialization
-    assert 'elements.cleaned.value = "";' in initialization
+    assert 'elements.prepared.value = "";' in initialization
     assert 'fetch("/api/outgoing-state")' not in initialization
     assert "publishNow();" not in initialization
 
@@ -1172,12 +1194,12 @@ async function run(originalValue) {
   const original = new Element(originalValue);
   const selectors = {
     "#original-text": original,
-    "#cleaned-text": new Element(), "#cleanup-enabled": new Element(),
+    "#prepared-text": new Element(), "#cleanup-enabled": new Element(),
     "#run-cleanup": new Element(), "#clear-text": new Element(),
     "#toggle-original": new Element(), "#cleanup-status": new Element(),
     "#cleanup-status-text": new Element(), "#original-count": new Element(),
-    "#cleaned-count": new Element(), "#outgoing-kind": new Element(),
-    "#select-cleaned": new Element(), "#select-original": new Element(),
+    "#prepared-count": new Element(), "#outgoing-kind": new Element(),
+    "#select-prepared": new Element(), "#select-original": new Element(),
     "#publication-state": new Element(), "#model-label": new Element(),
     "#cleanup-disclosure": new Element(), "#cleanup-disclosure-summary": new Element(),
     "#cleanup-route-list": new Element(), "#cleanup-processing-disclosure": new Element(),
@@ -1306,7 +1328,9 @@ async function settle() {
   await new Promise((resolve) => setImmediate(resolve));
 }
 
-async function run({ cancel = false, originalSelected = false, fail = false, newCleaned = false }) {
+async function run({
+  cancel = false, originalSelected = false, fail = false, newPrepared = false,
+}) {
   const requests = [];
   const fetch = async (url, options = {}) => {
     const method = options.method || "GET";
@@ -1336,7 +1360,7 @@ async function run({ cancel = false, originalSelected = false, fail = false, new
         : response(201, { status: "saved", destination: "configured private benchmark corpus" });
     }
     if (url === "/api/cleanup") return response(200, {
-      cleaned_text: "Synthetic new cleaned wording.", status: "cleaned",
+      prepared_text: "Synthetic new prepared wording.", status: "prepared",
     });
     throw new Error(`Unexpected request: ${method} ${url}`);
   };
@@ -1355,12 +1379,12 @@ async function run({ cancel = false, originalSelected = false, fail = false, new
   await settle();
 
   const original = elements["#original-text"];
-  const cleaned = elements["#cleaned-text"];
+  const prepared = elements["#prepared-text"];
   const dialog = elements["#benchmark-capture-dialog"];
   const intended = elements["#benchmark-intended-text"];
   original.value = "Synthetic original wording.";
-  cleaned.value = "Synthetic prepared wording.";
-  await elements["#select-cleaned"].dispatch("click");
+  prepared.value = "Synthetic prepared wording.";
+  await elements["#select-prepared"].dispatch("click");
   if (originalSelected) await elements["#select-original"].dispatch("click");
   await elements["#correct-and-add-example"].dispatch("click");
   const opened = {
@@ -1372,7 +1396,7 @@ async function run({ cancel = false, originalSelected = false, fail = false, new
     await elements["#cancel-benchmark-capture-secondary"].dispatch("click");
     return {
       opened, open: dialog.open, original: original.value,
-      cleaned: cleaned.value,
+      prepared: prepared.value,
       buttonDisabledAfterSuccess: elements["#correct-and-add-example"].disabled,
       requests,
     };
@@ -1382,28 +1406,28 @@ async function run({ cancel = false, originalSelected = false, fail = false, new
   await elements["#benchmark-capture-form"].dispatch("submit");
   await settle();
   const buttonDisabledAfterSuccess = elements["#correct-and-add-example"].disabled;
-  const capturedCleaned = cleaned.value;
+  const capturedPrepared = prepared.value;
   const outgoingAfterSuccess = requests.at(-1).body.outgoing_text;
   const outgoingLabelAfterSuccess = elements["#outgoing-kind"].textContent;
-  let buttonDisabledAfterNewCleaned = null;
-  if (newCleaned) {
+  let buttonDisabledAfterNewPrepared = null;
+  if (newPrepared) {
     original.value = "Synthetic new original wording.";
     await elements["#run-cleanup"].dispatch("click");
     await settle();
-    buttonDisabledAfterNewCleaned = elements["#correct-and-add-example"].disabled;
+    buttonDisabledAfterNewPrepared = elements["#correct-and-add-example"].disabled;
   }
   return {
     opened,
     open: dialog.open,
     original: original.value,
-    cleaned: cleaned.value,
-    capturedCleaned,
+    prepared: prepared.value,
+    capturedPrepared,
     outgoingAfterSuccess,
     outgoingLabelAfterSuccess,
     feedback: elements["#benchmark-capture-status"].textContent,
     outgoingLabel: elements["#outgoing-kind"].textContent,
     buttonDisabledAfterSuccess,
-    buttonDisabledAfterNewCleaned,
+    buttonDisabledAfterNewPrepared,
     requests,
   };
 }
@@ -1411,7 +1435,7 @@ async function run({ cancel = false, originalSelected = false, fail = false, new
 (async () => {
   const cancel = await run({ cancel: true });
   Object.keys(elements).forEach((key) => delete elements[key]);
-  const prepared = await run({ newCleaned: true });
+  const prepared = await run({ newPrepared: true });
   Object.keys(elements).forEach((key) => delete elements[key]);
   const original = await run({ originalSelected: true });
   Object.keys(elements).forEach((key) => delete elements[key]);
@@ -1437,7 +1461,7 @@ async function run({ cancel = false, originalSelected = false, fail = false, new
         }
         assert scenario["original"] == "Synthetic original wording."
 
-    assert observed["cancel"]["cleaned"] == "Synthetic prepared wording."
+    assert observed["cancel"]["prepared"] == "Synthetic prepared wording."
     assert not any(
         request["url"] == "/api/correction-benchmark/examples"
         for request in observed["cancel"]["requests"]
@@ -1448,17 +1472,22 @@ async function run({ cancel = false, originalSelected = false, fail = false, new
         "focused": True,
         "selected": True,
     }
-    assert observed["prepared"]["capturedCleaned"] == "Synthetic corrected wording."
+    assert observed["prepared"]["capturedPrepared"] == "Synthetic corrected wording."
     assert observed["prepared"]["outgoingAfterSuccess"] == "Synthetic corrected wording."
-    assert observed["prepared"]["requests"][-1]["body"]["outgoing_kind"] == "prepared"
-    assert observed["prepared"]["requests"][-1]["body"]["original_text"] == (
+    prepared_publication = next(
+        request
+        for request in observed["prepared"]["requests"]
+        if request["body"].get("outgoing_text") == "Synthetic corrected wording."
+    )
+    assert prepared_publication["body"]["outgoing_kind"] == "prepared"
+    assert prepared_publication["body"]["original_text"] == (
         "Synthetic original wording."
     )
-    assert observed["prepared"]["requests"][-1]["body"]["prepared_text"] == (
+    assert prepared_publication["body"]["prepared_text"] == (
         "Synthetic corrected wording."
     )
-    assert "raw_text" not in observed["prepared"]["requests"][-1]["body"]
-    assert "cleaned_text" not in observed["prepared"]["requests"][-1]["body"]
+    assert "raw_text" not in prepared_publication["body"]
+    assert "cleaned_text" not in prepared_publication["body"]
     benchmark_request = next(
         request
         for request in observed["prepared"]["requests"]
@@ -1468,17 +1497,17 @@ async function run({ cancel = false, originalSelected = false, fail = false, new
         "original_text": "Synthetic original wording.",
         "intended_text": "Synthetic corrected wording.",
     }
-    assert observed["original"]["cleaned"] == "Synthetic corrected wording."
+    assert observed["original"]["prepared"] == "Synthetic corrected wording."
     assert observed["original"]["requests"][-1]["body"]["outgoing_text"] == (
         "Synthetic original wording."
     )
     assert observed["original"]["requests"][-1]["body"]["outgoing_kind"] == "original"
     assert observed["failure"]["open"] is True
-    assert observed["failure"]["cleaned"] == "Synthetic prepared wording."
+    assert observed["failure"]["prepared"] == "Synthetic prepared wording."
     assert "was not added" in observed["failure"]["feedback"]
     assert observed["cancel"]["buttonDisabledAfterSuccess"] is False
     assert observed["prepared"]["buttonDisabledAfterSuccess"] is True
-    assert observed["prepared"]["buttonDisabledAfterNewCleaned"] is False
+    assert observed["prepared"]["buttonDisabledAfterNewPrepared"] is False
     assert observed["original"]["buttonDisabledAfterSuccess"] is True
     assert observed["failure"]["buttonDisabledAfterSuccess"] is False
     assert "Example added to private corpus" in observed["prepared"]["outgoingLabelAfterSuccess"]
@@ -1527,6 +1556,6 @@ def test_regular_desktop_workspace_uses_the_remaining_viewport_height(
     assert "height: 100%" in desktop_fit
     assert "min-height: 0" in desktop_fit
     assert "minmax(0, var(--original-share))" in stylesheet
-    assert "minmax(0, var(--cleaned-share))" in stylesheet
+    assert "minmax(0, var(--prepared-share))" in stylesheet
     assert "minmax(260px" not in stylesheet
     assert "minmax(170px" not in stylesheet

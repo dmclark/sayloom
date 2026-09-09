@@ -2,7 +2,7 @@
 
 This repository contains the current local Sayloom implementation. It accepts
 Voiceitt-generated, typed, or pasted text; provides an editable Original and a
-source-preserving Cleaned result; fails open to Original; and publishes the
+source-preserving Prepared result; fails open to Original; and publishes the
 selected outgoing value for local Raycast delivery.
 
 The current implementation is one stage of the product described in
@@ -11,8 +11,7 @@ positioning, roadmap direction, and feature scope. In particular, the intended
 product repairs likely Voiceitt word-recognition errors and calls its generated
 result **Prepared**. Smart correction, review of meaning-bearing changes,
 user-scoped personalization, and hosted operation are not implemented in this
-checkout. The implementation name **Cleaned** remains accurate for the current
-source-preserving interface.
+checkout.
 
 The Python package and machine-level identifiers are deliberately neutral and
 independent of the display brand.
@@ -96,7 +95,7 @@ make a case eligible or assign it to the unseen set.
 
 ## Cleanup providers
 
-Cleanup is enabled by default for every Original update, regardless of whether it came from typing, ordinary paste, or compatible dictation. Replacing a fully selected Original clears the previous Cleaned result for the new session; incremental input keeps the last result visible while cleanup is waiting or running. During either kind of reprocessing, outgoing state immediately fails open to the current Original text. Reloading the page clears both editors and the process-local outgoing state without changing durable prompt or cleanup settings. Dictation tools that signal a write with an untrusted synthetic paste followed by a trusted input event receive compatible caret and focus handling, but that event sequence is not a required input API.
+Cleanup is enabled by default for every Original update, regardless of whether it came from typing, ordinary paste, or compatible dictation. Replacing a fully selected Original clears the previous Prepared result for the new session; incremental input keeps the last result visible while cleanup is waiting or running. During either kind of reprocessing, outgoing state immediately fails open to the current Original text. Reloading the page clears both editors and the process-local outgoing state without changing durable prompt or cleanup settings. Dictation tools that signal a write with an untrusted synthetic paste followed by a trusted input event receive compatible caret and focus handling, but that event sequence is not a required input API.
 
 The fixed cleanup contract permits capitalization, punctuation, apostrophe, and
 whitespace normalization plus removal of one or more leading `erm`, `hmm`,
@@ -179,11 +178,11 @@ remain exclusively bound by the selected state manifest.
 
 ## Durable prompt configuration
 
-SQLite in the external profile state directory is authoritative for the seeded prompt, immutable custom prompt versions, exact durable default selection, the cleanup default, target definitions and target-operation errors, seed state, and one-time import status. The Cleaned header provides a compact prompt-version selector for the current page session. Selecting a version sends its exact identifier with cleanup requests but does not change the durable default; clearing text preserves the selection, while a full reload restores the configured default. Every selected prompt is wrapped in the fixed source-preserving product contract before it is sent to a provider, so neither a legacy seed nor a custom version can widen accepted output. Expanded prompt management is intentionally outside the Workspace surface.
+SQLite in the external profile state directory is authoritative for the seeded prompt, immutable custom prompt versions, exact durable default selection, the cleanup default, target definitions and target-operation errors, seed state, and one-time import status. The Prepared header provides a compact prompt-version selector for the current page session. Selecting a version sends its exact identifier with cleanup requests but does not change the durable default; clearing text preserves the selection, while a full reload restores the configured default. Every selected prompt is wrapped in the fixed source-preserving product contract before it is sent to a provider, so neither a legacy seed nor a custom version can widen accepted output. Expanded prompt management is intentionally outside the Workspace surface.
 
 The **Targets** destination manages durable definitions for Amp, iTerm, Supacode, and VS Code plus bounded user-authored targets. **Save definition** never installs. **Install/Regenerate command** explicitly writes one generated command to the configured Raycast Script Commands directory, and Disable/Remove state their command-removal consequences. Generated commands consume only the current outgoing-state API, never press Return, and leave hotkey assignment to Raycast and the user. Application and macOS permission state remains **Not verified** until it is exercised on the Mac that runs Raycast. The fixed **Dev: Open Sayloom** command and four fixed Gate 1 send commands remain available during managed-command verification.
 
-Original and Cleaned are vertically stacked and share an accessible draggable divider with a 65/35 default split and keyboard-adjustable 45–80% Original range. Original can collapse while retaining text-entry focus so Cleaned fills the canvas. Original uses the browser's native insertion point; Cleaned is read-only. The Outgoing strip explicitly selects Cleaned or Original. Cleaned becomes the default after a current successful cleanup; pending, stale, disabled, timed-out, and failed cleanup states fall back to Original, and an explicit per-draft Original selection survives reruns until Clear or reload. Cleanup and publication failures provide persistent, expandable, copyable safe details without including operating text, provider payloads, credentials, stack traces, or private paths.
+Original and Prepared are vertically stacked and share an accessible draggable divider with a 65/35 default split and keyboard-adjustable 45–80% Original range. Original can collapse while retaining text-entry focus so Prepared fills the canvas. Original uses the browser's native insertion point; Prepared is read-only. The Outgoing strip explicitly selects Prepared or Original. Prepared becomes the default after a current successful cleanup; pending, stale, disabled, timed-out, and failed cleanup states fall back to Original, and an explicit per-draft Original selection survives reruns until Clear or reload. Cleanup and publication failures provide persistent, expandable, copyable safe details without including operating text, provider payloads, credentials, stack traces, or private paths.
 
 Cleanup details distinguish provider authentication/access rejection, quota or rate limits, provider service errors, other HTTP rejection, transport failure, timeout, malformed provider responses, and output rejected by provider or local safety checks. The attempted model and provider HTTP status are included when available. Cleanup uses `gemini-3.5-flash` by default and makes one bounded `gemini-2.5-flash` fallback attempt after HTTP 429 or 503; a five-minute per-model cooldown prevents automatic cleanup from repeatedly hitting a transiently failing model. The cleanup timeout remains the total deadline, and every exhausted path still fails open to Original. Server logs record only structured provider/model, category/status, duration, and input-length metadata; they never record operating text, prompts, credentials, headers, or provider payloads.
 
@@ -274,4 +273,4 @@ The five Gate 1 command surfaces remain intact through the durable prompt core. 
 
 ## Privacy
 
-Never commit credentials, API keys, dictated or cleaned text, databases, logs, local `.env` files, or machine-specific paths. Use synthetic text in tests and documentation.
+Never commit credentials, API keys, dictated or prepared text, databases, logs, local `.env` files, or machine-specific paths. Use synthetic text in tests and documentation.

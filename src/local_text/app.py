@@ -462,7 +462,7 @@ def create_app(
         if (
             evaluation_store is not None
             and successful_attempt
-            and result.status in {CleanupStatus.CLEANED, CleanupStatus.UNCHANGED}
+            and result.status in {CleanupStatus.PREPARED, CleanupStatus.UNCHANGED}
         ):
             completed_at = datetime.now(UTC)
             cleanup = CleanupCapture(

@@ -131,11 +131,11 @@ def test_api_save_install_regenerate_disable_remove_and_outgoing_separation(
     client = TestClient(create_app(settings))
     outgoing = {
         "cleanup_enabled": True,
-        "raw_text": "synthetic raw",
-        "cleaned_text": "synthetic cleaned",
-        "outgoing_text": "synthetic cleaned",
-        "outgoing_kind": "cleaned",
-        "status": "cleaned",
+        "original_text": "synthetic original",
+        "prepared_text": "synthetic prepared",
+        "outgoing_text": "synthetic prepared",
+        "outgoing_kind": "prepared",
+        "status": "prepared",
     }
     assert client.put("/api/outgoing-state", json=outgoing).status_code == 200
 
@@ -168,14 +168,14 @@ def test_api_save_install_regenerate_disable_remove_and_outgoing_separation(
     assert disabled.status_code == 200
     assert disabled.json()["state"] == "disabled"
     assert not command_path.exists()
-    assert client.get("/api/outgoing-state").json()["outgoing_text"] == "synthetic cleaned"
+    assert client.get("/api/outgoing-state").json()["outgoing_text"] == "synthetic prepared"
 
     enabled = client.post(f"/api/targets/{target_id}/enable")
     assert enabled.json()["state"] == "not_installed"
     assert not command_path.exists()
     removed = client.delete(f"/api/targets/{target_id}")
     assert removed.status_code == 204
-    assert client.get("/api/outgoing-state").json()["outgoing_text"] == "synthetic cleaned"
+    assert client.get("/api/outgoing-state").json()["outgoing_text"] == "synthetic prepared"
     assert client.get(f"/api/targets/{target_id}").status_code == 405
     assert all(item["id"] != target_id for item in client.get("/api/targets").json()["targets"])
 

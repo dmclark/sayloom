@@ -9,7 +9,7 @@
 
   const elements = {
     original: document.querySelector("#original-text"),
-    cleaned: document.querySelector("#cleaned-text"),
+    prepared: document.querySelector("#prepared-text"),
     cleanupEnabled: document.querySelector("#cleanup-enabled"),
     defaultCorrectionMode: document.querySelector("#default-correction-mode"),
     currentCorrectionMode: document.querySelector("#current-correction-mode"),
@@ -21,9 +21,9 @@
     status: document.querySelector("#cleanup-status"),
     statusText: document.querySelector("#cleanup-status-text"),
     originalCount: document.querySelector("#original-count"),
-    cleanedCount: document.querySelector("#cleaned-count"),
+    preparedCount: document.querySelector("#prepared-count"),
     outgoingKind: document.querySelector("#outgoing-kind"),
-    selectCleaned: document.querySelector("#select-cleaned"),
+    selectPrepared: document.querySelector("#select-prepared"),
     selectOriginal: document.querySelector("#select-original"),
     publication: document.querySelector("#publication-state"),
     modelLabel: document.querySelector("#model-label"),
@@ -122,7 +122,7 @@
     unchanged: "Unchanged",
     waiting: "Waiting",
     cleaning: "Cleaning…",
-    cleaned: "Prepared",
+    prepared: "Prepared",
     disabled: "Disabled · Original",
     timeout: "Timeout · Original",
     error: "Error · Original",
@@ -151,7 +151,7 @@
   let targetDraftIsNew = false;
   let targetLocalError = null;
   let benchmarkAvailable = false;
-  let benchmarkCapturedForCurrentCleaned = false;
+  let benchmarkCapturedForCurrentPrepared = false;
   let benchmarkOriginalText = null;
   let evaluationAvailable = false;
   let currentEvaluation = null;
@@ -214,7 +214,7 @@
       Math.max(MINIMUM_ORIGINAL_SHARE, Math.round(value)),
     );
     elements.workspace.style.setProperty("--original-share", `${originalShare}fr`);
-    elements.workspace.style.setProperty("--cleaned-share", `${100 - originalShare}fr`);
+    elements.workspace.style.setProperty("--prepared-share", `${100 - originalShare}fr`);
     elements.workspaceResizer.setAttribute("aria-valuenow", String(originalShare));
     elements.workspaceResizer.setAttribute(
       "aria-valuetext",
@@ -227,17 +227,17 @@
     setWorkspaceShare(((event.clientY - bounds.top) / bounds.height) * 100);
   }
 
-  function cleanedIsCurrent() {
+  function preparedIsCurrent() {
     return elements.cleanupEnabled.checked
       && Boolean(elements.original.value)
-      && (status === "cleaned" || status === "unchanged")
-      && Boolean(elements.cleaned.value);
+      && (status === "prepared" || status === "unchanged")
+      && Boolean(elements.prepared.value);
   }
 
   function fallbackLabel() {
     if (!elements.original.value) return "Nothing yet";
     if (originalOutgoingOverride) return "Original selected for this draft";
-    if (cleanedIsCurrent()) return status === "unchanged"
+    if (preparedIsCurrent()) return status === "unchanged"
       ? "Prepared selected · result unchanged"
       : "Prepared selected · current result";
     return {
@@ -251,8 +251,8 @@
 
   function selectedOutgoingState() {
     const originalText = elements.original.value;
-    const preparedText = elements.cleaned.value;
-    const usePrepared = !originalOutgoingOverride && cleanedIsCurrent();
+    const preparedText = elements.prepared.value;
+    const usePrepared = !originalOutgoingOverride && preparedIsCurrent();
     const outgoingText = usePrepared ? preparedText : originalText;
     const outgoingKind = outgoingText ? (usePrepared ? "prepared" : "original") : "empty";
 
@@ -269,15 +269,15 @@
 
   function renderCountsAndSelection() {
     elements.originalCount.textContent = String(elements.original.value.length);
-    elements.cleanedCount.textContent = String(elements.cleaned.value.length);
+    elements.preparedCount.textContent = String(elements.prepared.value.length);
     const usePrepared = selectedOutgoingState().outgoing_kind === "prepared";
-    elements.selectCleaned.disabled = !cleanedIsCurrent();
-    elements.selectCleaned.setAttribute("aria-pressed", String(usePrepared));
+    elements.selectPrepared.disabled = !preparedIsCurrent();
+    elements.selectPrepared.setAttribute("aria-pressed", String(usePrepared));
     elements.selectOriginal.setAttribute("aria-pressed", String(!usePrepared));
     elements.outgoingKind.textContent = fallbackLabel();
     elements.correctAndAddExample.disabled = !benchmarkAvailable
-      || !cleanedIsCurrent()
-      || benchmarkCapturedForCurrentCleaned;
+      || !preparedIsCurrent()
+      || benchmarkCapturedForCurrentPrepared;
   }
 
   function setPublicationState(nextState, label) {
@@ -568,17 +568,17 @@
     abortActiveRequest();
     setCleanupError(null);
     invalidateEvaluationCapture();
-    benchmarkCapturedForCurrentCleaned = false;
+    benchmarkCapturedForCurrentPrepared = false;
 
-    const rawText = elements.original.value;
-    if (!rawText.trim()) {
-      elements.cleaned.value = rawText;
+    const originalText = elements.original.value;
+    if (!originalText.trim()) {
+      elements.prepared.value = originalText;
       setStatus("unchanged");
       schedulePublication();
       return;
     }
     if (!elements.cleanupEnabled.checked) {
-      elements.cleaned.value = rawText;
+      elements.prepared.value = originalText;
       setStatus("disabled");
       schedulePublication();
       return;
@@ -600,7 +600,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          raw_text: rawText,
+          original_text: originalText,
           enabled: true,
           correction_mode: effectiveCorrectionMode(),
           prompt_version_id: selectedPromptVersionId,
@@ -609,29 +609,29 @@
       });
       if (!response.ok) {
         const error = await safeHttpError(response, "Cleanup");
-        if (sequence !== requestSequence || rawText !== elements.original.value) return;
-        elements.cleaned.value = rawText;
+        if (sequence !== requestSequence || originalText !== elements.original.value) return;
+        elements.prepared.value = originalText;
         setStatus("error");
         setCleanupError(error);
         restoreOriginalSelection(selection);
         return;
       }
       const result = await readJson(response, "Cleanup");
-      if (sequence !== requestSequence || rawText !== elements.original.value) return;
+      if (sequence !== requestSequence || originalText !== elements.original.value) return;
       if (
-        !result || typeof result.cleaned_text !== "string"
-        || !["cleaned", "unchanged", "empty_input", "disabled", "timeout", "provider_error"].includes(result.status)
+        !result || typeof result.prepared_text !== "string"
+        || !["prepared", "unchanged", "empty_input", "disabled", "timeout", "provider_error"].includes(result.status)
       ) {
-        elements.cleaned.value = rawText;
+        elements.prepared.value = originalText;
         setStatus("error");
         setCleanupError(malformedResponseError("Cleanup", response.status));
         restoreOriginalSelection(selection);
         return;
       }
 
-      elements.cleaned.value = result.cleaned_text;
+      elements.prepared.value = result.prepared_text;
       const statusMap = {
-        cleaned: "cleaned",
+        prepared: "prepared",
         unchanged: "unchanged",
         empty_input: "unchanged",
         disabled: "disabled",
@@ -661,14 +661,14 @@
       }
       if (
         evaluationAvailable
-        && ["cleaned", "unchanged"].includes(result.status)
+        && ["prepared", "unchanged"].includes(result.status)
         && result.evaluation
         && typeof result.evaluation.capture_proof === "string"
         && Array.isArray(result.attempts)
       ) {
         currentEvaluation = {
-          sourceText: rawText,
-          providerOutput: result.cleaned_text,
+          sourceText: originalText,
+          providerOutput: result.prepared_text,
           provider: result.provider,
           model: result.model,
           attempts: result.attempts.map((attempt) => {
@@ -683,7 +683,7 @@
       restoreOriginalSelection(selection);
     } catch (error) {
       if (sequence !== requestSequence) return;
-      elements.cleaned.value = rawText;
+      elements.prepared.value = originalText;
       setStatus("error");
       if (error.name !== "AbortError") {
         setCleanupError(error?.code ? error : networkError("Cleanup"));
@@ -702,7 +702,7 @@
     setCleanupError(null);
     invalidateEvaluationCapture();
     if (!elements.cleanupEnabled.checked) {
-      elements.cleaned.value = elements.original.value;
+      elements.prepared.value = elements.original.value;
       setStatus("disabled");
       schedulePublication();
       return;
@@ -720,7 +720,7 @@
   }
 
   function handleOriginalInput(event) {
-    if (replaceAllPending) elements.cleaned.value = "";
+    if (replaceAllPending) elements.prepared.value = "";
     replaceAllPending = false;
     const followsSyntheticPaste = syntheticPastePending && event.isTrusted;
     if (followsSyntheticPaste) {
@@ -757,7 +757,7 @@
       window.clearTimeout(cleanupTimer);
       abortActiveRequest();
       setCleanupError(null);
-      elements.cleaned.value = elements.original.value;
+      elements.prepared.value = elements.original.value;
       setStatus("disabled");
       publishNow();
     } else {
@@ -811,8 +811,8 @@
     originalOutgoingOverride = true;
     publishNow();
   });
-  elements.selectCleaned.addEventListener("click", () => {
-    if (!cleanedIsCurrent()) return;
+  elements.selectPrepared.addEventListener("click", () => {
+    if (!preparedIsCurrent()) return;
     originalOutgoingOverride = false;
     publishNow();
   });
@@ -825,7 +825,7 @@
     currentCorrectionModeOverride = null;
     invalidateEvaluationCapture();
     elements.original.value = "";
-    elements.cleaned.value = "";
+    elements.prepared.value = "";
     setCleanupError(null);
     setStatus("unchanged");
     renderCorrectionMode();
@@ -857,9 +857,9 @@
   }
 
   function openBenchmarkCapture() {
-    if (!benchmarkAvailable || !cleanedIsCurrent()) return;
+    if (!benchmarkAvailable || !preparedIsCurrent()) return;
     benchmarkOriginalText = elements.original.value;
-    elements.benchmarkIntendedText.value = elements.cleaned.value;
+    elements.benchmarkIntendedText.value = elements.prepared.value;
     elements.benchmarkCaptureStatus.textContent = "";
     elements.benchmarkCaptureDialog.showModal();
     elements.benchmarkIntendedText.focus();
@@ -890,9 +890,9 @@
       if (result?.status !== "saved" || typeof result.destination !== "string") {
         throw malformedResponseError("Benchmark example save", response.status);
       }
-      benchmarkCapturedForCurrentCleaned = true;
-      elements.cleaned.value = intendedText;
-      setStatus(intendedText === elements.original.value ? "unchanged" : "cleaned");
+      benchmarkCapturedForCurrentPrepared = true;
+      elements.prepared.value = intendedText;
+      setStatus(intendedText === elements.original.value ? "unchanged" : "prepared");
       closeBenchmarkCapture();
       renderCountsAndSelection();
       await publishNow();
@@ -1008,7 +1008,7 @@
     if (
       !currentEvaluation
       || currentEvaluation.sourceText !== elements.original.value
-      || currentEvaluation.providerOutput !== elements.cleaned.value
+      || currentEvaluation.providerOutput !== elements.prepared.value
     ) {
       invalidateEvaluationCapture();
       return;
@@ -1654,7 +1654,7 @@
         ? "Evaluation storage is configured and current."
         : "Evaluation storage is not configured and current.";
 
-      elements.cleaned.value = "";
+      elements.prepared.value = "";
       invalidateEvaluationCapture();
       originalOutgoingOverride = false;
       setStatus(elements.cleanupEnabled.checked ? "unchanged" : "disabled");

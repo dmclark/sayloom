@@ -10,7 +10,7 @@
 
 ### Confirmed constraints
 
-- Cleanup fails open to the current Original text. Original, Cleaned, and outgoing text remain
+- Cleanup fails open to the current Original text. Original, Prepared, and outgoing text remain
   ephemeral in the current product; only prompt versions and settings are durable.
 - Ordinary typing, paste, dictation, editing, cleanup, or outgoing selection is not consent to save
   text. Collection requires a separate action and a second confirmation.
@@ -121,7 +121,7 @@ route selection; adapters must not call other models or providers.
 
 Use one internal result for both success and failure attribution:
 
-- success: cleaned text, provider ID, model ID, elapsed milliseconds, input/output token counts when
+- success: Prepared text, provider ID, model ID, elapsed milliseconds, input/output token counts when
   supplied, and route index;
 - failure: provider ID, model ID, failure class, safe provider code, HTTP status, retry-after when
   safely parseable, elapsed milliseconds, and quota-group ID;
@@ -162,7 +162,7 @@ or persist a credential to derive the group. Store breaker state in memory only;
 ### Structured output and validation
 
 Use the same minimal schema at both providers: an object with exactly one required string,
-`cleaned_text`, and no additional properties. Gemini 3.7 Flash and GPT-5.6 Luna both document
+`prepared_text`, and no additional properties. Gemini 3.7 Flash and GPT-5.6 Luna both document
 structured outputs [G1, G2, O1, O2]. Schema validity does not establish semantic correctness: Google
 requires application validation, and OpenAI notes refusals, truncation/content filtering, and
 schema-valid mistakes [G2, O2]. Therefore keep the current shared checks and add UTF-8/string type,

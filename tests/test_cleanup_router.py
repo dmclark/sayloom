@@ -151,7 +151,7 @@ def run_service(provider: SequentialCleanupProvider):
         timeout_seconds=provider.total_budget_seconds,
     )
     return asyncio.run(
-        service.clean(CleanupRequest(raw_text="synthetic source"), "Synthetic instruction")
+        service.clean(CleanupRequest(original_text="synthetic source"), "Synthetic instruction")
     )
 
 
@@ -171,7 +171,7 @@ def test_primary_success_uses_one_route_and_preserves_usage() -> None:
 
     result = run_service(router(primary, fallback))
 
-    assert result.status is CleanupStatus.CLEANED
+    assert result.status is CleanupStatus.PREPARED
     assert result.provider == "provider-a"
     assert result.model == "primary"
     assert primary.calls == 1
@@ -292,7 +292,7 @@ def test_terminal_normalized_failures_never_advance(error: ProviderFailure) -> N
     result = run_service(router(primary, fallback))
 
     assert result.status is CleanupStatus.PROVIDER_ERROR
-    assert result.cleaned_text == "synthetic source"
+    assert result.prepared_text == "synthetic source"
     assert primary.calls == 1
     assert fallback.calls == 0
     assert len(result.attempts) == 1
@@ -311,7 +311,7 @@ def test_safety_refusal_is_terminal_and_does_not_open_a_breaker() -> None:
     recovered = run_service(provider)
 
     assert refused.error is not None and refused.error.code == "cleanup_output_rejected"
-    assert recovered.status is CleanupStatus.CLEANED
+    assert recovered.status is CleanupStatus.PREPARED
     assert primary.calls == 2
     assert fallback.calls == 0
 
@@ -331,7 +331,7 @@ def test_programming_exception_is_terminal_and_does_not_mutate_breakers() -> Non
     assert failed.error is not None and failed.error.code == "cleanup_provider_error"
     assert failed.attempts[0].failure_class is ProviderFailureClass.UNKNOWN
     assert "private bug detail" not in failed.model_dump_json()
-    assert recovered.status is CleanupStatus.CLEANED
+    assert recovered.status is CleanupStatus.PREPARED
     assert primary.calls == 2
     assert fallback.calls == 0
 
@@ -347,7 +347,7 @@ def test_shared_semantic_validation_advances_and_preserves_failed_attempt_usage(
 
     result = run_service(router(primary, fallback))
 
-    assert result.status is CleanupStatus.CLEANED
+    assert result.status is CleanupStatus.PREPARED
     assert result.model == "fallback"
     assert result.attempts[0].failure_class is ProviderFailureClass.INVALID_OUTPUT
     assert (result.attempts[0].input_tokens, result.attempts[0].output_tokens) == (17, 19)
@@ -849,8 +849,8 @@ def test_bulkhead_allows_two_active_calls_and_rejects_a_third_without_queue_or_c
         second = asyncio.create_task(provider.clean("source two", "instruction"))
         await two_started.wait()
 
-        rejected = await service.clean(CleanupRequest(raw_text="source three"), "instruction")
-        assert rejected.cleaned_text == "source three"
+        rejected = await service.clean(CleanupRequest(original_text="source three"), "instruction")
+        assert rejected.prepared_text == "source three"
         assert rejected.error is not None
         assert rejected.error.code == "cleanup_provider_temporarily_unavailable"
         assert rejected.attempts == []

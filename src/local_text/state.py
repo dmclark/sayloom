@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass, replace
 from enum import StrEnum
 from threading import Lock
 
-from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from local_text.cleanup import CorrectionMode
 
@@ -19,7 +19,7 @@ class PublishedStatus(StrEnum):
     UNCHANGED = "unchanged"
     WAITING = "waiting"
     CLEANING = "cleaning"
-    CLEANED = "cleaned"
+    PREPARED = "prepared"
     DISABLED = "disabled"
     TIMEOUT = "timeout"
     ERROR = "error"
@@ -27,36 +27,15 @@ class PublishedStatus(StrEnum):
 
 
 class OutgoingStateUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     cleanup_enabled: bool
-    original_text: str = Field(
-        max_length=100_000,
-        validation_alias=AliasChoices("original_text", "raw_text"),
-    )
-    prepared_text: str = Field(
-        max_length=100_000,
-        validation_alias=AliasChoices("prepared_text", "cleaned_text"),
-    )
+    original_text: str = Field(max_length=100_000)
+    prepared_text: str = Field(max_length=100_000)
     outgoing_text: str = Field(max_length=100_000)
     outgoing_kind: OutgoingKind
     status: PublishedStatus
     correction_mode: CorrectionMode = CorrectionMode.CONSERVATIVE
-
-    @field_validator("outgoing_kind", mode="before")
-    @classmethod
-    def accept_legacy_outgoing_kind(cls, value: object) -> object:
-        return {"raw": OutgoingKind.ORIGINAL, "cleaned": OutgoingKind.PREPARED}.get(
-            value, value
-        )
-
-    @property
-    def raw_text(self) -> str:
-        """Temporary domain compatibility for callers using the former name."""
-        return self.original_text
-
-    @property
-    def cleaned_text(self) -> str:
-        """Temporary domain compatibility for callers using the former name."""
-        return self.prepared_text
 
     @model_validator(mode="after")
     def selected_text_is_current(self) -> "OutgoingStateUpdate":
@@ -88,21 +67,8 @@ class OutgoingState:
     correction_mode: CorrectionMode = CorrectionMode.CONSERVATIVE
     revision: int = 0
 
-    @property
-    def raw_text(self) -> str:
-        """Temporary domain compatibility for callers using the former name."""
-        return self.original_text
-
-    @property
-    def cleaned_text(self) -> str:
-        """Temporary domain compatibility for callers using the former name."""
-        return self.prepared_text
-
     def public(self) -> dict[str, object]:
-        state = asdict(self)
-        state["raw_text"] = self.original_text
-        state["cleaned_text"] = self.prepared_text
-        return state
+        return asdict(self)
 
 
 class OutgoingStateStore:

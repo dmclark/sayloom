@@ -16,7 +16,7 @@ from enum import StrEnum
 from typing import Any, Literal, Protocol
 
 import httpx
-from pydantic import AliasChoices, BaseModel, Field, model_serializer
+from pydantic import BaseModel, ConfigDict, Field, model_serializer
 
 from local_text.prompts import effective_system_prompt
 
@@ -25,7 +25,7 @@ MODEL_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 SAFE_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 GEMINI_37_FLASH = "gemini-3.7-flash"
 OPENAI_GPT_56_LUNA = "gpt-5.6-luna"
-MAX_CLEANED_TEXT_CHARACTERS = 100_000
+MAX_PREPARED_TEXT_CHARACTERS = 100_000
 GEMINI_MAX_OUTPUT_TOKENS = 65_536
 OPENAI_MAX_OUTPUT_TOKENS = 128_000
 EVALUATION_TOTAL_BUDGET_SECONDS = 20.0
@@ -38,16 +38,16 @@ ROUTE_BREAKER_BASE_SECONDS = 15.0
 ROUTE_BREAKER_MAX_SECONDS = 300.0
 QUOTA_BREAKER_BASE_SECONDS = 60.0
 QUOTA_BREAKER_MAX_SECONDS = 900.0
-CLEANED_TEXT_SCHEMA = {
+PREPARED_TEXT_SCHEMA = {
     "type": "object",
     "properties": {
-        "cleaned_text": {
+        "prepared_text": {
             "type": "string",
-            "description": "The cleaned version of the supplied source text.",
-            "maxLength": MAX_CLEANED_TEXT_CHARACTERS,
+            "description": "The prepared version of the supplied Original text.",
+            "maxLength": MAX_PREPARED_TEXT_CHARACTERS,
         }
     },
-    "required": ["cleaned_text"],
+    "required": ["prepared_text"],
     "additionalProperties": False,
 }
 OPENAI_PERMANENT_QUOTA_CODES = {
@@ -59,7 +59,7 @@ OPENAI_PERMANENT_QUOTA_CODES = {
 
 
 class CleanupStatus(StrEnum):
-    CLEANED = "cleaned"
+    PREPARED = "prepared"
     UNCHANGED = "unchanged"
     EMPTY_INPUT = "empty_input"
     DISABLED = "disabled"
@@ -73,18 +73,12 @@ class CorrectionMode(StrEnum):
 
 
 class CleanupRequest(BaseModel):
-    original_text: str = Field(
-        max_length=100_000,
-        validation_alias=AliasChoices("original_text", "raw_text"),
-    )
+    model_config = ConfigDict(extra="forbid")
+
+    original_text: str = Field(max_length=100_000)
     enabled: bool = True
     prompt_version_id: int | None = Field(default=None, ge=1)
     correction_mode: CorrectionMode = CorrectionMode.CONSERVATIVE
-
-    @property
-    def raw_text(self) -> str:
-        """Temporary domain compatibility for callers using the former name."""
-        return self.original_text
 
 
 class SafeError(BaseModel):
@@ -147,9 +141,9 @@ class EvaluationCaptureContext(BaseModel):
 
 
 class CleanupResult(BaseModel):
-    prepared_text: str = Field(
-        validation_alias=AliasChoices("prepared_text", "cleaned_text")
-    )
+    model_config = ConfigDict(extra="forbid")
+
+    prepared_text: str
     status: CleanupStatus
     provider: str
     model: str
@@ -158,15 +152,9 @@ class CleanupResult(BaseModel):
     attempts: list[CleanupAttempt] = Field(default_factory=list)
     evaluation: EvaluationCaptureContext | None = None
 
-    @property
-    def cleaned_text(self) -> str:
-        """Temporary domain compatibility for callers using the former name."""
-        return self.prepared_text
-
     @model_serializer(mode="wrap")
-    def include_compatibility_contract(self, handler: Any) -> dict[str, Any]:
+    def omit_absent_evaluation(self, handler: Any) -> dict[str, Any]:
         serialized = handler(self)
-        serialized["cleaned_text"] = self.prepared_text
         if self.evaluation is None:
             serialized.pop("evaluation", None)
         return serialized
@@ -176,7 +164,7 @@ class CleanupProvider(Protocol):
     provider_id: str
     model: str
 
-    async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput: ...
+    async def clean(self, original_text: str, system_prompt: str) -> ProviderOutput: ...
 
 
 @dataclass(frozen=True)
@@ -366,7 +354,7 @@ class GeminiAdapter:
         if self.quota_group_id is not None and not SAFE_IDENTIFIER.fullmatch(self.quota_group_id):
             raise ValueError("provider quota group identifier is invalid")
 
-    async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
+    async def clean(self, original_text: str, system_prompt: str) -> ProviderOutput:
         started = time.monotonic()
         if not self.api_key:
             error = ProviderConfigurationError(
@@ -378,12 +366,12 @@ class GeminiAdapter:
         generation_config = {
             "thinkingConfig": _thinking_config(self.model),
             "maxOutputTokens": _output_token_cap(
-                raw_text,
+                original_text,
                 provider_max=GEMINI_MAX_OUTPUT_TOKENS,
                 thinking_headroom=2_048,
             ),
             "responseMimeType": "application/json",
-            "responseJsonSchema": CLEANED_TEXT_SCHEMA,
+            "responseJsonSchema": PREPARED_TEXT_SCHEMA,
         }
         if self.model != GEMINI_37_FLASH:
             generation_config["temperature"] = 0.2
@@ -392,7 +380,7 @@ class GeminiAdapter:
             "contents": [
                 {
                     "role": "user",
-                    "parts": [{"text": f"<SOURCE_TEXT>\n{raw_text}\n</SOURCE_TEXT>"}],
+                    "parts": [{"text": f"<SOURCE_TEXT>\n{original_text}\n</SOURCE_TEXT>"}],
                 }
             ],
             "generationConfig": generation_config,
@@ -431,14 +419,14 @@ class GeminiAdapter:
         input_tokens, output_tokens = _gemini_usage(response_payload)
         try:
             text = _extract_gemini_text(response_payload)
-            cleaned_text = _parse_cleaned_text(text)
+            prepared_text = _parse_prepared_text(text)
         except (ProviderMalformedResponseError, ProviderRejectedOutputError) as error:
             _attribute_failure(error, self, started)
             error.input_tokens = input_tokens
             error.output_tokens = output_tokens
             raise
         return ProviderOutput(
-            text=cleaned_text,
+            text=prepared_text,
             provider_id=self.provider_id,
             model_id=self.model,
             elapsed_ms=_elapsed_ms(started),
@@ -464,7 +452,7 @@ class OpenAIAdapter:
         if self.quota_group_id is not None and not SAFE_IDENTIFIER.fullmatch(self.quota_group_id):
             raise ValueError("provider quota group identifier is invalid")
 
-    async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
+    async def clean(self, original_text: str, system_prompt: str) -> ProviderOutput:
         started = time.monotonic()
         if not self.api_key:
             error = ProviderConfigurationError(
@@ -478,11 +466,11 @@ class OpenAIAdapter:
                 {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
-                    "content": f"<SOURCE_TEXT>\n{raw_text}\n</SOURCE_TEXT>",
+                    "content": f"<SOURCE_TEXT>\n{original_text}\n</SOURCE_TEXT>",
                 },
             ],
             "max_output_tokens": _output_token_cap(
-                raw_text,
+                original_text,
                 provider_max=OPENAI_MAX_OUTPUT_TOKENS,
             ),
             "reasoning": {"effort": "none"},
@@ -492,7 +480,7 @@ class OpenAIAdapter:
                     "type": "json_schema",
                     "name": "cleanup_result",
                     "strict": True,
-                    "schema": CLEANED_TEXT_SCHEMA,
+                    "schema": PREPARED_TEXT_SCHEMA,
                 }
             },
         }
@@ -533,14 +521,14 @@ class OpenAIAdapter:
         input_tokens, output_tokens = _openai_usage(response_payload)
         try:
             text = _extract_openai_text(response_payload)
-            cleaned_text = _parse_cleaned_text(text)
+            prepared_text = _parse_prepared_text(text)
         except (ProviderMalformedResponseError, ProviderRejectedOutputError) as error:
             _attribute_failure(error, self, started)
             error.input_tokens = input_tokens
             error.output_tokens = output_tokens
             raise
         return ProviderOutput(
-            text=cleaned_text,
+            text=prepared_text,
             provider_id=self.provider_id,
             model_id=self.model,
             elapsed_ms=_elapsed_ms(started),
@@ -631,7 +619,7 @@ class SequentialCleanupProvider:
 
     async def clean(
         self,
-        raw_text: str,
+        original_text: str,
         system_prompt: str,
         correction_mode: CorrectionMode = CorrectionMode.CONSERVATIVE,
     ) -> ProviderOutput:
@@ -641,13 +629,13 @@ class SequentialCleanupProvider:
             raise error
         self._active_cleanups += 1
         try:
-            return await self._clean_with_routes(raw_text, system_prompt, correction_mode)
+            return await self._clean_with_routes(original_text, system_prompt, correction_mode)
         finally:
             self._active_cleanups -= 1
 
     async def _clean_with_routes(
         self,
-        raw_text: str,
+        original_text: str,
         system_prompt: str,
         correction_mode: CorrectionMode,
     ) -> ProviderOutput:
@@ -674,7 +662,7 @@ class SequentialCleanupProvider:
             attempt_started = self._clock()
             try:
                 output = await self._timeout_runner(
-                    route.adapter.clean(raw_text, system_prompt), attempt_budget
+                    route.adapter.clean(original_text, system_prompt), attempt_budget
                 )
             except asyncio.CancelledError:
                 _release_probe(route_breaker, route_half_open)
@@ -701,8 +689,8 @@ class SequentialCleanupProvider:
                 raise failure from error
             else:
                 try:
-                    cleaned_text = self._output_validator(
-                        raw_text, output.text, correction_mode
+                    prepared_text = self._output_validator(
+                        original_text, output.text, correction_mode
                     )
                 except ProviderRejectedOutputError as error:
                     failure = error
@@ -713,7 +701,7 @@ class SequentialCleanupProvider:
                     _record_breaker_success(route_breaker, route_half_open)
                     _record_breaker_success(quota_breaker, quota_half_open)
                     return ProviderOutput(
-                        text=cleaned_text,
+                        text=prepared_text,
                         provider_id=route.provider_id,
                         model_id=route.model,
                         elapsed_ms=_clock_elapsed_ms(self._clock, attempt_started),
@@ -956,7 +944,7 @@ def _extract_openai_text(payload: Any) -> str:
     return text
 
 
-def _parse_cleaned_text(text: str) -> str:
+def _parse_prepared_text(text: str) -> str:
     try:
         payload = json.loads(text)
     except json.JSONDecodeError as error:
@@ -965,17 +953,17 @@ def _parse_cleaned_text(text: str) -> str:
         ) from error
     if (
         not isinstance(payload, dict)
-        or set(payload) != {"cleaned_text"}
-        or not isinstance(payload.get("cleaned_text"), str)
-        or not payload["cleaned_text"].strip()
-        or len(payload["cleaned_text"]) > MAX_CLEANED_TEXT_CHARACTERS
+        or set(payload) != {"prepared_text"}
+        or not isinstance(payload.get("prepared_text"), str)
+        or not payload["prepared_text"].strip()
+        or len(payload["prepared_text"]) > MAX_PREPARED_TEXT_CHARACTERS
     ):
         raise ProviderMalformedResponseError("provider returned malformed structured output")
-    return payload["cleaned_text"]
+    return payload["prepared_text"]
 
 
 def _output_token_cap(
-    raw_text: str,
+    original_text: str,
     *,
     provider_max: int,
     thinking_headroom: int = 0,
@@ -988,8 +976,8 @@ def _output_token_cap(
     token allowance at its call site. Truncation is intentionally handled as invalid output.
     """
     allowed_characters = min(
-        MAX_CLEANED_TEXT_CHARACTERS,
-        max(len(raw_text) * 4, len(raw_text) + 1_000),
+        MAX_PREPARED_TEXT_CHARACTERS,
+        max(len(original_text) * 4, len(original_text) + 1_000),
     )
     estimated_text_tokens = (allowed_characters + 1) // 2
     return min(provider_max, estimated_text_tokens + 256 + thinking_headroom)
@@ -1065,37 +1053,37 @@ def _validate_output(
     # Smart is contract-only in this gate. Until its correction behavior lands,
     # every selected mode retains the existing Conservative lexical boundary.
     _ = correction_mode
-    cleaned = prepared_text.strip()
-    if not cleaned:
+    prepared = prepared_text.strip()
+    if not prepared:
         raise ProviderRejectedOutputError("The cleanup result was empty")
-    if any(ord(character) < 32 and character not in "\n\r\t" for character in cleaned):
+    if any(ord(character) < 32 and character not in "\n\r\t" for character in prepared):
         raise ProviderRejectedOutputError("The cleanup result contained control characters")
-    if len(cleaned) > MAX_CLEANED_TEXT_CHARACTERS:
+    if len(prepared) > MAX_PREPARED_TEXT_CHARACTERS:
         raise ProviderRejectedOutputError("The cleanup result exceeded the character limit")
     maximum_length = max(len(original_text) * 4, len(original_text) + 1_000)
-    if len(cleaned) > maximum_length:
+    if len(prepared) > maximum_length:
         raise ProviderRejectedOutputError("The cleanup result expanded beyond the safety limit")
 
-    raw_words = _lexical_word_forms(original_text)
-    cleaned_words = _lexical_word_forms(cleaned)
+    original_words = _lexical_word_forms(original_text)
+    prepared_words = _lexical_word_forms(prepared)
     removable_prefix = 0
     while (
-        removable_prefix < len(raw_words)
-        and raw_words[removable_prefix] & REMOVABLE_LEADING_FILLERS
+        removable_prefix < len(original_words)
+        and original_words[removable_prefix] & REMOVABLE_LEADING_FILLERS
     ):
         removable_prefix += 1
     if not any(
-        len(raw_words) - start == len(cleaned_words)
+        len(original_words) - start == len(prepared_words)
         and all(
-            source_forms & cleaned_forms
-            for source_forms, cleaned_forms in zip(
-                raw_words[start:], cleaned_words, strict=True
+            source_forms & prepared_forms
+            for source_forms, prepared_forms in zip(
+                original_words[start:], prepared_words, strict=True
             )
         )
         for start in range(removable_prefix + 1)
     ):
         raise ProviderRejectedOutputError("The cleanup result was not source-preserving")
-    return cleaned
+    return prepared
 
 
 def _lexical_word_forms(text: str) -> tuple[frozenset[str], ...]:
@@ -1231,7 +1219,7 @@ class CleanupService:
             status = (
                 CleanupStatus.UNCHANGED
                 if prepared_text == original_text
-                else CleanupStatus.CLEANED
+                else CleanupStatus.PREPARED
             )
             result = self._result(
                 prepared_text,

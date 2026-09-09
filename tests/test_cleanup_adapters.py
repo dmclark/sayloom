@@ -7,12 +7,12 @@ import httpx
 import pytest
 
 from local_text.cleanup import (
-    CLEANED_TEXT_SCHEMA,
     GEMINI_37_FLASH,
     GEMINI_MAX_OUTPUT_TOKENS,
-    MAX_CLEANED_TEXT_CHARACTERS,
+    MAX_PREPARED_TEXT_CHARACTERS,
     OPENAI_GPT_56_LUNA,
     OPENAI_MAX_OUTPUT_TOKENS,
+    PREPARED_TEXT_SCHEMA,
     GeminiAdapter,
     OpenAIAdapter,
     ProviderConfigurationError,
@@ -23,12 +23,12 @@ from local_text.cleanup import (
     ProviderTimeoutError,
     ProviderTransportError,
     _output_token_cap,
-    _parse_cleaned_text,
+    _parse_prepared_text,
 )
 
 
 def gemini_response(
-    cleaned_text: str = "Synthetic clean text.",
+    prepared_text: str = "Synthetic prepared text.",
     *,
     usage: bool = True,
 ) -> dict[str, Any]:
@@ -36,7 +36,7 @@ def gemini_response(
         "candidates": [
             {
                 "content": {
-                    "parts": [{"text": json.dumps({"cleaned_text": cleaned_text})}]
+                    "parts": [{"text": json.dumps({"prepared_text": prepared_text})}]
                 }
             }
         ]
@@ -47,7 +47,7 @@ def gemini_response(
 
 
 def openai_response(
-    cleaned_text: str = "Synthetic clean text.",
+    prepared_text: str = "Synthetic prepared text.",
     *,
     usage: bool = True,
 ) -> dict[str, Any]:
@@ -59,7 +59,7 @@ def openai_response(
                 "content": [
                     {
                         "type": "output_text",
-                        "text": json.dumps({"cleaned_text": cleaned_text}),
+                        "text": json.dumps({"prepared_text": prepared_text}),
                     }
                 ],
             }
@@ -81,7 +81,7 @@ def test_gemini_37_request_shape_and_usage_are_provider_correct() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
             adapter = GeminiAdapter("synthetic-key", GEMINI_37_FLASH, client)
             output = await adapter.clean("synthetic source", "Synthetic system instruction")
-        assert output.text == "Synthetic clean text."
+        assert output.text == "Synthetic prepared text."
         assert output.provider_id == "gemini"
         assert output.model_id == GEMINI_37_FLASH
         assert output.elapsed_ms >= 0
@@ -111,7 +111,7 @@ def test_gemini_37_request_shape_and_usage_are_provider_correct() -> None:
         "thinkingConfig": {"thinkingLevel": "low"},
         "maxOutputTokens": 2_812,
         "responseMimeType": "application/json",
-        "responseJsonSchema": CLEANED_TEXT_SCHEMA,
+        "responseJsonSchema": PREPARED_TEXT_SCHEMA,
     }
     assert body["generationConfig"]["maxOutputTokens"] < 4_096
     assert "temperature" not in body["generationConfig"]
@@ -129,7 +129,7 @@ def test_openai_luna_request_shape_and_usage_are_provider_correct() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
             adapter = OpenAIAdapter("synthetic-key", client)
             output = await adapter.clean("synthetic source", "Synthetic system instruction")
-        assert output.text == "Synthetic clean text."
+        assert output.text == "Synthetic prepared text."
         assert output.provider_id == "openai"
         assert output.model_id == OPENAI_GPT_56_LUNA
         assert output.elapsed_ms >= 0
@@ -159,7 +159,7 @@ def test_openai_luna_request_shape_and_usage_are_provider_correct() -> None:
                 "type": "json_schema",
                 "name": "cleanup_result",
                 "strict": True,
-                "schema": CLEANED_TEXT_SCHEMA,
+                "schema": PREPARED_TEXT_SCHEMA,
             }
         },
     }
@@ -189,12 +189,12 @@ def test_output_token_cap_is_source_sensitive_and_provider_bounded() -> None:
 
 
 def test_structured_output_character_ceiling_is_in_schema_and_runtime_parser() -> None:
-    assert CLEANED_TEXT_SCHEMA["properties"]["cleaned_text"]["maxLength"] == 100_000
-    boundary_text = "x" * MAX_CLEANED_TEXT_CHARACTERS
+    assert PREPARED_TEXT_SCHEMA["properties"]["prepared_text"]["maxLength"] == 100_000
+    boundary_text = "x" * MAX_PREPARED_TEXT_CHARACTERS
 
-    assert _parse_cleaned_text(json.dumps({"cleaned_text": boundary_text})) == boundary_text
+    assert _parse_prepared_text(json.dumps({"prepared_text": boundary_text})) == boundary_text
     with pytest.raises(ProviderMalformedResponseError):
-        _parse_cleaned_text(json.dumps({"cleaned_text": boundary_text + "x"}))
+        _parse_prepared_text(json.dumps({"prepared_text": boundary_text + "x"}))
 
 
 AdapterFactory = Callable[[str, httpx.AsyncClient], GeminiAdapter | OpenAIAdapter]
@@ -340,9 +340,9 @@ def test_malformed_or_empty_structured_output_is_rejected(
     factory, response_factory = adapter_case
     structured: Any = {
         "missing_field": {},
-        "extra_field": {"cleaned_text": "clean", "extra": "no"},
-        "wrong_type": {"cleaned_text": 3},
-        "empty": {"cleaned_text": "   "},
+        "extra_field": {"prepared_text": "prepared", "extra": "no"},
+        "wrong_type": {"prepared_text": 3},
+        "empty": {"prepared_text": "   "},
     }.get(payload_kind)
 
     def respond(request: httpx.Request) -> httpx.Response:

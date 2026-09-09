@@ -30,7 +30,7 @@ implementation:
   workspace.
 - A prompt selected in the workspace remains selected for subsequent cleanup
   and drafts until a full page reload restores the configured default.
-- Resizing the Original/Cleaned split and collapsing Original are required
+- Resizing the Original/Prepared split and collapsing Original are required
   workspace behaviors, not incidental details of the current page.
 - Recording review is valuable predecessor evidence, but it is not required to
   complete the current text-cleanup workflow.
@@ -56,9 +56,9 @@ day, often with another application already waiting for the result.
 
 The jobs, in priority order, are:
 
-1. **Prepare text:** type, paste, or dictate raw text and obtain a cleaned
+1. **Prepare text:** type, paste, or dictate Original text and obtain a Prepared
    candidate.
-2. **Verify the outgoing value:** compare Original and Cleaned, understand any
+2. **Verify the outgoing value:** compare Original and Prepared, understand any
    failure, and know exactly which one an external command will use.
 3. **Deliver it:** invoke the fixed hotkey for the intended target without
    submitting the text automatically.
@@ -83,11 +83,11 @@ questions without opening a manager:
 - Which prompt and vocabulary affected that result?
 - Is the result current, still processing, or unavailable?
 - If an operation failed, what failed, why, and what can I safely do next?
-- Will the next target hotkey use Original or Cleaned?
+- Will the next target hotkey use Original or Prepared?
 - Is the outgoing state available to the delivery integration?
 
 Sayloom-specific proof is the complete, legible chain from imperfect source to
-outgoing value, including raw fail-open behavior. A generic two-pane editor is
+outgoing value, including Original fail-open behavior. A generic two-pane editor is
 not enough; the current transformation context and outgoing selection must be
 part of the visible state.
 
@@ -117,13 +117,13 @@ Original                  Profiles                      Definitions
   ↓                       Terms + aliases               Install status
 Session prompt + vocabulary                             Permissions
   ↓
-Cleaned
+Prepared
   ↓
 Outgoing selection ───────────────────────────────▶ fixed target hotkeys
 ```
 
-Original, Cleaned, and Outgoing remain the visual spine. Prompt and vocabulary
-are shown at the point where they affect Cleaned, while their detailed editing
+Original, Prepared, and Outgoing remain the visual spine. Prompt and vocabulary
+are shown at the point where they affect Prepared, while their detailed editing
 stays out of the daily canvas. Version one provides detailed editing for
 Vocabulary, but not for prompt versions. Targets consume Outgoing but do not
 change how it is prepared.
@@ -143,13 +143,13 @@ caption history or a new content-retention model.
 
 | Object | Meaning | Editable? | Persistence | Relationship |
 | --- | --- | --- | --- | --- |
-| Original | Current raw source and dictation target | Yes | Ephemeral | Input to cleanup and fail-open outgoing value |
+| Original | Current source and dictation target | Yes | Ephemeral | Input to cleanup and fail-open outgoing value |
 | Prompt version | One exact immutable version in the current global cleanup-instruction history | New versions only | Version and configured default are durable; workspace override is session-only | One configured default plus an optional page-session selection |
 | Vocabulary | Canonical terms plus recognition aliases | Yes | Durable | Zero or more active profiles, independent of prompt |
-| Cleaned | Source-preserving copy edit generated from the current Original and prompt | No | Ephemeral | Valid only for the transformation context that produced it; invalid provider output fails open to Original |
-| Outgoing | The exact value exposed to delivery integrations | Selection only | Ephemeral | Uses a current Cleaned result or Original |
+| Prepared | Source-preserving copy edit generated from the current Original and prompt | No | Ephemeral | Valid only for the transformation context that produced it; invalid provider output fails open to Original |
+| Outgoing | The exact value exposed to delivery integrations | Selection only | Ephemeral | Uses a current Prepared result or Original |
 | Target | A local destination command and its installation state | Yes | Durable local configuration | Reads Outgoing; never owns prompt or vocabulary selection |
-| Recording review item | Audio plus review-specific transcript state | Later | Private operating data outside Git | Separate from live Original, Cleaned, and Outgoing |
+| Recording review item | Audio plus review-specific transcript state | Later | Private operating data outside Git | Separate from live Original, Prepared, and Outgoing |
 
 This model deliberately rejects an editable third “final text” field for the
 current phase. Manual correction happens in Original followed by cleanup, or
@@ -170,8 +170,8 @@ not have.
 
 In scope for the shaped surface:
 
-- Preserve the existing Original → Cleaned workflow, automatic cleanup,
-  manual rerun, collapse, resize, clear, and raw fail-open behavior. Collapse
+- Preserve the existing Original → Prepared workflow, automatic cleanup,
+  manual rerun, collapse, resize, clear, and Original fail-open behavior. Collapse
   and resize are explicit product requirements.
 - Make outgoing source selection explicit and unambiguous.
 - Make every API failure visible and provide inspectable, privacy-safe details.
@@ -179,7 +179,7 @@ In scope for the shaped surface:
 - Add the proposed independently active vocabulary profiles and their
   management surface; no vocabulary implementation exists yet.
 - Generate reviewable vocabulary suggestions from meaningful Original →
-  Cleaned differences without automatically changing a profile.
+  Prepared differences without automatically changing a profile.
 - Replace the placeholder utility item with local target management while
   preserving one hotkey per target.
 
@@ -194,7 +194,7 @@ In scope for the shaped surface:
 - Per-target prompt or vocabulary settings.
 - A target chooser, default target, last-used target, or send button in the web
   workspace.
-- Persisted text sessions, transcripts, cleaned output, recordings, send
+- Persisted text sessions, transcripts, Prepared output, recordings, send
   history, or queue state.
 - Hosted-service destination management. The hosted form should expose its
   outgoing integration contract, while users own delivery and hotkeys.
@@ -245,22 +245,22 @@ not discard unsaved authored configuration without confirmation.
 
 ### Workspace: text cleanup
 
-- Keep Original above Cleaned. This follows the task sequence and works better
+- Keep Original above Prepared. This follows the task sequence and works better
   for long dictation than a narrow side-by-side comparison.
-- Preserve pointer and keyboard resizing between Original and Cleaned where the
+- Preserve pointer and keyboard resizing between Original and Prepared where the
   viewport can support a meaningful split.
 - **Hide input** collapses Original into an output-focused state without
   clearing it. **Show input** restores the prior text and returns to the
   editable source. Neither action changes the selected prompt, vocabulary,
-  Cleaned result, or Outgoing value.
+  Prepared result, or Outgoing value.
 - Treat this collapsed state as the CART-style open-caption interaction, not a
-  conversation view or a deferred dedicated mode. The current cleaned or
+  conversation view or a deferred dedicated mode. The current Prepared or
   fail-open text uses the available output canvas, while **Show input** remains
   an obvious keyboard-operable exit.
-- Keep Original editable and Cleaned selectable but read-only. The user can
+- Keep Original editable and Prepared selectable but read-only. The user can
   copy either, but only Original is an authoring surface.
 - Place the active prompt selector and active vocabulary summary together in
-  the Cleaned header because both are inputs to that result. Prompt is a
+  the Prepared header because both are inputs to that result. Prompt is a
   single-select exact version; Vocabulary opens a zero-to-many profile chooser.
 - Keep a durable configured prompt default separate from the prompt selected for
   the current page session. Choosing another version in the workspace persists
@@ -268,25 +268,25 @@ not discard unsaved authored configuration without confirmation.
   navigation. Only a full page reload clears the session selection and restores
   the configured default.
 - Prompt selection and vocabulary activation are independent and are not target
-  scoped. Changing either invalidates the prior Cleaned result and reruns
+  scoped. Changing either invalidates the prior Prepared result and reruns
   cleanup when automatic cleanup is enabled.
 - Preserve keyboard focus and selection in Original while cleanup and
   publication update in the background.
-- Show the active transformation context with the result. A Cleaned value is
+- Show the active transformation context with the result. A Prepared value is
   “current” only when it matches the present Original, prompt version, and
   active vocabulary set.
 
 #### Outgoing selection
 
-- Add an explicit **Outgoing: Cleaned / Original** control to the outgoing
+- Add an explicit **Outgoing: Prepared / Original** control to the outgoing
   strip. It selects between the two existing values; it is not a third editor.
-- After a current successful cleanup, Cleaned is the default. During waiting,
-  cleanup, disabled, timeout, provider error, or a stale result, Cleaned is
+- After a current successful cleanup, Prepared is the default. During waiting,
+  cleanup, disabled, timeout, provider error, or a stale result, Prepared is
   unavailable and Outgoing falls back immediately to Original.
 - If the user explicitly chooses Original for the current draft, do not switch
   it back after a later rerun. Clear or reload resets this ephemeral override.
-- If Cleaned was selected and Original changes, temporarily use Original while
-  the replacement result is pending, then return to Cleaned on success.
+- If Prepared was selected and Original changes, temporarily use Original while
+  the replacement result is pending, then return to Prepared on success.
 - Label the fallback reason next to the selection; do not rely on color or a
   distant status pill.
 - Sending through an external hotkey does not clear or archive the draft. The
@@ -296,7 +296,7 @@ not discard unsaved authored configuration without confirmation.
 
 Generic status alone is insufficient. Every failed API operation must expose
 both an immediate summary and a way to inspect useful details without blocking
-Original, raw fail-open, or sending.
+Original, Original fail-open, or sending.
 
 - Show the summary at the control or status region that owns the operation:
   cleanup errors with cleanup status, publication errors with Outgoing,
@@ -316,7 +316,7 @@ Original, raw fail-open, or sending.
 - Network failure, timeout, malformed response, and server rejection need
   distinct summaries even when they share the same retry action.
 - Never display or copy API keys, authorization or request headers, Original or
-  Cleaned text, full provider responses, stack traces, database contents,
+  Prepared text, full provider responses, stack traces, database contents,
   private paths, or other operating data. If the backend cannot provide safe
   detail, show the status/code and say that no additional safe detail is
   available rather than inventing a cause.
@@ -375,7 +375,7 @@ current unvalidated management dialog. When prompt management is prioritized:
   prompt instruction. The UI should explain that profiles help disambiguate
   recognition; they do not replace the cleanup prompt.
 
-#### Vocabulary suggestions from Original → Cleaned
+#### Vocabulary suggestions from Original → Prepared
 
 Use successful cleanup differences as a fast way to author vocabulary, not as
 ground truth. Current cleanup may normalize capitalization, punctuation,
@@ -390,18 +390,18 @@ difference or write a profile without review.
 - Show a quiet **Vocabulary suggestions** affordance only when candidates
   exist. It must not interrupt dictation, cleanup, outgoing selection, or send
   hotkeys.
-- Present each candidate as **Heard/Original** → **Canonical/Cleaned**, with a
+- Present each candidate as **Heard/Original** → **Canonical/Prepared**, with a
   destination profile. The user can edit either side, choose a profile, accept,
   or dismiss.
 - Acceptance creates ordinary authored vocabulary using the reviewed canonical
   term and alias. Dedupe against existing canonical terms and aliases before
   saving, and explain whether the candidate will add an alias or create a term.
-- Suggestions and the source/cleaned fragments that produced them are
+- Suggestions and the Original/Prepared fragments that produced them are
   page-session state. Persist only the accepted vocabulary entry; never persist
-  the full Original, Cleaned result, surrounding passage, rejected candidate,
+  the full Original, Prepared result, surrounding passage, rejected candidate,
   or dismissal history.
 - Do not generate suggestions from unchanged, pending, stale, disabled,
-  timeout, provider-error, or raw fail-open results.
+  timeout, provider-error, or Original fail-open results.
 
 The UX contract does not require one extraction technique. A focused
 implementation gate should compare deterministic phrase diffing with narrowly
@@ -485,7 +485,7 @@ When separately shaped and implemented:
 - Treat a recording as its own review item, not as another way to populate the
   ephemeral Original field.
 - Use recording-specific labels such as Imported transcript and Expected
-  transcript rather than Original and Cleaned.
+  transcript rather than Original and Prepared.
 - It may reuse prompt inventory and vocabulary controls for request-scoped
   assistance, but it must not silently change the live workspace defaults.
 - Keep playback, re-recording, review status, and neutral snapshot export in
@@ -568,7 +568,7 @@ schema state rather than running migrations.
 
 ## 7. Constraints and decisions a builder must not invent
 
-- All operating text, cleaned output, recordings, databases, logs, credentials,
+- All operating text, Prepared output, recordings, databases, logs, credentials,
   and generated private artifacts remain outside Git.
 - The display brand is Sayloom; package and service identifiers remain neutral
   `local_text` identifiers.
@@ -582,7 +582,7 @@ schema state rather than running migrations.
   at the affected workflow. Error reporting never exposes credentials,
   operating text, provider payloads, stack traces, database contents, or
   private paths.
-- The Original/Cleaned workspace remains resizable and Original remains
+- The Original/Prepared workspace remains resizable and Original remains
   collapsible without content loss. That collapsed state is the version-one
   CART-style open-caption interaction and does not persist text or caption
   history.
@@ -591,7 +591,7 @@ schema state rather than running migrations.
   in-app navigation; only a full page reload restores the default.
 - Vocabulary activation is a durable workspace default in this phase. Neither
   prompt nor vocabulary selection is target scoped.
-- Vocabulary suggestions derived from Original/Cleaned differences are
+- Vocabulary suggestions derived from Original/Prepared differences are
   ephemeral and advisory. Only an explicitly reviewed acceptance may create
   durable vocabulary; no source passage or rejected suggestion is persisted.
 - Target hotkeys choose the destination; the web workspace chooses only the
@@ -608,7 +608,7 @@ schema state rather than running migrations.
 
 Remaining validation before implementation:
 
-1. Confirm the explicit Original/Cleaned outgoing selector and its per-draft
+1. Confirm the explicit Original/Prepared outgoing selector and its per-draft
    override behavior with the current daily workflow.
 2. Confirm vocabulary profile scale and editing constraints when its data
    contract is finalized.

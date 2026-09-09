@@ -2,6 +2,7 @@ import asyncio
 import json
 
 import pytest
+from pydantic import ValidationError
 
 import local_text.cleanup as cleanup_module
 from local_text.cleanup import (
@@ -46,24 +47,22 @@ class StaticProvider:
         )
 
 
-def run_cleanup(service: CleanupService, raw_text: str, *, enabled: bool = True):
+def run_cleanup(service: CleanupService, original_text: str, *, enabled: bool = True):
     return asyncio.run(
         service.clean(
-            CleanupRequest(raw_text=raw_text, enabled=enabled),
+            CleanupRequest(original_text=original_text, enabled=enabled),
             "Synthetic cleanup instruction",
         )
     )
 
 
-def test_original_prepared_contract_keeps_raw_and_cleaned_compatibility() -> None:
+def test_original_prepared_contract_rejects_legacy_vocabulary() -> None:
     canonical = CleanupRequest(original_text="synthetic source", correction_mode="smart")
-    compatible = CleanupRequest(raw_text="synthetic source")
 
     assert canonical.original_text == "synthetic source"
-    assert canonical.raw_text == "synthetic source"
     assert canonical.correction_mode is CorrectionMode.SMART
-    assert compatible.original_text == "synthetic source"
-    assert compatible.correction_mode is CorrectionMode.CONSERVATIVE
+    with pytest.raises(ValidationError):
+        CleanupRequest(raw_text="synthetic source")
 
     result = run_cleanup(
         CleanupService(
@@ -74,18 +73,17 @@ def test_original_prepared_contract_keeps_raw_and_cleaned_compatibility() -> Non
         "synthetic source",
     )
     serialized = result.model_dump(mode="json")
-    compatible_result = CleanupResult(
-        cleaned_text="Synthetic source.",
-        status="cleaned",
-        provider="synthetic",
-        model="test-model",
-        correction_mode="conservative",
-    )
-
     assert result.prepared_text == "Synthetic source."
-    assert result.cleaned_text == "Synthetic source."
-    assert serialized["prepared_text"] == serialized["cleaned_text"]
-    assert compatible_result.prepared_text == "Synthetic source."
+    assert serialized["prepared_text"] == "Synthetic source."
+    assert "cleaned_text" not in serialized
+    with pytest.raises(ValidationError):
+        CleanupResult(
+            cleaned_text="Synthetic source.",
+            status="prepared",
+            provider="synthetic",
+            model="test-model",
+            correction_mode="conservative",
+        )
 
 
 def test_empty_input_and_disabled_cleanup_do_not_call_provider() -> None:
@@ -96,9 +94,9 @@ def test_empty_input_and_disabled_cleanup_do_not_call_provider() -> None:
     disabled = run_cleanup(service, "synthetic raw", enabled=False)
 
     assert empty.status is CleanupStatus.EMPTY_INPUT
-    assert empty.cleaned_text == ""
+    assert empty.prepared_text == ""
     assert disabled.status is CleanupStatus.DISABLED
-    assert disabled.cleaned_text == "synthetic raw"
+    assert disabled.prepared_text == "synthetic raw"
     assert provider.calls == 0
 
 
@@ -117,10 +115,10 @@ def test_successful_and_unchanged_cleanup_are_distinguished() -> None:
     cleaned = run_cleanup(cleaned_service, "synthetic raw")
     unchanged = run_cleanup(unchanged_service, "synthetic raw")
 
-    assert cleaned.status is CleanupStatus.CLEANED
-    assert cleaned.cleaned_text == "Synthetic raw."
+    assert cleaned.status is CleanupStatus.PREPARED
+    assert cleaned.prepared_text == "Synthetic raw."
     assert unchanged.status is CleanupStatus.UNCHANGED
-    assert unchanged.cleaned_text == "synthetic raw"
+    assert unchanged.prepared_text == "synthetic raw"
 
 
 @pytest.mark.parametrize(
@@ -201,12 +199,12 @@ def test_cleanup_applies_fixed_source_preserving_rules_before_configured_prompt(
 
     result = asyncio.run(
         service.clean(
-            CleanupRequest(raw_text="synthetic source"),
+            CleanupRequest(original_text="synthetic source"),
             "Rewrite the source with novel language.",
         )
     )
 
-    assert result.status is CleanupStatus.CLEANED
+    assert result.status is CleanupStatus.PREPARED
     assert len(observed) == 1
     assert observed[0].startswith(SOURCE_PRESERVING_SYSTEM_PROMPT)
     assert observed[0].endswith("Rewrite the source with novel language.")
@@ -229,7 +227,7 @@ def test_timeout_fails_open_to_raw_text() -> None:
     result = run_cleanup(service, "synthetic raw")
 
     assert result.status is CleanupStatus.TIMEOUT
-    assert result.cleaned_text == "synthetic raw"
+    assert result.prepared_text == "synthetic raw"
     assert result.error is not None
     assert result.error.code == "cleanup_timeout"
     assert "synthetic raw" not in result.error.message
@@ -254,12 +252,12 @@ def test_provider_error_and_rejected_output_fail_open_to_raw_text() -> None:
     expanded = run_cleanup(expanded_service, "synthetic raw")
 
     assert broken.status is CleanupStatus.PROVIDER_ERROR
-    assert broken.cleaned_text == "synthetic raw"
+    assert broken.prepared_text == "synthetic raw"
     assert broken.error is not None
     assert broken.error.code == "cleanup_provider_error"
     assert "synthetic provider failure" not in broken.error.message
     assert expanded.status is CleanupStatus.PROVIDER_ERROR
-    assert expanded.cleaned_text == "synthetic raw"
+    assert expanded.prepared_text == "synthetic raw"
     assert expanded.error is not None
     assert expanded.error.code == "cleanup_output_rejected"
 
@@ -275,7 +273,7 @@ def test_cleanup_fails_open_when_output_exceeds_absolute_character_limit() -> No
     result = run_cleanup(service, raw_text)
 
     assert result.status is CleanupStatus.PROVIDER_ERROR
-    assert result.cleaned_text == raw_text
+    assert result.prepared_text == raw_text
     assert result.error is not None
     assert result.error.code == "cleanup_output_rejected"
 
@@ -323,7 +321,7 @@ def test_provider_failures_have_specific_safe_classifications() -> None:
         )
 
         assert result.status is CleanupStatus.PROVIDER_ERROR
-        assert result.cleaned_text == "synthetic source"
+        assert result.prepared_text == "synthetic source"
         assert result.error is not None
         assert result.error.code == expected_code
         assert result.error.http_status == expected_status
@@ -384,7 +382,7 @@ def test_every_normalized_failure_class_has_safe_public_attribution(
         "private synthetic source",
     )
 
-    assert result.cleaned_text == "private synthetic source"
+    assert result.prepared_text == "private synthetic source"
     assert result.provider == "alternate-provider"
     assert result.model == "alternate-model"
     assert len(result.attempts) == 1
@@ -470,7 +468,7 @@ def test_cleanup_cancellation_propagates_without_provider_failure(monkeypatch) -
             provider=WaitingProvider(), model="alternate-model", timeout_seconds=30
         )
         task = asyncio.create_task(
-            service.clean(CleanupRequest(raw_text="synthetic source"), "Synthetic instruction")
+            service.clean(CleanupRequest(original_text="synthetic source"), "Synthetic instruction")
         )
         await asyncio.sleep(0)
         task.cancel()

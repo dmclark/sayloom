@@ -79,7 +79,7 @@ contract.
 ### Confirmed shipped outcomes
 
 - Isolated local development runtime and explicit administration.
-- Editable Original, read-only Cleaned, fail-open publication, explicit outgoing
+- Editable Original, read-only Prepared, fail-open publication, explicit outgoing
   selection, and CART-style input collapse/resizing.
 - Immutable prompt versions and page-session prompt selection.
 - Privacy-safe, inspectable cleanup and outgoing failures.
@@ -319,14 +319,14 @@ The following items are **Confirmed — parked**, not active commitments:
 - expanded prompt lifecycle and multiple named prompt families;
 - direct Voiceitt synchronization and audio-assisted research;
 - hosted cleanup and hosted destination management; and
-- non-urgent UI density, Cleaned-tray, and usability refinements.
+- non-urgent UI density, Prepared-tray, and usability refinements.
 
 Rejected and superseded work remains in linked history rather than this parking
 lot.
 
 ## Rejected and superseded history
 
-- **Superseded:** Original-to-Cleaned differences as transcript replacement
+- **Superseded:** Original-to-Prepared differences as transcript replacement
   truth; they may be advisory evidence only.
 - **Superseded:** Broad automatic grammar, tone, or wording rewriting as current
   behavior; source-preserving cleanup is authoritative.
@@ -380,7 +380,7 @@ through the supported Raycast commands to Amp, iTerm, Supacode, and VS Code.
 Verify:
 - each destination receives exactly the selected outgoing text;
 - neither fixed nor managed commands press Return;
-- Original versus Cleaned selection is respected;
+- Original versus Prepared selection is respected;
 - unavailable application and permission states are reported conservatively;
 - clipboard restoration and focus behavior match the current contract;
 - command installation/regeneration does not create collisions or alter

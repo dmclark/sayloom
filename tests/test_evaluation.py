@@ -324,7 +324,7 @@ def test_api_issues_proof_and_evaluation_operations_never_call_provider(tmp_path
         provider_id = "synthetic-provider"
         model = "synthetic-model"
 
-        async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
+        async def clean(self, original_text: str, system_prompt: str) -> ProviderOutput:
             nonlocal provider_calls
             provider_calls += 1
             return ProviderOutput(
@@ -342,7 +342,7 @@ def test_api_issues_proof_and_evaluation_operations_never_call_provider(tmp_path
     service = CleanupService(provider=Provider(), model="synthetic-model", timeout_seconds=1)
     client = TestClient(create_app(settings, service))
     cleanup = client.post(
-        "/api/cleanup", json={"raw_text": "Synthetic API source.", "enabled": True}
+        "/api/cleanup", json={"original_text": "Synthetic API source.", "enabled": True}
     ).json()
     context = cleanup["evaluation"]
     assert context["capture_proof"]
@@ -358,8 +358,8 @@ def test_api_issues_proof_and_evaluation_operations_never_call_provider(tmp_path
         "consent": {"version": CONSENT_VERSION, "scope": PURPOSE, "confirmed": True},
         "source_category": "typed",
         "source_text": "Synthetic API source.",
-        "provider_output": cleanup["cleaned_text"],
-        "expected_cleanup": cleanup["cleaned_text"],
+        "provider_output": cleanup["prepared_text"],
+        "expected_cleanup": cleanup["prepared_text"],
         "cleanup": {
             "completed_at": context["completed_at"],
             "provider": cleanup["provider"],

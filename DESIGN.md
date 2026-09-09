@@ -121,7 +121,7 @@ their familiar behavior.
 - Vertically ordered, spacious task canvases with compact operational metadata.
 - State is always written in words; color supports meaning but never carries it.
 - Failures remain inspectable as quiet, ruled records beside the workflow that
-  owns them, without interrupting raw fail-open.
+  owns them, without interrupting Original fail-open.
 
 ## Colors
 
@@ -163,7 +163,7 @@ Avenir Next keeps labels and controls crisp and familiar.
 - **Display:** product name only; never use display scale inside setup surfaces.
 - **Headline:** panel and setup-area titles, kept concise.
 - **Body:** interface explanation, field content, and ordinary metadata prose.
-- **Editor:** Original and Cleaned text, with generous leading for comparison.
+- **Editor:** Original and Prepared text, with generous leading for comparison.
 - **Label:** uppercase, tracked micro-labels, section numbers, and compact status
   captions. Sentence-case text remains the default for buttons and navigation.
 
@@ -181,20 +181,20 @@ contracts to 12px. Major surfaces align to the same left and right frame.
 
 The persistent utility rail is 108px wide with a 14px gap to the active
 surface. Its order is Workspace, Cleanup, Targets. Workspace keeps Original
-above Cleaned at every width. The default split is 65/35, adjustable between
-45/55 and 80/20, with an 18px separator. Collapsing Original gives Cleaned the
+above Prepared at every width. The default split is 65/35, adjustable between
+45/55 and 80/20, with an 18px separator. Collapsing Original gives Prepared the
 available height without changing text or context.
 
-The Cleaned heading keeps prompt and vocabulary controls together because both
+The Prepared heading keeps prompt and vocabulary controls together because both
 describe the result. The outgoing strip follows the panels and spans their
 combined visual width. Its source selector, fallback reason, cleanup state, and
 publication state form one scan line but remain separate facts.
 
 API failures expand in place at the workflow that owns them. Cleanup details
-belong inside the Cleaned sheet; publication details belong with Outgoing;
+belong inside the Prepared sheet; publication details belong with Outgoing;
 vocabulary and target failures stay with their selected profile, suggestion, or
 target. One open disclosure may increase its owning sheet's height, but it must
-not cover Original, obscure the outgoing source, or push raw fail-open out of
+not cover Original, obscure the outgoing source, or push Original fail-open out of
 the visible task flow. Multiple failures remain separate ruled records rather
 than merging into one global banner. On narrow screens, detail labels and values
 stack into one column and actions wrap below them.
@@ -210,7 +210,7 @@ Spacing follows a 4px base with recurring 8px control gaps, 12–20px compact
 groups, 24–32px sheet padding, and 64px frame-scale separation. More space
 belongs inside the text canvases than around setup controls.
 
-**The Linear Proof Rule.** Original → transformation context → Cleaned →
+**The Linear Proof Rule.** Original → transformation context → Prepared →
 Outgoing must read in that order without crossing the page or opening a manager.
 
 ## Elevation & Depth
@@ -259,9 +259,9 @@ same items become a horizontal strip in the same order.
 
 ### Text panels
 
-Original is Bright Paper; Cleaned uses the pale blue output family. Each has a
+Original is Bright Paper; Prepared uses the pale blue output family. Each has a
 ruled heading, an unboxed text canvas, and a compact footer. Original remains
-the sole authoring surface. Cleaned is selectable and read-only. The horizontal
+the sole authoring surface. Prepared is selectable and read-only. The horizontal
 resizer uses rules around a short double-blue grip and exposes separator
 semantics for keyboard use.
 
@@ -298,13 +298,13 @@ behaviorally distinct.
 ### Outgoing selector and state
 
 The outgoing strip is the signature operational component. It begins with
-“Outgoing,” then a two-option Cleaned/Original segmented control. The selected
+“Outgoing,” then a two-option Prepared/Original segmented control. The selected
 half is Thread Blue with bright text; the unselected half remains Bright Paper.
 Adjacent copy names the current source or fallback reason. Cleanup status and
 publication readiness follow as separate compact indicators.
 
 Never add a third editable value, target chooser, or send button to this strip.
-When Cleaned is unavailable, Original is selected in behavior and the reason is
+When Prepared is unavailable, Original is selected in behavior and the reason is
 written next to the control.
 
 ### Status
@@ -327,7 +327,7 @@ Expanded details use a compact ledger of safe fields: operation, local time,
 HTTP status when available, stable error code, sanitized server message, and a
 concrete retry or setup action. **Copy details** copies exactly those visible
 sanitized fields and nothing more. If no additional safe detail exists, say so
-plainly. Never reveal or copy credentials, headers, Original or Cleaned text,
+plainly. Never reveal or copy credentials, headers, Original or Prepared text,
 provider payloads, stack traces, database contents, or private paths.
 
 Each failed operation keeps its own identity and disclosure. Cleanup/provider,
@@ -352,8 +352,8 @@ continues independently.
 - **Do** inherit the incumbent paper, rail, rule, type, and control language on
   Workspace, Cleanup, and Targets.
 - **Do** preserve generous text canvases and compact setup controls.
-- **Do** keep prompt and vocabulary context visible with Cleaned.
-- **Do** keep Original, Cleaned, and Outgoing source unambiguous in every state.
+- **Do** keep prompt and vocabulary context visible with Prepared.
+- **Do** keep Original, Prepared, and Outgoing source unambiguous in every state.
 - **Do** use one continuous sheet or ruled list before adding another container.
 - **Do** preserve keyboard focus, resizing, text selection, and readable wrapping.
 - **Do** keep each simultaneous API failure separately named, persistent, and
@@ -366,7 +366,7 @@ continues independently.
   accent identity.
 - **Don't** use serif type for buttons, form labels, navigation, or status text.
 - **Don't** decorate inactive regions with blue or rely on color-only state.
-- **Don't** place Original and Cleaned side by side or hide the resizable divider.
+- **Don't** place Original and Prepared side by side or hide the resizable divider.
 - **Don't** add recording-review UI, a target picker, or delivery claims to the
   workspace visual world.
 - **Don't** persist or depict real dictated content in documentation or comps.
