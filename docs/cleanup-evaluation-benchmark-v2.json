@@ -1,0 +1,547 @@
+{
+  "protocol_id": "cleanup-evaluation-benchmark-v2",
+  "status": "approved_protocol_only_no_implementation_or_operation_authorized",
+  "approved_on": "2026-09-09",
+  "purpose": "current_source_preserving_polished_cleanup_evaluation_only",
+  "narrative_protocol": "cleanup-evaluation-successor-protocol.md",
+  "corpus_contract_version": "cleanup-evaluation-corpus-v1",
+  "supersedes": {
+    "protocol_id": "cleanup-evaluation-benchmark-v1",
+    "path": "cleanup-evaluation-benchmark-v1.json",
+    "preserve_unchanged_as_history": true
+  },
+  "authorization": {
+    "documentation_only": true,
+    "runner_implementation": false,
+    "private_corpus_access": false,
+    "provider_calls": false,
+    "spending": false,
+    "benchmark_operation": false,
+    "canary_operation": false,
+    "stable_change": false,
+    "benchmark_passage_authorizes": "eligibility_to_request_separate_explicit_10_cleanup_canary_confirmation_only"
+  },
+  "scope": {
+    "included": "current_source_preserving_cleanup",
+    "excluded": [
+      "rewrite",
+      "smart_correction",
+      "transcript_fidelity",
+      "routing_or_fallback_evaluation",
+      "stable_default_or_promotion"
+    ],
+    "expected_cleanup_is_transcript_truth": false
+  },
+  "sample": {
+    "cases": 60,
+    "post_result_expansion_allowed": false,
+    "source_category_required": "dictation",
+    "eligibility": {
+      "requires_current_user_confirmed_original_and_expected_cleanup": true,
+      "allowed_transformations": [
+        "capitalization",
+        "punctuation",
+        "apostrophes",
+        "whitespace_or_paragraph_structure",
+        "leading_filler_removal"
+      ],
+      "ineligible_word_operations": [
+        "addition",
+        "substitution",
+        "reordering",
+        "non_leading_filler_removal"
+      ],
+      "requires_complete_revision_consent_retention_prompt_provenance_and_checksums": true,
+      "ambiguous_or_transcript_truth_dependent_is_ineligible": true,
+      "annotations_frozen_before_selection_and_without_outputs": true,
+      "reviewer": "corpus_owner"
+    },
+    "primary_strata_exact": {
+      "unchanged": 10,
+      "capitalization_only": 8,
+      "punctuation_only": 8,
+      "apostrophe_only": 8,
+      "whitespace_or_paragraph_only": 8,
+      "leading_filler_only": 8,
+      "mixed_permitted_transformations": 10
+    },
+    "overlapping_minima": {
+      "names_or_technical_terms": 12,
+      "numbers_or_dates": 12,
+      "negation_or_modality": 12,
+      "links_code_or_identifiers": 8,
+      "quotations": 8,
+      "line_or_paragraph_structures": 8
+    },
+    "missing_any_quota": "block_registration",
+    "duplicates": {
+      "canonicalization_for_detection_only": [
+        "unicode_nfc",
+        "lf_line_endings"
+      ],
+      "execution_preserves_stored_text": true,
+      "group_by": "canonical_original",
+      "conflicting_expected_cleanup_or_primary_stratum": "exclude_entire_group",
+      "representative": "lowest_opaque_case_id"
+    },
+    "selection": {
+      "seed": "integer_frozen_at_registration",
+      "key": "sha256(domain_separator_seed_pool_sha256_case_id)",
+      "algorithm": "lexicographically_smallest_sorted_key_vector_among_all_feasible_60_case_subsets",
+      "tie_break": "lexicographically_smallest_sorted_case_id_vector",
+      "manual_override": false,
+      "quota_relaxation": false,
+      "maximum_cases": 60
+    },
+    "lifecycle_change": {
+      "before_registration": "freeze_new_pool_and_reselect",
+      "after_registration_before_first_call": "invalidate_manifest_and_require_new_registration_and_confirmation",
+      "after_any_call": "stop_and_invalidate_without_replacement_exclusion_or_rerun"
+    }
+  },
+  "arms": [
+    {
+      "id": "baseline_paid_gemini",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "requests_per_case": 1,
+      "deadline_seconds": 30,
+      "settings": {
+        "thinking_level": "low",
+        "explicit_temperature": false
+      }
+    },
+    {
+      "id": "candidate_paid_openai",
+      "provider": "openai",
+      "model": "gpt-5.6-luna",
+      "requests_per_case": 1,
+      "deadline_seconds": 30,
+      "settings": {
+        "reasoning_effort": "none",
+        "store": false
+      }
+    }
+  ],
+  "request_contract": {
+    "same_frozen_effective_prompt": true,
+    "same_frozen_source_framing": true,
+    "same_frozen_strict_schema": true,
+    "same_shipped_semantic_validator": true,
+    "same_shipped_input_dependent_output_cap": true,
+    "retries": 0,
+    "fallback": false,
+    "route_arm": false,
+    "rewrite_arm": false,
+    "freeze": [
+      "requested_model_ids",
+      "provider_reported_versions_when_available",
+      "endpoint_and_api_mode",
+      "request_settings",
+      "prompt_and_framing_bytes_and_sha256",
+      "schema_bytes_version_and_sha256",
+      "adapter_validator_and_output_cap_versions_and_sha256",
+      "scoring_commit",
+      "dependency_lock_sha256"
+    ]
+  },
+  "provider_evidence": {
+    "refresh_within_hours_before_registration": 24,
+    "verify": [
+      "official_model_availability",
+      "exact_model_ids_and_reported_versions",
+      "pricing",
+      "retention_and_data_use_terms",
+      "account_controls",
+      "openai_store_false_behavior"
+    ],
+    "record_official_urls_and_retrieval_times": true,
+    "material_change": "block_registration_and_require_review"
+  },
+  "roles": {
+    "protocol_owner": "approves_protocol_and_later_authorizations",
+    "corpus_owner": "sole_eligibility_annotator_and_local_reviewer",
+    "run_operator": "administers_isolated_execution",
+    "one_person_may_hold_multiple_roles": true,
+    "manifest_records_every_assignment": true
+  },
+  "entry": {
+    "purpose_built_cleanup_runner_required": true,
+    "reviewed_immutable_clean_commit_required": true,
+    "correction_benchmark_reuse_forbidden": true,
+    "runner_tests_required": [
+      "deterministic_selection",
+      "deterministic_case_and_arm_order",
+      "deterministic_bootstrap",
+      "fail_open_scoring",
+      "pre_send_budget_stops",
+      "privacy_safe_logging",
+      "lifecycle_deletion",
+      "interruption_recovery"
+    ],
+    "dedicated_paid_test_credentials_and_provider_projects": true,
+    "preflight_without_private_text": [
+      "immutable_code_and_configuration",
+      "provider_evidence_and_account_controls",
+      "quotas_and_120_private_call_capacity",
+      "both_cost_ceilings_and_conservative_bounds",
+      "storage_permissions_and_deletion_path",
+      "clock_and_free_space",
+      "stable_and_live_corpus_inaccessibility"
+    ]
+  },
+  "isolation": {
+    "environment": "isolated_non_shadow_pilot",
+    "separate_from_stable_and_live_corpus": [
+      "runner",
+      "imported_snapshot",
+      "results",
+      "logs",
+      "caches",
+      "temporary_files",
+      "service_and_state",
+      "configuration",
+      "storage",
+      "credentials_and_provider_project",
+      "delivery_identity"
+    ],
+    "stable_resources_inaccessible": true,
+    "write_back_to_live_corpus": false,
+    "log_content": "safe_identifiers_and_metadata_only",
+    "text_prompt_output_payload_credentials_provider_account_ids_and_private_paths_in_logs": false
+  },
+  "budgets": {
+    "smoke_plus_benchmark_usd_micros": 10000000,
+    "canary_usd_micros": 2000000,
+    "currency_tracking": "integer_usd_micros",
+    "reserve_conservative_120_call_bound_before_smoke": true,
+    "pre_send_stop_if_next_conservative_bound_exceeds_remaining": true,
+    "overage_top_up_borrowing_or_transfer": false,
+    "actual_breach": "stop_non_passing"
+  },
+  "synthetic_smoke": {
+    "required_before_private_calls": true,
+    "cases": 8,
+    "calls": 16,
+    "composition": "one_per_primary_stratum_plus_one_combined_invented_preservation_challenge",
+    "combined_challenge_requires": [
+      "names",
+      "numbers",
+      "negation",
+      "quotation",
+      "identifier_or_link",
+      "paragraph_structure"
+    ],
+    "pass_requires_all_calls": [
+      "registered_request_contract",
+      "expected_provider_model_attribution",
+      "parseable_usage",
+      "within_reserved_budget",
+      "validator_accepted_source_preserving_output",
+      "no_severe_harm",
+      "no_disclosure_or_storage_violation"
+    ],
+    "failure": "block_private_execution",
+    "retry_policy": "complete_newly_registered_16_call_suite_only_after_diagnosis_and_correction",
+    "selective_rerun": false
+  },
+  "manifest": {
+    "canonical_machine_readable_and_hashed": true,
+    "required_fields": [
+      "protocol_id_version_sha256_status_and_v1_reference",
+      "registration_time_roles_environment_runner_scoring_commit_lock_sha256_clean_tree",
+      "eligible_pool_selection_cases_revisions_record_sha256_strata_tags_duplicates_annotations_snapshot",
+      "configured_and_effective_prompt_framing_schema_validator_output_cap_bytes_versions_and_sha256",
+      "arms_models_reported_versions_endpoints_api_modes_settings_deadlines_and_ordering",
+      "provider_sources_times_availability_pricing_retention_data_use_account_controls_material_change",
+      "smoke_fixtures_hashes_classifications_seed_and_results",
+      "normalization_scoring_bootstrap_review_blinding_harm_taxonomy_and_gates",
+      "budget_bounds_reservations_and_stops",
+      "exact_run_confirmation_hold_locations_artifacts_deletion_and_append_only_event_ledger"
+    ],
+    "missing_or_changed_frozen_data": "invalidate_registration",
+    "new_reported_version_observation": "append_observation_and_stop_on_mismatch_do_not_mutate_frozen_fields"
+  },
+  "run_consent": {
+    "new_explicit_confirmation_required": true,
+    "save_consent_is_insufficient": true,
+    "must_name": [
+      "exact_60_case_ids_and_revisions",
+      "providers_models_and_effective_prompt",
+      "maximum_120_private_calls",
+      "current_provider_retention_and_data_use_disclosures",
+      "conservative_estimate_and_10_usd_cap",
+      "one_named_benchmark_hold_and_fixed_release",
+      "every_snapshot_run_report_and_export_location"
+    ],
+    "hold_release_no_later_than_days_after_confirmation": 30,
+    "consent_not_granted": [
+      "transcript_truth",
+      "personalization",
+      "analytics",
+      "training",
+      "external_sharing"
+    ]
+  },
+  "execution": {
+    "case_order": "frozen_seeded",
+    "arm_order_per_case": "frozen_seeded",
+    "complete_pair_before_next_case": true,
+    "transactional_request_reservation_before_send": true,
+    "durable_terminal_result_immediately_after": true,
+    "interruption_resume_requires": [
+      "every_prior_request_proven_unsent_or_has_one_durable_terminal_result",
+      "no_request_repetition",
+      "unchanged_manifest",
+      "valid_consent_and_hold",
+      "intact_isolation",
+      "provider_evidence_still_within_24_hours",
+      "remaining_budget"
+    ],
+    "possibly_sent_without_terminal_result": "invalidate_run"
+  },
+  "benchmark_hard_stops": [
+    "withdrawal_cancellation_consent_or_hold_invalidity",
+    "selected_case_mutation_or_deletion",
+    "manifest_hash_code_configuration_or_reported_model_mismatch",
+    "isolation_disclosure_text_logging_storage_write_back_or_stable_resource_violation",
+    "next_request_cannot_be_reserved_actual_budget_breach_or_missing_malformed_usage",
+    "permanent_credential_configuration_or_quota_failure",
+    "three_consecutive_operational_failures_in_either_arm",
+    "impermissible_output_bypassed_validator",
+    "ambiguous_in_flight_request"
+  ],
+  "operational_failure_classes": [
+    "timeout",
+    "transport_or_5xx",
+    "temporary_quota",
+    "unknown_system_failure"
+  ],
+  "validator_rejections_and_safety_refusals_are_scored_not_operational_stops": true,
+  "scoring": {
+    "primary_endpoint": "paired_normalized_unicode_code_point_levenshtein_effort_to_expected_cleanup",
+    "normalization": [
+      "unicode_nfc",
+      "lf_line_endings"
+    ],
+    "preserve_all_other_code_points": true,
+    "per_case_effort": "distance_divided_by_max_expected_code_point_length_1",
+    "arm_statistic": "arithmetic_mean_over_same_60_cases",
+    "fail_open_to_original_for": [
+      "failure",
+      "timeout",
+      "refusal",
+      "malformed_output",
+      "rejected_output",
+      "deadline_breach"
+    ],
+    "valid_output_success": "within_30_seconds_schema_valid_and_shipped_validator_accepted",
+    "accepted_unchanged_is_success": true,
+    "latency_p95": "nearest_rank_over_60_end_to_end_durations_with_30_seconds_for_timeout"
+  },
+  "review": {
+    "reviewer": "corpus_owner_only",
+    "individual_outputs": 120,
+    "individual_order": "seeded_random",
+    "arm_and_provider_hidden": true,
+    "fields": {
+      "acceptability": [
+        "acceptable",
+        "unacceptable"
+      ],
+      "accepted_source_contract_violation": [
+        "yes",
+        "no"
+      ],
+      "harmful_change_category": [
+        "none",
+        "meaning",
+        "invented_content",
+        "qualification_or_negation",
+        "number_or_date",
+        "name_or_technical_term",
+        "link_code_or_identifier",
+        "quotation",
+        "layout"
+      ],
+      "severity": [
+        "none",
+        "non_severe",
+        "severe"
+      ],
+      "local_rationale": "required"
+    },
+    "severe_definition": "materially_alters_meaning_obligation_permission_negation_factual_value_identity_or_term_executable_identifier_code_or_link_quotation_attribution_or_usable_document_structure",
+    "non_severe_definition": "lesser_real_damage",
+    "pair_review": {
+      "order": "seeded_random",
+      "side": "seeded_random",
+      "labels": [
+        "a",
+        "b"
+      ],
+      "choices": [
+        "a",
+        "b",
+        "tie",
+        "neither"
+      ],
+      "descriptive_only": true
+    },
+    "freeze_before_one_time_unblinding": true,
+    "unresolved_review": "block_passage"
+  },
+  "statistics": {
+    "paired_bootstrap_resamples": 10000,
+    "seed": "frozen_at_registration",
+    "statistic": "candidate_mean_minus_baseline_mean_divided_by_baseline_mean",
+    "one_sided_upper_percentile": 0.95,
+    "zero_baseline_resample": "zero_if_candidate_also_zero_otherwise_positive_infinity",
+    "observed_zero_baseline_mean": "stop_no_canary"
+  },
+  "benchmark_pass_gates_all_required": {
+    "candidate_mean_effort_relative_decrease_min": 0.1,
+    "paired_bootstrap_relative_degradation_upper_bound_max": 0.05,
+    "candidate_valid_output_rate_absolute_drop_max": 0.05,
+    "candidate_accepted_source_contract_violations_max": 0,
+    "candidate_severe_harmful_changes_max": 0,
+    "candidate_p95_latency_increase_max": "max(20_percent_of_baseline_p95,1_second)",
+    "secondary_results_may_compensate": false
+  },
+  "report": {
+    "private_local_only": true,
+    "after_review_freeze_and_one_time_unblinding": true,
+    "requires": [
+      "complete_flow_accounting",
+      "per_arm_and_paired_primary_metrics",
+      "bootstrap_upper_bound",
+      "valid_output_rates",
+      "contract_violations_and_harms",
+      "latency_usage_cost_and_failures",
+      "descriptive_strata_and_pair_preference",
+      "protocol_deviations",
+      "every_gate_numerator_denominator_value_and_disposition"
+    ],
+    "selective_rerun_omission_replacement_threshold_change_or_expansion": false,
+    "pass": "create_signed_local_eligibility_packet_for_separate_canary_request_only",
+    "fail_invalid_stopped_or_unresolved": "no_canary"
+  },
+  "artifact_lifecycle": {
+    "write_back_to_live_corpus": false,
+    "delete_managed_artifacts_at_earliest": [
+      "completion",
+      "cancellation",
+      "withdrawal",
+      "fixed_release"
+    ],
+    "optional_explicit_private_local_export_before_deletion": true,
+    "withdrawal_stops_new_calls": true,
+    "already_processed_provider_requests_retractable": false
+  },
+  "canary": {
+    "requires_benchmark_pass": true,
+    "requires_explicitly_exported_private_eligibility_packet": true,
+    "requires_new_explicit_confirmation": true,
+    "confirmation_must_name": [
+      "benchmark_manifest_and_report_sha256",
+      "candidate_model_reported_version_prompt_schema_validator_settings_and_30_second_deadline",
+      "candidate_only_manual_maximum_10_calls_and_no_baseline_duplication_retry_fallback_routing_or_shadow",
+      "provider_evidence_refreshed_within_24_hours",
+      "2_usd_estimate_cap_and_pre_send_enforcement",
+      "14_day_dates_evidence_release_and_every_storage_location",
+      "withdrawal_and_provider_request_irretractability"
+    ],
+    "window": {
+      "attempts": 10,
+      "calendar_days_after_confirmation": 14,
+      "ends_at_earlier_limit": true,
+      "fewer_than_10_by_deadline": "incomplete_non_passing"
+    },
+    "attempt_eligibility": [
+      "newly_user_initiated_in_pilot",
+      "explicitly_confirmed_dictation_derived",
+      "locally_valid",
+      "unique_by_nfc_lf_original_hash",
+      "manually_candidate_selected"
+    ],
+    "request": {
+      "provider": "openai",
+      "model": "gpt-5.6-luna",
+      "requests_per_attempt": 1,
+      "deadline_seconds": 30,
+      "counts_success_failure_timeout_refusal_or_rejection": true,
+      "gemini_or_second_model": false,
+      "retry_fallback_route_shadow_or_resend": false,
+      "invalid_or_duplicate_input": "reject_locally_without_counting"
+    },
+    "review_after_each_before_next": {
+      "same_acceptability_harm_severity_and_rationale_fields": true,
+      "unresolved_blocks_new_calls": true
+    },
+    "temporary_storage_includes_only": [
+      "original",
+      "user_visible_result",
+      "attempt_status_and_validator_disposition",
+      "provider_model_and_reported_version",
+      "prompt_schema_and_validator_sha256",
+      "timestamps_latency_tokens_and_usd_micros",
+      "duplicate_hash",
+      "frozen_review"
+    ],
+    "temporary_storage_excludes": [
+      "raw_requests_or_responses",
+      "rejected_provider_text",
+      "post_cleanup_edits_or_outgoing_destination",
+      "audio_clipboard_history_or_neighboring_text",
+      "credentials_or_provider_account_identifiers"
+    ],
+    "hard_stops": [
+      "withdrawal_cancellation_consent_invalidity_or_window_expiry",
+      "manifest_code_configuration_hash_or_reported_model_mismatch",
+      "isolation_disclosure_text_logging_storage_write_back_retry_fallback_duplicate_send_or_stable_resource_violation",
+      "next_request_cannot_be_reserved_actual_budget_breach_or_missing_malformed_usage",
+      "permanent_credential_configuration_or_quota_failure",
+      "ambiguous_in_flight_request",
+      "one_accepted_source_contract_violation",
+      "one_severe_harmful_change",
+      "unresolved_review",
+      "second_unsuccessful_attempt_anywhere"
+    ],
+    "success_all_required": {
+      "eligible_attempts_within_window": 10,
+      "valid_output_successes_min": 9,
+      "acceptable_user_visible_results_min": 9,
+      "accepted_source_contract_violations_max": 0,
+      "severe_harmful_changes_max": 0,
+      "non_severe_harmful_changes_max": 1,
+      "all_reviews_resolved": true,
+      "privacy_isolation_model_deadline_and_protocol_violations_max": 0,
+      "cost_usd_micros_max": 2000000,
+      "pre_send_budget_enforcement": true
+    },
+    "reporting": "latency_usage_cost_failures_and_rationales_descriptive_only_no_baseline_or_inference",
+    "terminal_dispositions": [
+      "success",
+      "fail",
+      "stopped",
+      "expired",
+      "withdrawn"
+    ],
+    "managed_deletion_at_earliest_terminal_event_after_optional_private_export": true,
+    "deletion_receipt_only": [
+      "protocol_or_run_id",
+      "disposition",
+      "deletion_timestamp",
+      "counts"
+    ],
+    "success_authorizes": "nothing_further",
+    "explicitly_not_authorized": [
+      "25_or_100_cleanup_continuation",
+      "repeat_canary",
+      "automatic_routing_or_fallback",
+      "stable_default_change",
+      "provider_promotion",
+      "effectiveness_claim"
+    ]
+  }
+}
