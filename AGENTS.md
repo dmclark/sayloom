@@ -9,25 +9,31 @@ keep runtime and secret material outside Git.
 - Use neutral technical identifiers such as `local_text`; keep them decoupled from the display brand.
 - Normal application startup must not run database migrations.
 - For validated coding changes, use the controlled verify-then-restart workflow rather than hot reload.
-- Keep features and abstractions limited to the current requirement.
+- Keep features and abstractions limited to the current requirement. Repository-wide documentation
+  cleanup requires explicit approval.
 - Keep agent work to one bounded deliverable: clarify material ambiguity before editing; inspect exact
-  anchors with narrow, capped output; diagnose failures before retrying; avoid delegating small
-  changes or work on a shared dirty worktree; and do not replay unchanged context. Separate work
-  into investigate/reproduce, implement plus affected checks, and, for substantial work, a distinct
-  full integration-verification phase after implementation is resolved.
+  anchors with narrow output; cap every command and tool result, and summarize or slice rather than
+  dumping generated, bundled, minified, or other large files. Diagnose failures before retrying;
+  avoid delegating small changes or work on a shared dirty worktree; and do not replay unchanged
+  context. Separate work into investigate/reproduce, implement plus affected checks, and, for
+  substantial work, a distinct full integration-verification phase after implementation is resolved.
+- Checkpoint and report before the hard stop of 25 model requests or 1.5M total tokens; never cross
+  whichever limit comes first. Once final verification is declared, stop work.
 - Hand off to a new focused thread before further implementation when the principal deliverable or
   phase changes. Defer unrelated review findings and follow-up changes to a separate focused thread
   rather than expanding the current deliverable.
   Start each fresh thread with a compact, self-contained prompt containing only confirmed decisions,
   current state, evidence, the exact next deliverable, and necessary references; never import or
-  replay a long parent transcript. This is a reviewable checkpoint, not automatic token enforcement.
+  replay a long parent transcript.
 - Give each changing worktree one implementation owner at a time. Delegate coding only for an
   independent workstream with disjoint files and explicit ownership; the same owner resolves
   cleanup, revert, and final verification unless a handoff explicitly transfers that responsibility.
   Request one coherent implementation pass followed by one verification pass; if verification fails,
   diagnose the new evidence, make a targeted correction, and then rerun instead of entering an
   open-ended implementation and verification loop.
-- Default implementation verification to affected checks. One integration owner runs any requested
+- Match verification to the change scope; documentation-only changes normally need diff and content
+  checks, not application tests. Run each affected test group once after the final relevant edit, and
+  rerun it only after a subsequent change could affect it. One integration owner runs any requested
   full baseline once after constituent work is resolved; never overlap broad verification owners or
   start acceptance verification while implementation or baseline repair remains unresolved.
 - Stop and report before broadening a fix when it breaks unrelated fixtures, leaves its owning
