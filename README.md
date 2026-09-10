@@ -140,6 +140,31 @@ The mode-`0600` disposition stores only safe identifiers, hashes, call metadata,
 micros, and the pass/block reason. Passing smoke satisfies only the smoke prerequisite; it does not
 authorize private corpus access, benchmark calls, spending beyond the smoke, or benchmark operation.
 
+The paired benchmark executor accepts only the unchanged registered manifest and snapshot, the
+matching passed smoke disposition, current provider evidence, and an exact run confirmation binding
+the selected revisions, provider models, effective-prompt hash, 120-call maximum, disclosures,
+estimate and $10 cap, named hold/release, and storage locations. It writes a dedicated mode-`0600`
+SQLite ledger outside the repository. Each request is transactionally reserved before send and
+receives one terminal record; safe pre-send reservations may resume, while any possibly sent request
+without a terminal record invalidates the run. Cases and their two arms always follow frozen order,
+with no retry, fallback, replacement, omission, or rerun.
+
+Live execution remains blocked unless the separately reviewed authorization is represented by both
+the frozen confirmation and the explicit command flag. The command uses only dedicated benchmark
+credentials and refuses application credentials or state:
+
+```sh
+uv run python -m local_text.cleanup_evaluation_execution \
+  --registration /isolated/input/registration.json \
+  --snapshot /isolated/input/snapshot.json \
+  --smoke /isolated/input/smoke.json \
+  --invariants /isolated/input/current-invariants.json \
+  --ledger /isolated/output/<registered-run-id>.sqlite3 \
+  --authorize-private-benchmark
+```
+
+Building or testing this command does not grant that authorization and performs no provider calls.
+
 Development configuration uses one shared file and an optional state-specific
 file inside the external state directory:
 
