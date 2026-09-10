@@ -251,6 +251,11 @@ def register_cleanup_canary(
     ends_at = _utc(confirmation.get("ends_at"), "canary confirmation is invalid")
     release_at = _utc(confirmation.get("evidence_release_at"), "canary confirmation is invalid")
     locations = confirmation.get("storage_locations")
+    location_paths = (
+        [Path(location) for location in locations]
+        if isinstance(locations, list) and all(isinstance(location, str) for location in locations)
+        else []
+    )
     if (
         confirmation.get("confirmed") is not True
         or not confirmation.get("canary_run_id")
@@ -272,9 +277,19 @@ def register_cleanup_canary(
         or ends_at != confirmed_at + WINDOW
         or release_at != ends_at
         or not isinstance(locations, list)
-        or len(locations) != 1
-        or not isinstance(locations[0], str)
-        or not Path(locations[0]).is_absolute()
+        or not locations
+        or any(not isinstance(location, str) for location in locations)
+        or len(set(locations)) != len(locations)
+        or any(
+            not Path(location).is_absolute()
+            or Path(location) == Path(Path(location).anchor)
+            for location in locations
+        )
+        or any(
+            left != right and left.is_relative_to(right)
+            for left in location_paths
+            for right in location_paths
+        )
         or confirmation.get("managed_deletion") is not True
         or confirmation.get("optional_private_export_before_deletion") is not True
         or confirmation.get("withdrawal_stops_and_deletes") is not True
@@ -356,14 +371,20 @@ def _connect(path: Path) -> sqlite3.Connection:
     return connection
 
 
+def _receipt_path(ledger_path: Path) -> Path:
+    return Path(f"{ledger_path}.deletion-receipt.json")
+
+
 def _manifest(registration: object, ledger_path: Path) -> dict[str, object]:
+    if _receipt_path(ledger_path).exists():
+        raise CanaryError("canary is terminal")
     if not isinstance(registration, dict) or not isinstance(registration.get("manifest"), dict):
         raise CanaryError("canary registration is invalid")
     manifest = registration["manifest"]
     if (
         registration.get("manifest_sha256") != _digest(manifest)
         or manifest.get("canary_version") != CANARY_VERSION
-        or manifest.get("storage", {}).get("locations") != [str(ledger_path)]
+        or str(ledger_path) not in manifest.get("storage", {}).get("locations", [])
     ):
         raise CanaryError("canary registration changed")
     return manifest
@@ -376,6 +397,101 @@ def _summary(connection: sqlite3.Connection) -> dict[str, object]:
     return dict(row)
 
 
+def _terminal_report(
+    connection: sqlite3.Connection,
+    registration: dict[str, object],
+    disposition: str,
+    reason: str,
+    at: datetime,
+) -> dict[str, object]:
+    summary = _summary(connection)
+    rows = connection.execute(
+        "SELECT validator_disposition, elapsed_ms, input_tokens, output_tokens, usd_micros, "
+        "review_json FROM canary_attempts ORDER BY attempt_number"
+    ).fetchall()
+    reviews = [json.loads(row["review_json"]) for row in rows if row["review_json"] is not None]
+    validator_dispositions: dict[str, int] = {}
+    for row in rows:
+        value = row["validator_disposition"]
+        if value is not None:
+            validator_dispositions[value] = validator_dispositions.get(value, 0) + 1
+    failure_classes = {
+        value: count for value, count in validator_dispositions.items() if value != "accepted"
+    }
+    return {
+        "report_version": "cleanup-canary-terminal-report-v1",
+        "run_id": registration["manifest"]["run_id"],
+        "disposition": disposition,
+        "reason": reason,
+        "terminal_at": at.isoformat(),
+        "visibility": "private_local",
+        "attempts": {
+            "counted": summary["completed_attempt_count"],
+            "valid_outputs": summary["completed_attempt_count"]
+            - summary["unsuccessful_attempt_count"],
+            "unsuccessful": summary["unsuccessful_attempt_count"],
+            "validator_dispositions": validator_dispositions,
+            "failure_classes": failure_classes,
+        },
+        "reviews": {
+            "resolved": len(reviews),
+            "acceptable": sum(review["acceptability"] == "acceptable" for review in reviews),
+            "unacceptable": sum(review["acceptability"] == "unacceptable" for review in reviews),
+            "accepted_source_contract_violations": sum(
+                review["accepted_source_contract_violation"] for review in reviews
+            ),
+            "severe_harmful_changes": sum(review["severity"] == "severe" for review in reviews),
+            "non_severe_harmful_changes": sum(
+                review["severity"] == "non_severe" for review in reviews
+            ),
+            "rationales": [review["rationale"] for review in reviews],
+        },
+        "latency_ms": [row["elapsed_ms"] for row in rows],
+        "usage": {
+            "input_tokens": [row["input_tokens"] for row in rows],
+            "output_tokens": [row["output_tokens"] for row in rows],
+        },
+        "cost": {
+            "usd_micros": [row["usd_micros"] for row in rows],
+            "total_usd_micros": summary["actual_cost_usd_micros"],
+        },
+        "claims": "descriptive_only_no_baseline_or_inference",
+        "authorizes": "nothing_further",
+        "does_not_authorize": [
+            "continuation",
+            "repeat_canary",
+            "automatic_routing_or_fallback",
+            "stable_default_change",
+            "provider_promotion",
+            "effectiveness_claim",
+        ],
+    }
+
+
+def _managed_artifact_counts(paths: list[Path]) -> dict[str, int]:
+    files = 0
+    directories = 0
+    for path in paths:
+        if path.is_symlink() or path.is_file():
+            files += 1
+        elif path.is_dir():
+            directories += 1
+            for child in path.rglob("*"):
+                if child.is_symlink() or child.is_file():
+                    files += 1
+                elif child.is_dir():
+                    directories += 1
+    return {"files": files, "directories": directories}
+
+
+def _delete_managed_artifacts(paths: list[Path]) -> None:
+    for path in sorted(paths, key=lambda item: len(item.parts), reverse=True):
+        if path.is_symlink() or path.is_file():
+            path.unlink(missing_ok=True)
+        elif path.is_dir():
+            shutil.rmtree(path)
+
+
 def _terminal_result(
     registration: dict[str, object],
     ledger_path: Path,
@@ -383,24 +499,46 @@ def _terminal_result(
     reason: str,
     at: datetime,
     *,
+    terminal_report: dict[str, object],
     private_export_path: Path | None = None,
 ) -> dict[str, object]:
+    managed_paths = [Path(path) for path in registration["manifest"]["storage"]["locations"]]
+    managed_paths.extend(
+        Path(f"{ledger_path}{suffix}") for suffix in ("-journal", "-shm", "-wal")
+    )
+    managed_paths = list(dict.fromkeys(managed_paths))
+    receipt_path = _receipt_path(ledger_path)
     if private_export_path is not None:
-        if private_export_path.exists() or not private_export_path.parent.is_dir():
+        if (
+            private_export_path.exists()
+            or not private_export_path.parent.is_dir()
+            or private_export_path == receipt_path
+            or any(
+                private_export_path == path or private_export_path.is_relative_to(path)
+                for path in managed_paths
+            )
+        ):
             raise CanaryError("private export location is invalid")
         shutil.copy2(ledger_path, private_export_path)
         os.chmod(private_export_path, 0o600)
-    ledger_path.unlink(missing_ok=True)
+    counts = _managed_artifact_counts(managed_paths)
+    _delete_managed_artifacts(managed_paths)
     receipt = {
         "protocol_or_run_id": registration["manifest"]["run_id"],
         "disposition": disposition,
         "deletion_timestamp": at.isoformat(),
-        "counts": {"files": 1, "directories": 0},
+        "counts": counts,
     }
+    receipt_descriptor = os.open(receipt_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(receipt_descriptor, "w", encoding="utf-8") as receipt_file:
+        receipt_file.write(canonical_json(receipt).decode("utf-8"))
+        receipt_file.flush()
+        os.fsync(receipt_file.fileno())
     return {
         "run_id": registration["manifest"]["run_id"],
         "status": disposition,
         "reason": reason,
+        "terminal_report": terminal_report,
         "deletion_receipt": receipt,
     }
 
@@ -417,6 +555,7 @@ def _stop(
     summary = _summary(connection)
     with connection:
         connection.execute("UPDATE canary_run SET status = 'stopped', reason = ?", (reason,))
+    report = _terminal_report(connection, registration, "stopped", reason, at)
     connection.close()
     return {
         **summary,
@@ -426,6 +565,38 @@ def _stop(
             "stopped",
             reason,
             at,
+            terminal_report=report,
+            private_export_path=private_export_path,
+        ),
+    }
+
+
+def _expire(
+    connection: sqlite3.Connection,
+    registration: dict[str, object],
+    ledger_path: Path,
+    at: datetime,
+    *,
+    private_export_path: Path | None = None,
+) -> dict[str, object]:
+    summary = _summary(connection)
+    with connection:
+        connection.execute(
+            "UPDATE canary_run SET status = 'expired', reason = 'incomplete_non_passing'"
+        )
+    report = _terminal_report(
+        connection, registration, "expired", "incomplete_non_passing", at
+    )
+    connection.close()
+    return {
+        **summary,
+        **_terminal_result(
+            registration,
+            ledger_path,
+            "expired",
+            "incomplete_non_passing",
+            at,
+            terminal_report=report,
             private_export_path=private_export_path,
         ),
     }
@@ -445,6 +616,77 @@ def _valid_usage(value: object, maximum: object) -> bool:
     )
 
 
+def _ensure_run(
+    connection: sqlite3.Connection,
+    registration: dict[str, object],
+    manifest: dict[str, object],
+) -> sqlite3.Row:
+    row = connection.execute("SELECT * FROM canary_run").fetchone()
+    if row is None:
+        with connection:
+            connection.execute(
+                "INSERT INTO canary_run VALUES (?, ?, 'running', 'pending', 0, 0, 0)",
+                (manifest["run_id"], registration["manifest_sha256"]),
+            )
+        row = connection.execute("SELECT * FROM canary_run").fetchone()
+    if (
+        row is None
+        or row["run_id"] != manifest["run_id"]
+        or row["manifest_sha256"] != registration["manifest_sha256"]
+    ):
+        raise CanaryError("canary ledger does not match registration")
+    return row
+
+
+def check_cleanup_canary(
+    registration: object,
+    ledger_path: Path,
+    *,
+    now: Callable[[], datetime] = lambda: datetime.now(UTC),
+    invariants: Callable[[], CanaryInvariants] = CanaryInvariants,
+    private_export_path: Path | None = None,
+) -> dict[str, object]:
+    """Initialize or inspect the canary, enforcing stops that do not require a new attempt."""
+    manifest = _manifest(registration, ledger_path)
+    current_time = now().astimezone(UTC)
+    connection = _connect(ledger_path)
+    try:
+        row = _ensure_run(connection, registration, manifest)
+        if row["status"] != "running":
+            return dict(row)
+        if connection.execute(
+            "SELECT 1 FROM canary_attempts WHERE attempt_status = 'sent'"
+        ).fetchone():
+            return _stop(
+                connection, registration, ledger_path, "ambiguous_in_flight_request", current_time
+            )
+        reason = invariants().stop_reason()
+        if reason is not None:
+            return _stop(
+                connection,
+                registration,
+                ledger_path,
+                reason,
+                current_time,
+                private_export_path=private_export_path,
+            )
+        confirmation = manifest["confirmation"]
+        if current_time >= _utc(confirmation["ends_at"], "canary window is invalid"):
+            return _expire(
+                connection,
+                registration,
+                ledger_path,
+                current_time,
+                private_export_path=private_export_path,
+            )
+        return _summary(connection)
+    finally:
+        try:
+            connection.close()
+        except sqlite3.ProgrammingError:
+            pass
+
+
 async def run_canary_attempt(
     registration: object,
     provider: CanaryProvider,
@@ -462,19 +704,8 @@ async def run_canary_attempt(
     current_time = now().astimezone(UTC)
     connection = _connect(ledger_path)
     try:
-        row = connection.execute("SELECT * FROM canary_run").fetchone()
-        if row is None:
-            with connection:
-                connection.execute(
-                    "INSERT INTO canary_run VALUES (?, ?, 'running', 'pending', 0, 0, 0)",
-                    (manifest["run_id"], registration["manifest_sha256"]),
-                )
-        elif (
-            row["run_id"] != manifest["run_id"]
-            or row["manifest_sha256"] != registration["manifest_sha256"]
-        ):
-            raise CanaryError("canary ledger does not match registration")
-        elif row["status"] != "running":
+        row = _ensure_run(connection, registration, manifest)
+        if row["status"] != "running":
             return dict(row)
 
         if connection.execute(
@@ -483,12 +714,6 @@ async def run_canary_attempt(
             return _stop(
                 connection, registration, ledger_path, "ambiguous_in_flight_request", current_time
             )
-        pending_review = connection.execute(
-            "SELECT 1 FROM canary_attempts "
-            "WHERE attempt_status = 'terminal' AND review_json IS NULL"
-        ).fetchone()
-        if pending_review:
-            return _stop(connection, registration, ledger_path, "unresolved_review", current_time)
         reason = invariants().stop_reason()
         confirmation = manifest["confirmation"]
         if reason is None and current_time >= _utc(
@@ -496,20 +721,28 @@ async def run_canary_attempt(
         ):
             reason = "incomplete_non_passing"
         if reason:
-            disposition = "expired" if reason == "incomplete_non_passing" else "stopped"
-            summary = _summary(connection)
-            connection.close()
-            return {
-                **summary,
-                **_terminal_result(
+            if reason == "incomplete_non_passing":
+                return _expire(
+                    connection,
                     registration,
                     ledger_path,
-                    disposition,
-                    reason,
                     current_time,
                     private_export_path=private_export_path,
-                ),
-            }
+                )
+            return _stop(
+                connection,
+                registration,
+                ledger_path,
+                reason,
+                current_time,
+                private_export_path=private_export_path,
+            )
+        pending_review = connection.execute(
+            "SELECT 1 FROM canary_attempts "
+            "WHERE attempt_status = 'terminal' AND review_json IS NULL"
+        ).fetchone()
+        if pending_review:
+            return _stop(connection, registration, ledger_path, "unresolved_review", current_time)
         if not attempt.eligible():
             return {**_summary(connection), "accepted": False, "reason": "ineligible_local_input"}
         duplicate_hash = hashlib.sha256(
@@ -627,7 +860,8 @@ async def run_canary_attempt(
                 error.output_tokens,
             )
         elif isinstance(error, ProviderFailure):
-            outcome, validator_disposition = "failure", "fail_open_failure"
+            outcome = "failure"
+            validator_disposition = f"fail_open_failure_{error.failure_class.value}"
             elapsed_ms, input_tokens, output_tokens = (
                 error.elapsed_ms,
                 error.input_tokens,
@@ -679,7 +913,9 @@ async def run_canary_attempt(
                 )
         evidence = manifest["provider_evidence"]
         actual = 0
-        if hard_stop is None:
+        if hard_stop is None and isinstance(error, (TimeoutError, ProviderRejectedOutputError)):
+            actual = bound
+        elif hard_stop is None:
             if not _valid_usage(
                 input_tokens, evidence.get("input_token_maximum")
             ) or not _valid_usage(output_tokens, evidence.get("output_token_maximum")):
@@ -754,38 +990,72 @@ def freeze_canary_review(
     review: object,
     *,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
+    invariants: Callable[[], CanaryInvariants] = CanaryInvariants,
     private_export_path: Path | None = None,
 ) -> dict[str, object]:
     """Freeze the corpus owner's required review before another call is eligible."""
-    _manifest(registration, ledger_path)
-    if not isinstance(review, dict) or set(review) != {
-        "acceptability",
-        "accepted_source_contract_violation",
-        "harmful_change_category",
-        "severity",
-        "rationale",
-    }:
-        raise CanaryError("canary review is invalid")
-    if (
-        review["acceptability"] not in {"acceptable", "unacceptable"}
-        or not isinstance(review["accepted_source_contract_violation"], bool)
-        or review["harmful_change_category"]
-        not in {"none", "meaning", "invented_content", "qualification_or_negation", "other"}
-        or review["severity"] not in {"none", "non_severe", "severe"}
-        or (review["harmful_change_category"] == "none") != (review["severity"] == "none")
-        or not isinstance(review["rationale"], str)
-        or not review["rationale"].strip()
-    ):
-        raise CanaryError("canary review is invalid")
+    manifest = _manifest(registration, ledger_path)
     connection = _connect(ledger_path)
     try:
+        _ensure_run(connection, registration, manifest)
+        current_time = now().astimezone(UTC)
+        reason = invariants().stop_reason()
+        if reason is not None:
+            return _stop(
+                connection,
+                registration,
+                ledger_path,
+                reason,
+                current_time,
+                private_export_path=private_export_path,
+            )
+        if current_time >= _utc(
+            manifest["confirmation"]["ends_at"], "canary window is invalid"
+        ):
+            return _expire(
+                connection,
+                registration,
+                ledger_path,
+                current_time,
+                private_export_path=private_export_path,
+            )
+        if not isinstance(review, dict) or set(review) != {
+            "acceptability",
+            "accepted_source_contract_violation",
+            "harmful_change_category",
+            "severity",
+            "rationale",
+        }:
+            raise CanaryError("canary review is invalid")
+        if (
+            review["acceptability"] not in {"acceptable", "unacceptable"}
+            or not isinstance(review["accepted_source_contract_violation"], bool)
+            or review["harmful_change_category"]
+            not in {
+                "none",
+                "meaning",
+                "invented_content",
+                "qualification_or_negation",
+                "number_or_date",
+                "name_or_technical_term",
+                "link_code_or_identifier",
+                "quotation",
+                "layout",
+            }
+            or review["severity"] not in {"none", "non_severe", "severe"}
+            or (review["harmful_change_category"] == "none")
+            != (review["severity"] == "none")
+            or not isinstance(review["rationale"], str)
+            or not review["rationale"].strip()
+        ):
+            raise CanaryError("canary review is invalid")
         row = connection.execute(
             "SELECT attempt_status, review_json FROM canary_attempts WHERE attempt_number = ?",
             (attempt_number,),
         ).fetchone()
         if row is None or row["attempt_status"] != "terminal" or row["review_json"] is not None:
             raise CanaryError("canary review cannot be frozen")
-        frozen = {**review, "frozen_at": now().astimezone(UTC).isoformat()}
+        frozen = {**review, "frozen_at": current_time.isoformat()}
         with connection:
             connection.execute(
                 "UPDATE canary_attempts SET review_json = ? WHERE attempt_number = ?",
@@ -797,7 +1067,7 @@ def freeze_canary_review(
                 registration,
                 ledger_path,
                 "accepted_source_contract_violation",
-                now().astimezone(UTC),
+                current_time,
                 private_export_path=private_export_path,
             )
         if review["severity"] == "severe":
@@ -806,23 +1076,59 @@ def freeze_canary_review(
                 registration,
                 ledger_path,
                 "severe_harmful_change",
-                now().astimezone(UTC),
+                current_time,
                 private_export_path=private_export_path,
             )
         summary = _summary(connection)
+        rows = connection.execute(
+            "SELECT review_json FROM canary_attempts WHERE review_json IS NOT NULL "
+            "ORDER BY attempt_number"
+        ).fetchall()
+        reviews = [json.loads(row["review_json"]) for row in rows]
+        unacceptable = sum(item["acceptability"] == "unacceptable" for item in reviews)
+        non_severe = sum(item["severity"] == "non_severe" for item in reviews)
+        impossible_reason = None
+        if unacceptable > 1:
+            impossible_reason = "acceptable_result_limit_exceeded"
+        elif non_severe > 1:
+            impossible_reason = "non_severe_harm_limit_exceeded"
+        if impossible_reason is not None:
+            with connection:
+                connection.execute(
+                    "UPDATE canary_run SET status = 'fail', reason = ?", (impossible_reason,)
+                )
+            report = _terminal_report(
+                connection, registration, "fail", impossible_reason, current_time
+            )
+            connection.close()
+            return {
+                **summary,
+                **_terminal_result(
+                    registration,
+                    ledger_path,
+                    "fail",
+                    impossible_reason,
+                    current_time,
+                    terminal_report=report,
+                    private_export_path=private_export_path,
+                ),
+            }
         if summary["completed_attempt_count"] == MAXIMUM_ATTEMPTS:
-            rows = connection.execute(
-                "SELECT review_json FROM canary_attempts ORDER BY attempt_number"
-            ).fetchall()
-            reviews = [json.loads(row["review_json"]) for row in rows]
             acceptable = sum(item["acceptability"] == "acceptable" for item in reviews)
-            non_severe = sum(item["severity"] == "non_severe" for item in reviews)
             disposition = (
                 "success"
                 if summary["unsuccessful_attempt_count"] <= 1
                 and acceptable >= 9
                 and non_severe <= 1
                 else "fail"
+            )
+            with connection:
+                connection.execute(
+                    "UPDATE canary_run SET status = ?, reason = 'canary_complete'",
+                    (disposition,),
+                )
+            report = _terminal_report(
+                connection, registration, disposition, "canary_complete", current_time
             )
             connection.close()
             return {
@@ -832,7 +1138,8 @@ def freeze_canary_review(
                     ledger_path,
                     disposition,
                     "canary_complete",
-                    now().astimezone(UTC),
+                    current_time,
+                    terminal_report=report,
                     private_export_path=private_export_path,
                 ),
             }
@@ -858,11 +1165,47 @@ def terminate_cleanup_canary(
         raise CanaryError("terminal disposition is invalid")
     if not ledger_path.is_file():
         raise CanaryError("canary ledger does not exist")
-    return _terminal_result(
-        registration,
-        ledger_path,
-        disposition,
-        disposition,
-        now().astimezone(UTC),
-        private_export_path=private_export_path,
-    )
+    connection = _connect(ledger_path)
+    try:
+        _ensure_run(connection, registration, registration["manifest"])
+        terminal_at = now().astimezone(UTC)
+        if terminal_at >= _utc(
+            registration["manifest"]["confirmation"]["ends_at"],
+            "canary window is invalid",
+        ):
+            return _expire(
+                connection,
+                registration,
+                ledger_path,
+                terminal_at,
+                private_export_path=private_export_path,
+            )
+        terminal_disposition = "withdrawn" if disposition == "withdrawn" else "stopped"
+        reason = disposition
+        with connection:
+            connection.execute(
+                "UPDATE canary_run SET status = ?, reason = ?",
+                (terminal_disposition, reason),
+            )
+        summary = _summary(connection)
+        report = _terminal_report(
+            connection, registration, terminal_disposition, reason, terminal_at
+        )
+        connection.close()
+        return {
+            **summary,
+            **_terminal_result(
+                registration,
+                ledger_path,
+                terminal_disposition,
+                reason,
+                terminal_at,
+                terminal_report=report,
+                private_export_path=private_export_path,
+            ),
+        }
+    finally:
+        try:
+            connection.close()
+        except sqlite3.ProgrammingError:
+            pass

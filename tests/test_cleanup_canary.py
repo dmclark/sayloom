@@ -2,6 +2,7 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import json
 import sqlite3
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -9,11 +10,17 @@ from pathlib import Path
 
 import pytest
 
-from local_text.cleanup import ProviderFailure, ProviderFailureClass, ProviderOutput
+from local_text.cleanup import (
+    ProviderFailure,
+    ProviderFailureClass,
+    ProviderOutput,
+    ProviderRejectedOutputError,
+)
 from local_text.cleanup_canary import (
     CanaryAttempt,
     CanaryError,
     CanaryProviderResult,
+    check_cleanup_canary,
     freeze_canary_review,
     register_cleanup_canary,
     run_canary_attempt,
@@ -137,7 +144,7 @@ def provider_evidence() -> dict:
     }
 
 
-def confirmation(ledger: Path) -> dict:
+def confirmation(ledger: Path, *managed_locations: Path) -> dict:
     return {
         "confirmed": True,
         "confirmed_at": NOW.isoformat(),
@@ -157,7 +164,7 @@ def confirmation(ledger: Path) -> dict:
         "starts_at": NOW.isoformat(),
         "ends_at": (NOW + timedelta(days=14)).isoformat(),
         "evidence_release_at": (NOW + timedelta(days=14)).isoformat(),
-        "storage_locations": [str(ledger)],
+        "storage_locations": [str(ledger), *(str(path) for path in managed_locations)],
         "managed_deletion": True,
         "optional_private_export_before_deletion": True,
         "withdrawal_stops_and_deletes": True,
@@ -372,7 +379,9 @@ def test_budget_boundary_and_review_blocking(tmp_path: Path) -> None:
     assert len(provider.calls) == 1
     assert not ledger.exists()
 
-    registered, ledger = registration(tmp_path)
+    budget_path = tmp_path / "budget"
+    budget_path.mkdir(mode=0o700)
+    registered, ledger = registration(budget_path)
     registered["manifest"]["budget"]["request_bound_usd_micros"] = 2_000_001
     registered["manifest_sha256"] = digest(registered["manifest"])
     budget = run(run_canary_attempt(registered, FakeProvider(), ledger, attempt(), now=lambda: NOW))
@@ -407,6 +416,101 @@ def test_failure_counts_once_second_unsuccessful_hard_stops(tmp_path: Path) -> N
     assert second["status"] == "stopped"
     assert second["reason"] == "second_unsuccessful_attempt"
     assert len(provider.calls) == 2
+    assert not ledger.exists()
+
+
+@pytest.mark.parametrize(
+    ("provider_result", "outcome"),
+    [
+        (TimeoutError(), "timeout"),
+        (
+            ProviderFailure(
+                "failed",
+                failure_class=ProviderFailureClass.TRANSIENT_ROUTE,
+                input_tokens=0,
+                output_tokens=0,
+            ),
+            "failure",
+        ),
+        (
+            ProviderRejectedOutputError(
+                "refused",
+                safety_policy=True,
+            ),
+            "refusal",
+        ),
+        (
+            ProviderRejectedOutputError("rejected"),
+            "rejection",
+        ),
+    ],
+)
+def test_every_unsuccessful_outcome_counts_once(
+    tmp_path: Path, provider_result: Exception, outcome: str
+) -> None:
+    registered, ledger = registration(tmp_path)
+    provider = FakeProvider([provider_result])
+
+    result = run(run_canary_attempt(registered, provider, ledger, attempt(), now=lambda: NOW))
+
+    assert result["status"] == "running"
+    assert result["outcome"] == outcome
+    assert result["completed_attempt_count"] == 1
+    assert result["unsuccessful_attempt_count"] == 1
+    assert len(provider.calls) == 1
+
+
+@pytest.mark.parametrize(("first_failure", "second_failure"), [(1, 9), (5, 10)])
+def test_second_failure_stops_at_its_position(
+    tmp_path: Path, first_failure: int, second_failure: int
+) -> None:
+    registered, ledger = registration(tmp_path)
+    failures = {first_failure, second_failure}
+    provider = FakeProvider(
+        [
+            ProviderFailure(
+                "failed",
+                failure_class=ProviderFailureClass.TRANSIENT_ROUTE,
+                input_tokens=0,
+                output_tokens=0,
+            )
+            if index in failures
+            else CanaryProviderResult(
+                output=ProviderOutput(
+                    text=f"Attempt {index}",
+                    provider_id="openai",
+                    model_id="gpt-5.6-luna",
+                    elapsed_ms=100,
+                    input_tokens=10,
+                    output_tokens=5,
+                ),
+                reported_model_version="2026-09-01",
+                request_storage_control="store_false",
+                disclosure_detected=False,
+            )
+            for index in range(1, second_failure + 1)
+        ]
+    )
+
+    for index in range(1, second_failure + 1):
+        result = run(
+            run_canary_attempt(
+                registered, provider, ledger, attempt(f"attempt {index}"), now=lambda: NOW
+            )
+        )
+        if index < second_failure:
+            freeze_canary_review(
+                registered,
+                ledger,
+                index,
+                review(acceptable=index != first_failure),
+                now=lambda: NOW,
+            )
+
+    assert result["status"] == "stopped"
+    assert result["reason"] == "second_unsuccessful_attempt"
+    assert result["completed_attempt_count"] == second_failure
+    assert len(provider.calls) == second_failure
     assert not ledger.exists()
 
 
@@ -493,7 +597,238 @@ def test_ten_reviewed_eligible_attempts_finish_and_delete(tmp_path: Path) -> Non
     assert len(provider.calls) == 10
     assert result["status"] == "success"
     assert result["reason"] == "canary_complete"
+    assert result["terminal_report"]["authorizes"] == "nothing_further"
+    assert result["terminal_report"]["claims"] == "descriptive_only_no_baseline_or_inference"
+    assert result["terminal_report"]["attempts"]["counted"] == 10
+    assert result["terminal_report"]["reviews"]["acceptable"] == 9
     assert not ledger.exists()
+    receipt = Path(f"{ledger}.deletion-receipt.json")
+    assert receipt.is_file() and receipt.stat().st_mode & 0o777 == 0o600
+    assert set(json.loads(receipt.read_text())) == {
+        "protocol_or_run_id",
+        "disposition",
+        "deletion_timestamp",
+        "counts",
+    }
+    with pytest.raises(CanaryError, match="terminal"):
+        run(
+            run_canary_attempt(
+                registered, provider, ledger, attempt("attempt 11"), now=lambda: NOW
+            )
+        )
+    assert len(provider.calls) == 10
+
+
+def test_nine_successes_and_one_failure_passes_at_either_failure_position(
+    tmp_path: Path,
+) -> None:
+    for failure_position in (1, 10):
+        case_path = tmp_path / str(failure_position)
+        case_path.mkdir(mode=0o700)
+        registered, ledger = registration(case_path)
+        failed = ProviderFailure(
+            "failed",
+            failure_class=ProviderFailureClass.TRANSIENT_ROUTE,
+            input_tokens=0,
+            output_tokens=0,
+        )
+        provider = FakeProvider()
+        provider.results = [
+            failed
+            if index == failure_position
+            else CanaryProviderResult(
+                output=ProviderOutput(
+                    text=f"Attempt {index}",
+                    provider_id="openai",
+                    model_id="gpt-5.6-luna",
+                    elapsed_ms=100,
+                    input_tokens=10,
+                    output_tokens=5,
+                ),
+                reported_model_version="2026-09-01",
+                request_storage_control="store_false",
+                disclosure_detected=False,
+            )
+            for index in range(1, 11)
+        ]
+
+        for index in range(1, 11):
+            result = run(
+                run_canary_attempt(
+                    registered, provider, ledger, attempt(f"attempt {index}"), now=lambda: NOW
+                )
+            )
+            result = freeze_canary_review(
+                registered,
+                ledger,
+                index,
+                review(acceptable=index != failure_position),
+                now=lambda: NOW,
+            )
+
+        assert result["status"] == "success"
+        assert result["terminal_report"]["attempts"]["valid_outputs"] == 9
+
+
+def test_second_non_severe_harm_fails_at_earliest_impossible_review(tmp_path: Path) -> None:
+    registered, ledger = registration(tmp_path)
+    provider = FakeProvider()
+
+    for index in range(1, 3):
+        run(
+            run_canary_attempt(
+                registered, provider, ledger, attempt(f"attempt {index}"), now=lambda: NOW
+            )
+        )
+        result = freeze_canary_review(
+            registered,
+            ledger,
+            index,
+            review(category="meaning", severity="non_severe"),
+            now=lambda: NOW,
+        )
+
+    assert result["status"] == "fail"
+    assert result["reason"] == "non_severe_harm_limit_exceeded"
+    assert len(provider.calls) == 2
+    assert not ledger.exists()
+
+
+def test_exact_deadline_expires_without_sending_and_before_deadline_remains_running(
+    tmp_path: Path,
+) -> None:
+    before_path = tmp_path / "before"
+    before_path.mkdir(mode=0o700)
+    registered, ledger = registration(before_path)
+    before = check_cleanup_canary(
+        registered, ledger, now=lambda: NOW + timedelta(days=14) - timedelta(microseconds=1)
+    )
+    assert before["status"] == "running"
+    assert ledger.exists()
+
+    at_path = tmp_path / "at"
+    at_path.mkdir(mode=0o700)
+    registered, ledger = registration(at_path)
+    provider = FakeProvider()
+    expired = run(
+        run_canary_attempt(
+            registered, provider, ledger, attempt(), now=lambda: NOW + timedelta(days=14)
+        )
+    )
+    assert expired["status"] == "expired"
+    assert expired["reason"] == "incomplete_non_passing"
+    assert expired["terminal_report"]["attempts"]["counted"] == 0
+    assert provider.calls == []
+    assert not ledger.exists()
+
+    review_path = tmp_path / "review"
+    review_path.mkdir(mode=0o700)
+    registered, ledger = registration(review_path)
+    run(run_canary_attempt(registered, FakeProvider(), ledger, attempt(), now=lambda: NOW))
+    expired = freeze_canary_review(
+        registered,
+        ledger,
+        1,
+        review(),
+        now=lambda: NOW + timedelta(days=14),
+    )
+    assert expired["status"] == "expired"
+    assert expired["terminal_report"]["reviews"]["resolved"] == 0
+    assert not ledger.exists()
+
+
+def test_cancellation_is_a_stopped_terminal_disposition(tmp_path: Path) -> None:
+    registered, ledger = registration(tmp_path)
+    check_cleanup_canary(registered, ledger, now=lambda: NOW)
+
+    result = terminate_cleanup_canary(registered, ledger, "cancelled", now=lambda: NOW)
+
+    assert result["status"] == "stopped"
+    assert result["reason"] == "cancelled"
+    assert result["deletion_receipt"]["disposition"] == "stopped"
+
+
+def test_cumulative_integer_micro_budget_allows_exact_boundary_then_stops(tmp_path: Path) -> None:
+    ledger = tmp_path / "canary.sqlite3"
+    evidence = provider_evidence()
+    evidence["pricing"] = {
+        "input_usd_micros_per_million_tokens": 1_000_000_000,
+        "output_usd_micros_per_million_tokens": 0,
+    }
+    evidence["request_bound_usd_micros"] = 1_000_000
+    confirmed = confirmation(ledger)
+    confirmed["provider_evidence_sha256"] = digest(evidence)
+    confirmed["budget_estimate_usd_micros"] = 2_000_000
+    registered = register_cleanup_canary(
+        eligibility(), SIGNING_KEY, contract(), evidence, confirmed, now=lambda: NOW
+    )
+    provider = FakeProvider(
+        [
+            CanaryProviderResult(
+                output=ProviderOutput(
+                    text=f"Attempt {index}",
+                    provider_id="openai",
+                    model_id="gpt-5.6-luna",
+                    elapsed_ms=100,
+                    input_tokens=1_000,
+                    output_tokens=0,
+                ),
+                reported_model_version="2026-09-01",
+                request_storage_control="store_false",
+                disclosure_detected=False,
+            )
+            for index in range(1, 3)
+        ]
+    )
+
+    for index in range(1, 3):
+        result = run(
+            run_canary_attempt(
+                registered, provider, ledger, attempt(f"attempt {index}"), now=lambda: NOW
+            )
+        )
+        assert result["actual_cost_usd_micros"] == index * 1_000_000
+        freeze_canary_review(registered, ledger, index, review(), now=lambda: NOW)
+
+    stopped = run(
+        run_canary_attempt(registered, provider, ledger, attempt("attempt 3"), now=lambda: NOW)
+    )
+    assert stopped["status"] == "stopped"
+    assert stopped["reason"] == "next_request_cannot_be_reserved"
+    assert len(provider.calls) == 2
+
+
+def test_terminal_deletion_removes_every_managed_artifact(tmp_path: Path) -> None:
+    ledger = tmp_path / "canary.sqlite3"
+    log = tmp_path / "canary.log"
+    cache = tmp_path / "cache"
+    cache.mkdir(mode=0o700)
+    (cache / "response.cache").write_text("managed")
+    log.write_text("content-free log")
+    registered = register_cleanup_canary(
+        eligibility(),
+        SIGNING_KEY,
+        contract(),
+        provider_evidence(),
+        confirmation(ledger, log, cache),
+        now=lambda: NOW,
+    )
+    check_cleanup_canary(registered, ledger, now=lambda: NOW)
+    Path(f"{ledger}-wal").write_text("managed sqlite sidecar")
+
+    result = terminate_cleanup_canary(registered, ledger, "withdrawn", now=lambda: NOW)
+
+    assert not ledger.exists()
+    assert not Path(f"{ledger}-wal").exists()
+    assert not log.exists()
+    assert not cache.exists()
+    assert result["deletion_receipt"]["counts"] == {"files": 3, "directories": 1}
+    assert set(result["deletion_receipt"]) == {
+        "protocol_or_run_id",
+        "disposition",
+        "deletion_timestamp",
+        "counts",
+    }
 
 
 def test_confirmation_evidence_supports_full_window_but_missing_usage_stops(
