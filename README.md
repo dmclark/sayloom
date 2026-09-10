@@ -13,6 +13,9 @@ result **Prepared**. Smart correction, review of meaning-bearing changes,
 user-scoped personalization, and hosted operation are not implemented in this
 checkout.
 
+The [evaluation and Smart MVP map](docs/evaluation-mvp-map.md) records the current milestone order
+and keeps the cleanup and Smart benchmark tracks independent.
+
 The Python package and machine-level identifiers are deliberately neutral and
 independent of the display brand.
 
@@ -82,10 +85,13 @@ by an explicit browser-selected local destination; it streams deterministic UTF-
 recording a path or export event. Saving is for polished-cleanup evaluation only and is not consent
 to training or personalization.
 
-The separate, provider-free [correction benchmark pipeline](docs/correction-benchmark-pipeline.md)
-freezes the 2 × 2 × 2 Smart-correction experiment and validates external-only run registration,
-single-attempt output import, blind scoring, aggregate reporting, and the hard fidelity gate before
-any private corpus or provider execution.
+The independent, provider-free [Smart correction benchmark scaffold](docs/correction-benchmark-pipeline.md)
+validates external-only run registration, single-attempt output import, blind scoring, aggregate
+reporting, and the hard fidelity gate across a synthetic 2 × 2 × 2 matrix. It is not the cleanup
+runner, and cleanup evidence does not validate Smart correction. Issue
+[#14](https://github.com/dmclark/sayloom/issues/14) must bind the scaffold to the real Smart product
+contract before issue [#15](https://github.com/dmclark/sayloom/issues/15) may receive separate
+approval for a private run.
 
 Set `LOCAL_TEXT_CORRECTION_BENCHMARK_CASES_PATH` to an absolute cases-file path outside both the
 repository and application state to enable **Correct and add example**. Explicit confirmation adds

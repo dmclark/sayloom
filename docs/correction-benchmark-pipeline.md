@@ -1,12 +1,23 @@
 # Correction benchmark pipeline
 
 - **Pipeline version:** `correction-benchmark-pipeline-v1`
+- **Status:** Generic scaffold with synthetic coverage; product binding and private run not complete
 - **Scope:** private text-only Smart-correction experiment
 - **Conditions:** prompt × task context × curated knowledge, each off/on
+- **Milestone map:** [`evaluation-mvp-map.md`](evaluation-mvp-map.md)
 
 This bounded harness freezes and validates the benchmark pipeline before any
 private corpus or paid provider run. It does not call a provider and is not
 loaded by normal application startup.
+
+The scaffold is Smart-only and is independent from the cleanup benchmark/canary machinery. Issue
+[#14](https://github.com/dmclark/sayloom/issues/14) must bind it to the real Smart Prepared contract
+and explicitly enabled Private correction profile after issues
+[#10](https://github.com/dmclark/sayloom/issues/10) and
+[#12](https://github.com/dmclark/sayloom/issues/12). Synthetic tests establish scaffold behavior;
+they do not establish product acceptance, authorize a private run, or provide Smart quality
+evidence. Issue [#15](https://github.com/dmclark/sayloom/issues/15) separately requires approval, a
+private run, and a pass.
 
 ## Private data boundary
 
