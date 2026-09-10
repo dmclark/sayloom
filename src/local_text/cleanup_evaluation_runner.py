@@ -26,7 +26,7 @@ MANIFEST_VERSION = "cleanup-evaluation-registration-v1"
 SNAPSHOT_VERSION = "cleanup-evaluation-registration-corpus-v1"
 PROTOCOL_ID = "cleanup-evaluation-benchmark-v2"
 SELECTION_ALGORITHM = "cleanup-feasible-lexicographic-sha256-v1"
-SELECTION_DOMAIN = "sayloom:cleanup-evaluation:selection:v1"
+SELECTION_DOMAIN = "local_text:cleanup-evaluation:selection:v1"
 CASE_ORDER_ALGORITHM = "cleanup-case-order-sha256-v1"
 ARM_ORDER_ALGORITHM = "cleanup-arm-order-sha256-v1"
 PRIMARY_QUOTAS = {
@@ -576,11 +576,13 @@ def register_cleanup_benchmark(snapshot_value: object, inputs_value: object) -> 
     selected = _select(representatives, inputs.selection_seed, pool_sha256)
     selected_ids = [case.case_id for case in selected]
     case_order = _seeded_order(
-        inputs.case_order_seed, "sayloom:cleanup-evaluation:case-order:v1", selected_ids
+        inputs.case_order_seed, "local_text:cleanup-evaluation:case-order:v1", selected_ids
     )
     arm_order = {
         case_id: _seeded_order(
-            inputs.arm_order_seed, f"sayloom:cleanup-evaluation:arm-order:v1:{case_id}", list(ARMS)
+            inputs.arm_order_seed,
+            f"local_text:cleanup-evaluation:arm-order:v1:{case_id}",
+            list(ARMS),
         )
         for case_id in selected_ids
     }

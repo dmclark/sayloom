@@ -117,6 +117,29 @@ uv run python -m local_text.cleanup_contract \
 
 The snapshot command does not run the benchmark or authorize provider calls.
 
+The separate synthetic-smoke gate accepts a frozen registration containing that contract,
+per-arm conservative request bounds and integer-micro pricing, the 120-call quota reservation,
+isolated-environment attestations, and official provider evidence retrieved within 24 hours. It
+refuses a dirty or mismatched checkout, insecure or repository-local output storage, ordinary app
+credentials or state configuration, stale evidence, and missing dedicated benchmark credentials.
+Every attempt needs a distinct registered suite ID and matching output path; a failed or interrupted
+suite cannot be resumed selectively.
+
+Even with a valid registration, live traffic requires the explicit command flag and separate human
+approval. The command uses only `LOCAL_TEXT_BENCHMARK_GEMINI_API_KEY` and
+`LOCAL_TEXT_BENCHMARK_OPENAI_API_KEY`; it never falls back to application credentials:
+
+```sh
+uv run python -m local_text.cleanup_evaluation_smoke \
+  --registration /isolated/input/smoke-registration.json \
+  --output /isolated/output/<registered-suite-id>.json \
+  --authorize-live-smoke
+```
+
+The mode-`0600` disposition stores only safe identifiers, hashes, call metadata, integer USD
+micros, and the pass/block reason. Passing smoke satisfies only the smoke prerequisite; it does not
+authorize private corpus access, benchmark calls, spending beyond the smoke, or benchmark operation.
+
 Development configuration uses one shared file and an optional state-specific
 file inside the external state directory:
 
