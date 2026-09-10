@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from local_text.cleanup import ProviderOutput, ProviderTimeoutError
+from local_text.cleanup import ProviderConfigurationError, ProviderOutput, ProviderTimeoutError
 from local_text.cleanup_contract import build_cleanup_contract_snapshot, canonical_json
 from local_text.cleanup_evaluation_execution import (
     ExecutionProviderResult,
@@ -17,6 +17,7 @@ from local_text.cleanup_evaluation_execution import (
     read_execution_results,
     run_cleanup_benchmark,
 )
+from local_text.cleanup_evaluation_runner import CorpusSnapshot
 
 NOW = datetime(2026, 9, 10, 12, tzinfo=UTC)
 ARMS = ("baseline_paid_gemini", "candidate_paid_openai")
@@ -73,22 +74,58 @@ def provider_map(events: list[tuple[str, str]] | None = None) -> dict[str, FakeP
 
 
 def execution_inputs() -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
-    cases = [
-        {
+    cases: list[dict[str, object]] = []
+    prompt = "Preserve every word."
+    for index in range(60):
+        source = f"Private source {index}"
+        case: dict[str, object] = {
             "case_id": f"case-{index:02}",
+            "contract_version": "cleanup-evaluation-corpus-v1",
+            "purpose": "polished-cleanup-evaluation-only",
             "revision": 1,
             "current_revision": 1,
-            "record_sha256": f"{index:064x}",
-            "source_text": f"Private source {index}",
-            "consent": {"valid": True},
+            "source_category": "dictation",
+            "source_text": source,
+            "expected_cleanup": source,
+            "source_sha256": hashlib.sha256(source.encode()).hexdigest(),
+            "expected_cleanup_sha256": hashlib.sha256(source.encode()).hexdigest(),
+            "captured_at": (NOW - timedelta(days=2)).isoformat(),
+            "confirmed_at": (NOW - timedelta(days=2)).isoformat(),
+            "expires_at": (NOW + timedelta(days=20)).isoformat(),
+            "original_user_confirmed": True,
+            "expected_cleanup_user_confirmed": True,
+            "consent": {
+                "version": "cleanup-evaluation-consent-v1",
+                "scope": "polished-cleanup-evaluation-only",
+                "confirmed_at": (NOW - timedelta(days=2)).isoformat(),
+            },
             "hold": {
                 "benchmark_id": "cleanup-evaluation-benchmark-v2",
+                "confirmed_at": (NOW - timedelta(hours=2)).isoformat(),
                 "release_at": (NOW + timedelta(days=10)).isoformat(),
             },
+            "prompt": {
+                "version_id": "prompt-1",
+                "content_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
+                "text": prompt,
+            },
+            "annotations": {
+                "primary_stratum": "unchanged",
+                "challenge_tags": [],
+                "ambiguous": False,
+                "transcript_truth_dependent": False,
+                "frozen_at": (NOW - timedelta(hours=2)).isoformat(),
+                "corpus_owner": "owner-1",
+            },
         }
-        for index in range(60)
-    ]
-    snapshot = {"frozen_at": (NOW - timedelta(hours=2)).isoformat(), "cases": cases}
+        record = {key: value for key, value in case.items() if key != "current_revision"}
+        case["record_sha256"] = digest(record)
+        cases.append(case)
+    snapshot = {
+        "snapshot_version": "cleanup-evaluation-registration-corpus-v1",
+        "frozen_at": (NOW - timedelta(hours=2)).isoformat(),
+        "cases": cases,
+    }
     contract = build_cleanup_contract_snapshot(
         "Preserve every word.", configured_prompt_id="prompt-1", dependency_lock_bytes=b"locked"
     )
@@ -116,14 +153,30 @@ def execution_inputs() -> tuple[dict[str, object], dict[str, object], dict[str, 
     manifest = {
         "run_id": "run-28",
         "registered_at": NOW.isoformat(),
-        "environment": {"stable_resources_inaccessible": True},
+        "environment": {
+            "isolated_storage": True,
+            "isolated_credentials": True,
+            "permissions_verified": True,
+            "deletion_path_verified": True,
+            "clock_verified": True,
+            "free_space_bytes": 10_000_000,
+            "minimum_free_space_bytes": 1_000_000,
+            "stable_resources_inaccessible": True,
+        },
         "code": {"clean_tree": True},
-        "corpus": {"snapshot_sha256": digest(snapshot), "selected_cases": selected},
+        "corpus": {
+            "snapshot_sha256": digest(
+                CorpusSnapshot.model_validate(snapshot).model_dump(mode="json")
+            ),
+            "selected_cases": selected,
+        },
         "ordering": {"case_order": case_order, "arm_order": arm_order},
         "request_contract": contract,
         "provider_evidence": {
             "retrieved_at": (NOW - timedelta(hours=1)).isoformat(),
             "material_change": False,
+            "retention_and_data_use": "current disclosures",
+            "quota_call_capacity": {"gemini": 60, "openai": 60},
             "models": {
                 "baseline_paid_gemini": {"provider": "gemini", "model": "gemini-3.7-flash"},
                 "candidate_paid_openai": {"provider": "openai", "model": "gpt-5.6-luna"},
@@ -160,6 +213,7 @@ def execution_inputs() -> tuple[dict[str, object], dict[str, object], dict[str, 
             "conservative_estimate_usd_micros": 2_400,
             "total_cap_usd_micros": 10_000_000,
             "benchmark_id": "cleanup-evaluation-benchmark-v2",
+            "hold_name": "cleanup-evaluation-benchmark-v2",
             "storage_locations": ["snapshot", "run", "report"],
             "selected_cases": [
                 {"case_id": item["case_id"], "revision": item["revision"]}
@@ -317,12 +371,19 @@ def test_post_terminal_interruption_resumes_without_repeating_completed_request(
     ("state", "reason"),
     [
         (RunInvariants(withdrawn=True), "withdrawn"),
+        (RunInvariants(cancelled=True), "cancelled"),
         (RunInvariants(consent_valid=False), "consent_invalid"),
+        (RunInvariants(hold_valid=False), "hold_invalid"),
         (RunInvariants(selected_cases_unchanged=False), "selected_case_changed"),
+        (RunInvariants(manifest_unchanged=False), "manifest_changed"),
         (RunInvariants(code_unchanged=False), "code_changed"),
+        (RunInvariants(configuration_unchanged=False), "configuration_changed"),
         (RunInvariants(isolation_intact=False), "isolation_violation"),
+        (RunInvariants(disclosure_intact=False), "disclosure_violation"),
         (RunInvariants(text_logging_safe=False), "text_logging_violation"),
+        (RunInvariants(storage_intact=False), "storage_violation"),
         (RunInvariants(write_back_disabled=False), "write_back_violation"),
+        (RunInvariants(stable_resources_inaccessible=False), "stable_resource_violation"),
     ],
 )
 def test_current_invariant_failures_stop_before_send(
@@ -345,10 +406,85 @@ def test_current_invariant_failures_stop_before_send(
     assert sum(len(provider.calls) for provider in providers.values()) == 0
 
 
+def test_changed_runtime_invariants_stop_between_requests(tmp_path: Path) -> None:
+    registration, snapshot, smoke = execution_inputs()
+    providers = provider_map()
+
+    def current_state() -> RunInvariants:
+        return RunInvariants(cancelled=sum(len(item.calls) for item in providers.values()) == 1)
+
+    result = asyncio.run(
+        run_cleanup_benchmark(
+            registration,
+            snapshot,
+            smoke,
+            providers,
+            tmp_path / "cancelled.sqlite3",
+            now=lambda: NOW,
+            invariants=current_state,
+        )
+    )
+    assert result["reason"] == "cancelled"
+    assert result["completed_request_count"] == 1
+
+
+@pytest.mark.parametrize(
+    ("mutation", "reason"),
+    [
+        ("model", "provider_reported_model_mismatch"),
+        ("storage", "storage_violation"),
+        ("disclosure", "disclosure_violation"),
+        ("validator_bypass", "impermissible_output_bypassed_validator"),
+        ("actual_budget", "actual_budget_breach"),
+        ("permanent", "permanent_provider_failure"),
+    ],
+)
+def test_provider_and_result_hard_stops_are_terminal_before_new_calls(
+    tmp_path: Path, mutation: str, reason: str
+) -> None:
+    registration, snapshot, smoke = execution_inputs()
+    providers = provider_map()
+    first_case = registration["manifest"]["ordering"]["case_order"][0]
+    first_arm = registration["manifest"]["ordering"]["arm_order"][first_case][0]
+    provider = providers[first_arm]
+    result = provider.result("safe")
+    if mutation == "model":
+        result = replace(result, output=replace(result.output, model_id="other-model"))
+    elif mutation == "storage":
+        result = replace(result, request_storage_control="wrong")
+    elif mutation == "disclosure":
+        result = replace(result, disclosure_detected=True)
+    elif mutation == "validator_bypass":
+        result = replace(result, validator_bypassed=True)
+    elif mutation == "actual_budget":
+        registration["manifest"]["budget"]["request_bound_usd_micros"][first_arm] = 1
+        registration["manifest"]["run_confirmation"][
+            "conservative_estimate_usd_micros"
+        ] = 60 * 21
+        registration["manifest_sha256"] = digest(registration["manifest"])
+    else:
+        provider.results.append(ProviderConfigurationError("safe configuration failure"))
+    if mutation != "permanent":
+        provider.results.append(result)
+
+    stopped = asyncio.run(
+        run_cleanup_benchmark(
+            registration,
+            snapshot,
+            smoke,
+            providers,
+            tmp_path / f"{mutation}.sqlite3",
+            now=lambda: NOW,
+        )
+    )
+    assert stopped["reason"] == reason
+    assert stopped["completed_request_count"] == 1
+    assert sum(len(item.calls) for item in providers.values()) == 1
+
+
 def test_pre_send_bound_and_three_operational_failures_stop_new_calls(tmp_path: Path) -> None:
     registration, snapshot, smoke = execution_inputs()
-    registration["manifest"]["budget"]["total_usd_micros"] = 179
-    registration["manifest_sha256"] = digest(registration["manifest"])
+    smoke["smoke_cost_usd_micros"] = 9_999_990
     providers = provider_map()
     blocked = asyncio.run(
         run_cleanup_benchmark(
@@ -426,6 +562,8 @@ def test_cli_refuses_before_reading_private_inputs_or_constructing_providers(
             str(tmp_path / "missing-snapshot.json"),
             "--smoke",
             str(tmp_path / "missing-smoke.json"),
+            "--invariants",
+            str(tmp_path / "missing-invariants.json"),
             "--ledger",
             str(tmp_path / "missing.sqlite3"),
         ],

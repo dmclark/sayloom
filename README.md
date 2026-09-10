@@ -158,6 +158,7 @@ uv run python -m local_text.cleanup_evaluation_execution \
   --registration /isolated/input/registration.json \
   --snapshot /isolated/input/snapshot.json \
   --smoke /isolated/input/smoke.json \
+  --invariants /isolated/input/current-invariants.json \
   --ledger /isolated/output/<registered-run-id>.sqlite3 \
   --authorize-private-benchmark
 ```

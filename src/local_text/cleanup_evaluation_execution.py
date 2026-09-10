@@ -18,6 +18,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
+from pydantic import ValidationError
+
 from local_text.cleanup import (
     GeminiAdapter,
     OpenAIAdapter,
@@ -28,6 +30,7 @@ from local_text.cleanup import (
     _validate_output,
 )
 from local_text.cleanup_contract import BENCHMARK_DEADLINE_SECONDS, canonical_json
+from local_text.cleanup_evaluation_runner import CorpusSnapshot
 
 ARMS = ("baseline_paid_gemini", "candidate_paid_openai")
 PROTOCOL_ID = "cleanup-evaluation-benchmark-v2"
@@ -113,6 +116,10 @@ def _utc(value: object) -> datetime:
 
 def _cost(tokens: int, rate: int) -> int:
     return (tokens * rate + 999_999) // 1_000_000
+
+
+def _storage_control(provider: str) -> str:
+    return "store_false" if provider == "openai" else "provider_terms"
 
 
 def _valid_count(value: object, maximum: object) -> bool:
@@ -254,9 +261,12 @@ def _validate_gate(
     manifest = registration["manifest"]
     if registration.get("manifest_sha256") != _digest(manifest):
         raise ExecutionError("registered manifest changed")
-    if not isinstance(snapshot, dict) or manifest.get("corpus", {}).get(
-        "snapshot_sha256"
-    ) != _digest(snapshot):
+    try:
+        validated_snapshot = CorpusSnapshot.model_validate(snapshot)
+    except ValidationError:
+        raise ExecutionError("registered snapshot is invalid") from None
+    normalized_snapshot = validated_snapshot.model_dump(mode="json")
+    if manifest.get("corpus", {}).get("snapshot_sha256") != _digest(normalized_snapshot):
         raise ExecutionError("registered snapshot changed")
     if not isinstance(smoke, dict) or smoke.get("status") != "passed":
         raise ExecutionError("passing synthetic smoke is required")
@@ -274,6 +284,9 @@ def _validate_gate(
         or current_time - evidence_at > EVIDENCE_MAX_AGE
     ):
         raise ExecutionError("provider evidence is not current")
+    quota = evidence.get("quota_call_capacity", {})
+    if any(quota.get(provider, 0) < 60 for provider in ("gemini", "openai")):
+        raise ExecutionError("provider capacity is insufficient")
     confirmation = manifest.get("run_confirmation", {})
     selected = manifest.get("corpus", {}).get("selected_cases")
     expected_confirmation = [
@@ -292,6 +305,7 @@ def _validate_gate(
     conservative_estimate = 60 * sum(
         budget.get("request_bound_usd_micros", {}).get(arm, -1) for arm in ARMS
     )
+    environment = manifest.get("environment", {})
     if (
         confirmation.get("confirmed") is not True
         or confirmation.get("maximum_private_calls") != 120
@@ -301,19 +315,29 @@ def _validate_gate(
         or confirmation.get("conservative_estimate_usd_micros") != conservative_estimate
         or confirmation.get("total_cap_usd_micros") != 10_000_000
         or confirmation.get("benchmark_id") != PROTOCOL_ID
+        or not confirmation.get("hold_name")
+        or confirmation.get("disclosures") != evidence.get("retention_and_data_use")
         or confirmation.get("storage_locations") != storage.get("locations")
-        or not confirmation.get("disclosures")
         or release_at <= current_time
         or release_at > confirmed_at + timedelta(days=30)
         or storage.get("locations_confirmed") is not True
         or not storage.get("inventory")
         or not storage.get("locations")
         or manifest.get("lifecycle", {}).get("write_back_to_live_corpus") is not False
-        or manifest.get("environment", {}).get("stable_resources_inaccessible") is not True
+        or budget.get("total_usd_micros") != 10_000_000
+        or budget.get("pre_send_stop") is not True
+        or environment.get("isolated_storage") is not True
+        or environment.get("isolated_credentials") is not True
+        or environment.get("permissions_verified") is not True
+        or environment.get("deletion_path_verified") is not True
+        or environment.get("clock_verified") is not True
+        or environment.get("free_space_bytes", -1)
+        < environment.get("minimum_free_space_bytes", 0)
+        or environment.get("stable_resources_inaccessible") is not True
         or manifest.get("code", {}).get("clean_tree") is not True
     ):
         raise ExecutionError("run confirmation or isolation gate is invalid")
-    cases = snapshot.get("cases")
+    cases = normalized_snapshot["cases"]
     if not isinstance(cases, list) or len(selected or ()) != 60:
         raise ExecutionError("selected case set is invalid")
     case_by_id = {item.get("case_id"): item for item in cases if isinstance(item, dict)}
@@ -324,7 +348,11 @@ def _validate_gate(
             or case.get("revision") != item["revision"]
             or case.get("current_revision") != item["revision"]
             or case.get("record_sha256") != item["record_sha256"]
-            or case.get("consent", {}).get("valid") is not True
+            or case.get("original_user_confirmed") is not True
+            or case.get("expected_cleanup_user_confirmed") is not True
+            or case.get("consent", {}).get("version") != "cleanup-evaluation-consent-v1"
+            or case.get("consent", {}).get("scope") != "polished-cleanup-evaluation-only"
+            or _utc(case.get("expires_at")) <= current_time
             or case.get("hold", {}).get("benchmark_id") != PROTOCOL_ID
             or _utc(case.get("hold", {}).get("release_at")) != release_at
         ):
@@ -358,6 +386,8 @@ def _failure_outcome(error: Exception) -> tuple[str, str, bool]:
             return "refusal", "safety_refusal", False
         return "rejected_output", "rejected", False
     if isinstance(error, ProviderFailure):
+        if error.provider_code == "timeout":
+            return "timeout", "transient_route", False
         if error.failure_class in {
             ProviderFailureClass.PERMANENT_CONFIGURATION,
             ProviderFailureClass.PERMANENT_QUOTA,
@@ -544,7 +574,7 @@ async def run_cleanup_benchmark(
                         provider_code=error.provider_code,
                         http_status=error.http_status,
                     )
-                operational = outcome == "failure" and not permanent
+                operational = outcome in {"failure", "timeout"} and not permanent
                 if permanent:
                     hard_stop = "permanent_provider_failure"
             elif not isinstance(result, ExecutionProviderResult):
@@ -556,9 +586,7 @@ async def run_cleanup_benchmark(
             else:
                 output = result.output
                 model_evidence = evidence["models"][arm_id]
-                expected_storage = (
-                    "store_false" if model_evidence["provider"] == "openai" else "provider_terms"
-                )
+                expected_storage = _storage_control(model_evidence["provider"])
                 terminal.update(
                     provider=output.provider_id,
                     model=output.model_id,
@@ -612,19 +640,29 @@ async def run_cleanup_benchmark(
                     )
                     operational = True
 
+            input_tokens = terminal["input_tokens"]
+            output_tokens = terminal["output_tokens"]
+            usage_absent_before_response = (
+                input_tokens is None
+                and output_tokens is None
+                and terminal["outcome"] in {"timeout", "failure"}
+                and terminal["failure_class"]
+                in {"transient_route", "temporary_quota", "unknown_system_failure"}
+            )
+            if hard_stop is None and not usage_absent_before_response:
                 maximum_input = budget["input_token_maximum"][arm_id]
                 maximum_output = budget["output_token_maximum"][arm_id]
-                if not _valid_count(output.input_tokens, maximum_input) or not _valid_count(
-                    output.output_tokens, maximum_output
+                if not _valid_count(input_tokens, maximum_input) or not _valid_count(
+                    output_tokens, maximum_output
                 ):
                     hard_stop = "missing_or_malformed_usage"
                 else:
                     pricing = evidence["pricing"][arm_id]
                     actual = _cost(
-                        output.input_tokens,
+                        input_tokens,
                         pricing["input_usd_micros_per_million_tokens"],
                     ) + _cost(
-                        output.output_tokens,
+                        output_tokens,
                         pricing["output_usd_micros_per_million_tokens"],
                     )
                     terminal["actual_usd_micros"] = actual
@@ -697,9 +735,7 @@ class _LiveExecutionProvider:
         return ExecutionProviderResult(
             output=output,
             reported_model_version=None,
-            request_storage_control=(
-                "store_false" if isinstance(self.adapter, OpenAIAdapter) else "provider_terms"
-            ),
+            request_storage_control=_storage_control(self.adapter.provider_id),
             disclosure_detected=False,
         )
 
@@ -759,6 +795,7 @@ def main() -> None:
     parser.add_argument("--registration", type=Path, required=True)
     parser.add_argument("--snapshot", type=Path, required=True)
     parser.add_argument("--smoke", type=Path, required=True)
+    parser.add_argument("--invariants", type=Path, required=True)
     parser.add_argument("--ledger", type=Path, required=True)
     parser.add_argument("--authorize-private-benchmark", action="store_true")
     args = parser.parse_args()
@@ -774,6 +811,20 @@ def main() -> None:
         smoke = json.loads(args.smoke.read_bytes())
         manifest = registration["manifest"]
         _verify_local_execution(manifest, args.ledger)
+
+        def current_invariants() -> RunInvariants:
+            try:
+                current_registration = json.loads(args.registration.read_bytes())
+                current_snapshot = json.loads(args.snapshot.read_bytes())
+                values = json.loads(args.invariants.read_bytes())
+                state = RunInvariants(**values)
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError):
+                return RunInvariants(configuration_unchanged=False)
+            if _digest(current_registration) != _digest(registration):
+                return RunInvariants(manifest_unchanged=False)
+            if _digest(current_snapshot) != _digest(snapshot):
+                return RunInvariants(selected_cases_unchanged=False)
+            return state
 
         async def execute() -> dict[str, object]:
             import httpx
@@ -794,7 +845,12 @@ def main() -> None:
                     ),
                 }
                 return await run_cleanup_benchmark(
-                    registration, snapshot, smoke, providers, args.ledger
+                    registration,
+                    snapshot,
+                    smoke,
+                    providers,
+                    args.ledger,
+                    invariants=current_invariants,
                 )
 
         result = asyncio.run(execute())
