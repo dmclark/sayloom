@@ -165,6 +165,32 @@ uv run python -m local_text.cleanup_evaluation_execution \
 
 Building or testing this command does not grant that authorization and performs no provider calls.
 
+After all 120 requests complete, initialize the private blinded review in that same external ledger.
+The command exposes one seeded-random output at a time, with only a blind review ID and position.
+Responses are read from local JSON files so rationales do not appear in command arguments. Each
+response names its `review_id`, `expected_revision`, and every protocol rubric field. A stale
+revision is rejected rather than overwriting a newer judgment.
+
+```sh
+uv run python -m local_text.cleanup_evaluation_review initialize \
+  --registration /isolated/input/registration.json \
+  --snapshot /isolated/input/snapshot.json \
+  --ledger /isolated/output/<registered-run-id>.sqlite3
+uv run python -m local_text.cleanup_evaluation_review next-individual \
+  --run-id <registered-run-id> --ledger /isolated/output/<registered-run-id>.sqlite3
+uv run python -m local_text.cleanup_evaluation_review record-individual \
+  --run-id <registered-run-id> --ledger /isolated/output/<registered-run-id>.sqlite3 \
+  --response /isolated/input/individual-response.json
+```
+
+Once all individual judgments are recorded, `freeze-individual` permanently closes that phase.
+Only then does `next-pair` expose independently ordered, side-randomized A/B pairs against Original;
+record choices with `record-pair` and a response containing `review_id`, `expected_revision`, and
+`choice` (`a`, `b`, `tie`, or `neither`). `freeze` requires all 60 pair choices and makes both sets
+of judgments immutable. `unblind` is rejected until that freeze and succeeds only once, returning
+the private identity mapping for local reporting. `status` returns content-free progress and records
+that review blocks benchmark passage until the one-time unblind transition.
+
 Development configuration uses one shared file and an optional state-specific
 file inside the external state directory:
 
