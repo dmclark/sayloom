@@ -1,7 +1,12 @@
 # Cleanup resilience and local evaluation design
 
-- **Status:** Gates 1–6 implemented; version-one benchmark/canary design superseded; successor
-  implementation and operation unauthorized
+> **Superseded implementation-status record (2026-09-10).** This design predates the cleanup-only
+> benchmark/canary machinery implemented by issues #25–#32. That implementation does not establish
+> that a live run occurred and grants no operational authorization. Cleanup evaluation remains
+> independent from Smart evaluation; use the canonical
+> [evaluation and Smart MVP map](evaluation-mvp-map.md) for current cross-track status.
+
+- **Status:** Historical design; version-one benchmark/canary design superseded
 - **Code baseline:** `8599efa3c3ac65e50ff44a4ad43f31d68af5ae00`
 - **Provider evidence checked:** 2026-08-26
 - **Scope:** Cleanup routing and an explicitly confirmed, private evaluation corpus; no runtime,
@@ -287,18 +292,20 @@ sample expansion, automatic fallback, 25/100 continuation, or stable promotion.
    [corpus contract](cleanup-evaluation-corpus-contract.md) encodes the six confirmed decisions in
    API, separate storage, consent, expiry, transactional deletion, and JSONL export contracts.
    [Version 1](cleanup-evaluation-benchmark-v1.json) is preserved unchanged as historical evidence;
-   [version 2](cleanup-evaluation-benchmark-v2.json) is the canonical protocol but authorizes no
-   implementation or operation.
+   [version 2](cleanup-evaluation-benchmark-v2.json) is the canonical protocol. Its approval itself
+   authorized no implementation or operation.
 6. **Corpus persistence and lifecycle (implemented):** the separate opt-in evaluation database,
    proof-bound capture/confirm/review/delete/export, expiry command, and transactional deletion use
    an explicit migration chain. Affected tests cover fresh and predecessor migration, no-migration
    startup, consent paths, stale confirmation, and synthetic-only export/deletion evidence.
-7. **Offline benchmark runner (not implemented or authorized):** a future separately approved task
-   may implement version 2 without a stable migration. Operation still requires its exact private
-   manifest, run confirmation, dedicated identities, synthetic smoke, and provider-call approval.
-8. **Non-shadow canary (not implemented or authorized):** eligibility requires every benchmark gate
-   to pass. Operation then requires separate explicit confirmation and distinct pilot identities for
-   the single terminal 10-cleanup manual-candidate canary.
+7. **Offline benchmark runner (later implemented by issues #25–#32; operation unauthorized):** the
+   cleanup-only machinery implements version 2 without a stable migration. Operation still requires
+   its exact private manifest, run confirmation, dedicated identities, synthetic smoke, and
+   provider-call approval.
+8. **Non-shadow canary machinery (later implemented by issues #25–#32; operation unauthorized):**
+   eligibility requires every benchmark gate to pass. Operation then requires separate explicit
+   confirmation and distinct pilot identities for the single terminal 10-cleanup manual-candidate
+   canary.
 
 ## Historical provider-evidence snapshot
 

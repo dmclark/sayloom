@@ -3,17 +3,17 @@
 - **Status:** Approved
 - **Audience:** Product, design, engineering, research, and delivery contributors
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
-- **Current implementation evidence:** Repository at `8d52b63`
+- **Evaluation and milestone authority:** [`evaluation-mvp-map.md`](evaluation-mvp-map.md)
 
 ## Purpose
 
 This plan sequences the implementation gaps between the current local-first
 application and the confirmed Sayloom product contract. It does not replace or
-reinterpret `PRODUCT.md`. Each gate is one bounded deliverable with observable
-exit criteria; implementation should complete affected checks before moving to
-the next gate.
+reinterpret `PRODUCT.md`. Each capability area has observable exit criteria;
+implementation follows the issue order below and completes affected checks
+before advancing.
 
-The current application already provides conservative cleanup, provider
+The Current product already provides Conservative source-preserving preparation, provider
 routing, editable Original text, a generated result named Prepared,
 explicit Outgoing selection, fail-open behavior, prompt versions, inspectable
 failures, and local Raycast delivery. Smart correction, meaning-bearing change
@@ -23,29 +23,37 @@ access, and the hosted service remain implementation gaps.
 ## Sequencing
 
 ```text
-Gate 1: Vocabulary and modes
-              │
-              ▼
-Gate 2: Smart correction and review
-              │
-              ▼
-Gate 3: Identity and tenant isolation
-              │
-              ▼
-Gate 4: Personalization
-              │
-              ▼
-Gate 5: Hosted MVP
-              │
-              ▼
-Gate 6: Evaluation and release verification
+#6 vocabulary
+    │
+    ▼
+#10 Smart Prepared generation
+    │
+    ├──────────────┐
+    ▼              ▼
+#11 repair review  #12 Private correction profile
+    └──────┬───────┘
+           ▼
+#14 product-bound Smart benchmark acceptance
+           ▼
+Smart MVP candidate
+           ▼
+#15 separately approved private run and pass
+           ▼
+Evidence-backed Smart MVP
+           ▼
+#13 optional memory + #16 local self-pilot
+           ▼
+Locally proven Smart product
+           ▼
+#17 Partner-demo ready
 ```
 
-The uncertainty contract must be decided before Gate 2 implementation. The
-personalization schema, approval signal, inference method, and retention rules
-must be decided before Gate 4 implementation.
+Issue [#9](https://github.com/dmclark/sayloom/issues/9) coordinates the Smart work. The linked
+[evaluation and Smart MVP map](evaluation-mvp-map.md) defines milestone evidence and keeps cleanup
+evaluation independent from Smart evaluation. The capability sections below describe scope; they do
+not override this issue order. Memory and the full memory-inclusive self-pilot are outside the MVP.
 
-## Gate 1: Prepared vocabulary and mode foundation
+## Capability area: Prepared vocabulary and mode foundation
 
 ### Outcome
 
@@ -75,7 +83,7 @@ changing conservative correction behavior.
   mode.
 - Model, route, UI, migration, and affected browser tests pass.
 
-## Gate 2: Smart correction and review
+## Capability area: Smart correction and review
 
 ### Outcome
 
@@ -107,12 +115,13 @@ The review interaction follows these rules:
   exact visible Original or Prepared selection.
 
 Task context is bounded to one request and is never retained in durable state
-or logs. Curated preferred terms and known confusions are disabled by default,
-owned by the local principal, inspectable, editable, deletable, and supplied
-only when relevant and explicitly enabled. A confirmed repair may produce a
-conservative memory proposal, but saving it requires a separate explicit
-approval; confirmation, copying, dismissal, and ordinary preparation save
-nothing.
+or logs. The Private correction profile in the Smart MVP contains curated
+preferred terms and known confusions. It is disabled by default, owned by the
+local principal, inspectable, editable, deletable, and supplied only when
+relevant and explicitly enabled. It is not Correction memory. A later confirmed
+repair may produce a conservative memory proposal, but saving it requires a
+separate explicit approval; confirmation, copying, dismissal, and ordinary
+preparation save nothing.
 
 The controlled local proof uses Voiceitt Chrome insertion into Original, with
 paste as a labeled fallback. Its private text-only benchmark freezes cases,
@@ -158,7 +167,7 @@ benchmark material and superseded alternatives remain in read-only Mandrel.
 - Smart correction never changes Conservative mode's lexical boundary.
 - A user can edit Original and regenerate after rejecting an inferred wording.
 
-## Gate 3: Identity and tenant isolation
+## Capability area: Identity and tenant isolation
 
 ### Outcome
 
@@ -181,12 +190,13 @@ personalization.
 - Anonymous requests cannot create durable personalization.
 - Normal startup still checks schema state without migrating or seeding.
 
-## Gate 4: Controllable personalization
+## Capability area: Controllable personalization
 
 ### Outcome
 
-Add user-specific learning that remains private, inspectable, editable, and
-deletable.
+Add later user-specific learning that remains private, inspectable, editable,
+and deletable. This memory-inclusive scope belongs to issues #13 and #16 after
+the Evidence-backed Smart MVP; it is not required for the MVP.
 
 ### Decision required before implementation
 
@@ -211,7 +221,7 @@ details remain deferred in `PRODUCT.md` and this plan does not decide them.
   another user's correction.
 - Disabling or deleting information prevents its later use.
 
-## Gate 5: Hosted MVP
+## Capability area: Hosted offering
 
 ### Outcome
 
@@ -237,17 +247,23 @@ Provide the initial hosted offering defined by the product contract.
   verification.
 - Hosted failures leave Original available and never persist operating text.
 
-## Gate 6: Product evaluation and release verification
+## Capability area: Smart evaluation and release verification
 
 ### Outcome
 
-Verify that Smart correction improves intended-text accuracy and efficiency
-without hiding harmful changes or weakening privacy and fail-open guarantees.
+Verify independently that Smart correction improves intended-text accuracy and
+efficiency without hiding harmful changes or weakening privacy and fail-open
+guarantees.
 
 ### In scope
 
-- Extend the existing private evaluation workflow to compare Conservative and
-  Smart modes.
+- In issue #14, bind the generic Smart benchmark scaffold to the real Smart
+  generation and Private correction profile contracts, then complete synthetic
+  and product acceptance.
+- In issue #15, obtain separate approval before any private corpus or provider
+  operation, then run the frozen Smart benchmark and require its gates to pass.
+- Keep the cleanup benchmark runner, corpus, protocol, and evidence separate;
+  none validates Smart correction.
 - Define release thresholds for intended-text accuracy, harmful corrections,
   manual-edit reduction, latency, and fail-open reliability before launch.
 - Run one dedicated integration and release-verification phase after all
@@ -256,7 +272,8 @@ without hiding harmful changes or weakening privacy and fail-open guarantees.
 
 ### Exit criteria
 
-- Confirmed release thresholds pass on the approved private evaluation corpus.
+- Frozen Smart thresholds pass on the separately approved private Smart corpus,
+  producing the Evidence-backed Smart MVP.
 - Full feature-mapped integration evidence covers local and hosted boundaries.
 - Remaining limitations and deferred scope are documented before release.
 
@@ -278,7 +295,7 @@ decided:
 - hosted bring-your-own-key support; and
 - voice or audio ingestion, storage, or verification.
 
-## Durable constraints for every gate
+## Durable constraints for every capability area
 
 - Original remains usable whenever processing is unavailable or fails.
 - The user remains authoritative about intended meaning.

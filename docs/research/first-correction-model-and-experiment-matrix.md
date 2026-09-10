@@ -1,6 +1,11 @@
 # First correction model and experiment matrix
 
-- **Status:** Research recommendation; no implementation or paid run authorized
+> **Superseded experiment recommendation (2026-09-10).** This document is retained as research
+> provenance. It does not define the current Smart MVP sequence, product-bound benchmark contract,
+> model choice, acceptance, or operational authorization. Use the canonical
+> [evaluation and Smart MVP map](../evaluation-mvp-map.md).
+
+- **Status:** Superseded research recommendation; no implementation or paid run authorized
 - **Product authority:** [`PRODUCT.md`](../../PRODUCT.md)
 - **Sources checked:** 2026-09-04
 
