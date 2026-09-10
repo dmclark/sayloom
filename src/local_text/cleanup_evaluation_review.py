@@ -63,6 +63,7 @@ def _create_schema(connection: Any) -> None:
             individual_frozen_at TEXT,
             review_frozen_at TEXT,
             review_sha256 TEXT,
+            results_sha256 TEXT,
             unblinded_at TEXT
         );
         CREATE TABLE IF NOT EXISTS individual_reviews (
@@ -575,6 +576,17 @@ def _frozen_reviews(connection: Any, run_id: str) -> dict[str, object]:
     }
 
 
+def _frozen_results(connection: Any, run_id: str) -> list[dict[str, object]]:
+    rows = connection.execute(
+        "SELECT ordinal, case_id, arm_id, outcome, user_visible_text, validator_disposition, "
+        "provider, model, reported_model_version, elapsed_ms, input_tokens, output_tokens, "
+        "actual_usd_micros, failure_class, provider_code, http_status "
+        "FROM benchmark_requests WHERE run_id = ? AND state = 'terminal' ORDER BY ordinal",
+        (run_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def freeze_review(
     ledger_path: Path,
     run_id: str,
@@ -593,12 +605,14 @@ def freeze_review(
         if unresolved:
             raise ReviewError("pair review has unresolved items")
         review_sha256 = _digest(_frozen_reviews(connection, run_id))
+        results_sha256 = _digest(_frozen_results(connection, run_id))
         at = now().astimezone(UTC)
         with connection:
             connection.execute(
-                "UPDATE review_state SET phase = 'frozen', review_frozen_at = ?, review_sha256 = ? "
-                "WHERE run_id = ?",
-                (at.isoformat(), review_sha256, run_id),
+                "UPDATE review_state SET phase = 'frozen', review_frozen_at = ?, "
+                "review_sha256 = ?, "
+                "results_sha256 = ? WHERE run_id = ?",
+                (at.isoformat(), review_sha256, results_sha256, run_id),
             )
             _event(connection, run_id, "review_frozen", at)
         return {"run_id": run_id, "phase": "frozen", "review_sha256": review_sha256}
@@ -641,6 +655,8 @@ def unblind_review(
         ).fetchall()
         if _digest(blind) != state["review_sha256"]:
             raise ReviewError("frozen review integrity check failed")
+        if _digest(_frozen_results(connection, run_id)) != state["results_sha256"]:
+            raise ReviewError("frozen result integrity check failed")
         at = now().astimezone(UTC)
         with connection:
             cursor = connection.execute(
