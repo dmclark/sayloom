@@ -121,6 +121,90 @@ def test_successful_and_unchanged_cleanup_are_distinguished() -> None:
     assert unchanged.prepared_text == "synthetic raw"
 
 
+def test_smart_prepared_returns_server_computed_replacement() -> None:
+    service = CleanupService(
+        provider=StaticProvider("Send the synthetic report now."),
+        model="test-model",
+        timeout_seconds=1,
+    )
+
+    result = asyncio.run(
+        service.clean(
+            CleanupRequest(
+                original_text="send teh synthetic report now",
+                correction_mode="smart",
+            ),
+            "Synthetic cleanup instruction",
+        )
+    )
+
+    assert result.status is CleanupStatus.PREPARED
+    assert result.prepared_text == "Send the synthetic report now."
+    assert [repair.model_dump(mode="json") for repair in result.lexical_repairs] == [
+        {
+            "operation": "replacement",
+            "original_span": {"start": 5, "end": 8, "text": "teh"},
+            "prepared_span": {"start": 5, "end": 8, "text": "the"},
+            "context": "Send the synthetic report now.",
+            "queue_position": 1,
+            "inspection_reason": (
+                "Prepared replaces wording; verify it matches the intended meaning."
+            ),
+        }
+    ]
+
+
+def test_smart_request_supplies_only_explicit_ephemeral_evidence() -> None:
+    observed: list[tuple[str, tuple[str, ...], str]] = []
+
+    class ObservingProvider(StaticProvider):
+        async def clean(
+            self,
+            original_text: str,
+            system_prompt: str,
+            *,
+            task_context: str | None = None,
+            relevant_curated_knowledge: tuple[str, ...] = (),
+        ) -> ProviderOutput:
+            observed.append((task_context or "", relevant_curated_knowledge, system_prompt))
+            return await super().clean(original_text, system_prompt)
+
+    service = CleanupService(
+        provider=ObservingProvider("Send the synthetic report."),
+        model="test-model",
+        timeout_seconds=1,
+    )
+
+    result = asyncio.run(
+        service.clean(
+            CleanupRequest(
+                original_text="send teh synthetic report",
+                correction_mode="smart",
+                task_context="Writing a release note.",
+                relevant_curated_knowledge=["Prefer the term synthetic report."],
+                curated_knowledge_enabled=True,
+            ),
+            "Synthetic cleanup instruction",
+        )
+    )
+
+    assert result.status is CleanupStatus.PREPARED
+    assert observed[0][0:2] == (
+        "Writing a release note.",
+        ("Prefer the term synthetic report.",),
+    )
+    assert "least-change" in observed[0][2]
+
+
+def test_smart_request_rejects_knowledge_that_is_not_explicitly_enabled() -> None:
+    with pytest.raises(ValidationError):
+        CleanupRequest(
+            original_text="synthetic source",
+            correction_mode="smart",
+            relevant_curated_knowledge=["Synthetic private term"],
+        )
+
+
 @pytest.mark.parametrize(
     ("raw_text", "cleaned_text"),
     [

@@ -254,6 +254,35 @@ main { padding-top: 22px; }
   white-space: nowrap;
 }
 
+.smart-task-context {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.smart-task-context[hidden] { display: none; }
+
+.smart-task-context input {
+  width: min(34vw, 440px);
+  min-height: 34px;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: var(--ink);
+  background: rgba(255, 253, 247, 0.8);
+  font-size: 0.76rem;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
 .switch-control {
   display: inline-flex;
   align-items: center;
@@ -1022,6 +1051,13 @@ textarea::placeholder { color: #9a988f; font-style: italic; }
   .correction-mode-controls label { justify-content: space-between; }
   .correction-mode-controls select { width: min(68vw, 260px); }
   .mode-state { padding: 8px 0 0; border-top: 1px solid var(--line); border-left: 0; }
+  .smart-task-context {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
+    margin-left: 0;
+  }
+  .smart-task-context input { width: 100%; }
   .error-sheet dl {
     grid-template-columns: minmax(82px, 0.3fr) minmax(0, 1fr);
     gap: 6px 10px;

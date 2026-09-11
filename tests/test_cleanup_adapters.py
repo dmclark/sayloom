@@ -167,6 +167,54 @@ def test_openai_luna_request_shape_and_usage_are_provider_correct() -> None:
     assert "temperature" not in body
 
 
+@pytest.mark.parametrize("provider", ["gemini", "openai"])
+def test_smart_evidence_is_ephemeral_untrusted_and_foreground(provider: str) -> None:
+    requests: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        response = gemini_response() if provider == "gemini" else openai_response()
+        return httpx.Response(200, json=response)
+
+    async def exercise() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            adapter = (
+                GeminiAdapter("synthetic-key", GEMINI_37_FLASH, client)
+                if provider == "gemini"
+                else OpenAIAdapter("synthetic-key", client)
+            )
+            await adapter.clean(
+                "synthetic Original",
+                "Synthetic immutable instruction",
+                task_context="Writing a release note.",
+                relevant_curated_knowledge=("Prefer Sayloom.",),
+            )
+
+    asyncio.run(exercise())
+
+    body = json.loads(requests[0].content)
+    user_content = (
+        body["contents"][0]["parts"][0]["text"]
+        if provider == "gemini"
+        else body["input"][1]["content"]
+    )
+    assert user_content == (
+        '<REQUEST_EVIDENCE>\n{"original_text":"synthetic Original",'
+        '"task_context":"Writing a release note.",'
+        '"relevant_curated_knowledge":["Prefer Sayloom."]}\n</REQUEST_EVIDENCE>'
+    )
+    instruction = body["system_instruction"] if provider == "gemini" else body["input"][0]
+    assert "Writing a release note." not in json.dumps(instruction)
+    assert "tools" not in body
+    assert "background" not in body
+    if provider == "openai":
+        assert body["store"] is False
+        assert body["text"]["format"]["type"] == "json_schema"
+    else:
+        assert body["generationConfig"]["responseMimeType"] == "application/json"
+        assert "cachedContent" not in body
+
+
 def test_output_token_cap_is_source_sensitive_and_provider_bounded() -> None:
     short_openai = _output_token_cap(
         "synthetic source",
