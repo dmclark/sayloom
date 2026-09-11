@@ -1,3 +1,4 @@
+import asyncio
 import json
 import sqlite3
 import subprocess
@@ -10,7 +11,12 @@ from fastapi.testclient import TestClient
 
 import local_text.app as app_module
 from local_text.app import PAID_DATA_ACKNOWLEDGEMENT, STATIC_VERSION, create_app
-from local_text.cleanup import CleanupService, ProviderOutput, SequentialCleanupProvider
+from local_text.cleanup import (
+    CleanupService,
+    ProviderMalformedResponseError,
+    ProviderOutput,
+    SequentialCleanupProvider,
+)
 from local_text.config import Profile, Settings, load_settings
 from local_text.correction_benchmark import BenchmarkError
 from local_text.prompts import effective_system_prompt
@@ -117,6 +123,8 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="default-correction-mode"' in response.text
     assert 'id="current-correction-mode"' in response.text
     assert 'id="active-correction-mode"' in response.text
+    assert 'id="smart-task-context"' in response.text
+    assert "Task context · this request only" in response.text
     assert 'id="cleanup-disclosure"' in response.text
     assert 'id="cleanup-route-list"' in response.text
     assert "This does not save an evaluation corpus." not in response.text
@@ -678,6 +686,143 @@ def test_cleanup_endpoint_returns_provider_result(initialized_settings: Settings
     ]
 
 
+@pytest.mark.parametrize(
+    (
+        "original_text",
+        "prepared_text",
+        "operation",
+        "reason_verb",
+        "original_span",
+        "prepared_span",
+    ),
+    [
+        (
+            "Send synthetic report now",
+            "Send the synthetic report now.",
+            "addition",
+            "adds wording",
+            {"start": 5, "end": 5, "text": ""},
+            {"start": 5, "end": 8, "text": "the"},
+        ),
+        (
+            "Send the extra synthetic report now",
+            "Send the synthetic report now.",
+            "removal",
+            "removes wording",
+            {"start": 9, "end": 14, "text": "extra"},
+            {"start": 9, "end": 9, "text": ""},
+        ),
+        (
+            "Send teh synthetic report now",
+            "Send the synthetic report now.",
+            "replacement",
+            "replaces wording",
+            {"start": 5, "end": 8, "text": "teh"},
+            {"start": 5, "end": 8, "text": "the"},
+        ),
+    ],
+)
+def test_smart_cleanup_api_returns_every_server_derived_repair_operation(
+    initialized_settings: Settings,
+    original_text: str,
+    prepared_text: str,
+    operation: str,
+    reason_verb: str,
+    original_span: dict[str, object],
+    prepared_span: dict[str, object],
+) -> None:
+    class Provider:
+        provider_id = "gemini"
+        model = "test-model"
+
+        async def clean(self, _original_text: str, _system_prompt: str) -> ProviderOutput:
+            return ProviderOutput(prepared_text, self.provider_id, self.model, 3)
+
+    response = TestClient(
+        create_app(
+            initialized_settings,
+            CleanupService(Provider(), "test-model", timeout_seconds=1),
+        )
+    ).post(
+        "/api/cleanup",
+        json={"original_text": original_text, "correction_mode": "smart"},
+    )
+
+    assert response.status_code == 200
+    repair = response.json()["lexical_repairs"][0]
+    assert repair == {
+        "operation": operation,
+        "original_span": original_span,
+        "prepared_span": prepared_span,
+        "context": prepared_text if operation != "removal" else original_text,
+        "queue_position": 1,
+        "inspection_reason": (
+            f"Prepared {reason_verb}; "
+            "verify it matches the intended meaning."
+        ),
+    }
+
+
+def test_conservative_cleanup_api_shape_remains_compatible(initialized_settings: Settings) -> None:
+    response = TestClient(create_app(initialized_settings)).post(
+        "/api/cleanup", json={"original_text": "synthetic source"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["correction_mode"] == "conservative"
+    assert "lexical_repairs" not in response.json()
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_status", "expected_code"),
+    [
+        ("bounded_rejection", "provider_error", "cleanup_output_rejected"),
+        ("malformed", "provider_error", "cleanup_provider_malformed_response"),
+        ("timeout", "timeout", "cleanup_timeout"),
+    ],
+)
+def test_smart_cleanup_api_failures_leave_original_usable(
+    initialized_settings: Settings,
+    failure: str,
+    expected_status: str,
+    expected_code: str,
+) -> None:
+    original_text = "one two three four five six seven eight"
+
+    class Provider:
+        provider_id = "gemini"
+        model = "test-model"
+
+        async def clean(self, _original_text: str, _system_prompt: str) -> ProviderOutput:
+            if failure == "malformed":
+                raise ProviderMalformedResponseError("private malformed payload")
+            if failure == "timeout":
+                await asyncio.sleep(0.05)
+            return ProviderOutput(
+                "nine ten eleven four five six seven eight",
+                self.provider_id,
+                self.model,
+                3,
+            )
+
+    response = TestClient(
+        create_app(
+            initialized_settings,
+            CleanupService(Provider(), "test-model", timeout_seconds=0.001),
+        )
+    ).post(
+        "/api/cleanup",
+        json={"original_text": original_text, "correction_mode": "smart"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["prepared_text"] == original_text
+    assert response.json()["lexical_repairs"] == []
+    assert response.json()["status"] == expected_status
+    assert response.json()["error"]["code"] == expected_code
+    assert "private malformed payload" not in response.text
+
+
 def test_cleanup_endpoint_rejects_instruction_like_output_before_publication(
     initialized_settings: Settings,
 ) -> None:
@@ -1135,6 +1280,7 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     assert "cancelCleanup" not in script.text
     assert "setOriginalCollapsed" in script.text
     assert "correction_mode: effectiveCorrectionMode()" in script.text
+    assert "task_context: taskContext" in script.text
     assert 'fetch("/api/preferences/correction-mode"' in script.text
     assert "currentCorrectionModeOverride = null" in script.text
     assert "renderCorrectionMode();" in script.text
@@ -1156,6 +1302,133 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     assert 'elements.prepared.value = "";' in initialization
     assert 'fetch("/api/outgoing-state")' not in initialization
     assert "publishNow();" not in initialization
+
+
+def test_browser_sends_ephemeral_task_context_and_discards_stale_smart_state(
+    initialized_settings: Settings,
+) -> None:
+    script = TestClient(create_app(initialized_settings)).get("/static/app.js").text
+    harness = r"""
+const vm = require("vm");
+
+class Element {
+  constructor() {
+    this.value = "";
+    this.checked = true;
+    this.disabled = false;
+    this.hidden = false;
+    this.dataset = {};
+    this.options = [{ textContent: "" }];
+    this.style = { setProperty() {} };
+    this.classList = { add() {}, remove() {}, toggle() {}, contains() { return false; } };
+    this.lastElementChild = { textContent: "" };
+    this.listeners = {};
+    this.selectionStart = 0;
+    this.selectionEnd = 0;
+  }
+  addEventListener(type, callback) { (this.listeners[type] ||= []).push(callback); }
+  async dispatch(type, event = {}) {
+    event.target ||= this;
+    event.preventDefault ||= () => {};
+    for (const callback of this.listeners[type] || []) await callback(event);
+  }
+  setAttribute() {}
+  getAttribute(name) { return name === "aria-valuenow" ? "65" : null; }
+  removeAttribute() {}
+  append() {}
+  setPointerCapture() {}
+  setSelectionRange() {}
+  getBoundingClientRect() { return { top: 0, height: 100 }; }
+  focus() { document.activeElement = this; }
+  close() {}
+}
+
+const elements = {};
+const document = {
+  activeElement: null,
+  querySelector(selector) { return elements[selector] ||= new Element(); },
+  createElement() { return new Element(); },
+  addEventListener() {},
+};
+const cleanupRequests = [];
+const cleanupResolvers = [];
+const response = (body) => ({ ok: true, status: 200, json: async () => body });
+const fetch = (url, options = {}) => {
+  if (url === "/api/config") return Promise.resolve(response({
+    cleanup_enabled_by_default: true,
+    default_correction_mode: "smart",
+    cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
+    correction_benchmark_configuration: { available: false },
+    evaluation_configuration: { available: false },
+  }));
+  if (url === "/api/prompts") return Promise.resolve(response({
+    versions: [], active_prompt_version_id: null,
+  }));
+  if (url === "/api/outgoing-state") return Promise.resolve(response({ revision: 1 }));
+  if (url === "/api/cleanup") {
+    cleanupRequests.push(JSON.parse(options.body));
+    return new Promise((resolve) => cleanupResolvers.push(resolve));
+  }
+  throw new Error(`Unexpected request: ${url}`);
+};
+const window = {
+  clearTimeout, setTimeout,
+  requestAnimationFrame(callback) { callback(); },
+  addEventListener() {},
+};
+const context = { document, window, fetch, AbortController, Promise, console };
+
+async function settle() {
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+}
+
+(async () => {
+  vm.runInNewContext(process.argv[1], context);
+  await settle();
+  const original = elements["#original-text"];
+  const prepared = elements["#prepared-text"];
+  const taskContext = elements["#smart-task-context"];
+  original.value = "send teh report";
+  taskContext.value = "First transient context";
+  const staleRun = elements["#run-cleanup"].dispatch("click");
+  await settle();
+  taskContext.value = "Current transient context";
+  const currentRun = elements["#run-cleanup"].dispatch("click");
+  await settle();
+  cleanupResolvers[1](response({
+    prepared_text: "Send the report.", status: "prepared", lexical_repairs: [],
+  }));
+  await currentRun;
+  cleanupResolvers[0](response({
+    prepared_text: "STALE PREPARED", status: "prepared",
+    lexical_repairs: [{ operation: "replacement" }],
+  }));
+  await staleRun;
+  process.stdout.write(JSON.stringify({
+    cleanupRequests,
+    prepared: prepared.value,
+    repairCount: prepared.dataset.repairCount,
+    taskContextHidden: elements["#smart-task-context-field"].hidden,
+  }));
+})().catch((error) => { process.stderr.write(error.stack); process.exit(1); });
+"""
+
+    result = subprocess.run(
+        ["node", "-e", harness, script],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    observed = json.loads(result.stdout)
+
+    assert [request["task_context"] for request in observed["cleanupRequests"]] == [
+        "First transient context",
+        "Current transient context",
+    ]
+    assert observed["prepared"] == "Send the report."
+    assert observed["repairCount"] == "0"
+    assert observed["taskContextHidden"] is False
 
 
 def test_workspace_initialization_focuses_only_an_empty_original_editor(

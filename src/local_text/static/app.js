@@ -15,6 +15,8 @@
     currentCorrectionMode: document.querySelector("#current-correction-mode"),
     activeCorrectionMode: document.querySelector("#active-correction-mode"),
     modeSaveState: document.querySelector("#mode-save-state"),
+    smartTaskContextField: document.querySelector("#smart-task-context-field"),
+    smartTaskContext: document.querySelector("#smart-task-context"),
     runCleanup: document.querySelector("#run-cleanup"),
     clear: document.querySelector("#clear-text"),
     toggleOriginal: document.querySelector("#toggle-original"),
@@ -186,6 +188,8 @@
     elements.activeCorrectionMode.textContent = `${titleCaseState(mode)} · ${source}`;
     elements.activeCorrectionMode.dataset.mode = mode;
     elements.activeCorrectionMode.dataset.source = currentCorrectionModeOverride ? "override" : "default";
+    elements.smartTaskContextField.hidden = mode !== "smart";
+    elements.smartTaskContext.disabled = mode !== "smart";
   }
 
   function applyCorrectionModeChange() {
@@ -571,6 +575,8 @@
     benchmarkCapturedForCurrentPrepared = false;
 
     const originalText = elements.original.value;
+    const correctionMode = effectiveCorrectionMode();
+    const taskContext = correctionMode === "smart" ? elements.smartTaskContext.value : "";
     if (!originalText.trim()) {
       elements.prepared.value = originalText;
       setStatus("unchanged");
@@ -602,14 +608,20 @@
         body: JSON.stringify({
           original_text: originalText,
           enabled: true,
-          correction_mode: effectiveCorrectionMode(),
+          correction_mode: correctionMode,
           prompt_version_id: selectedPromptVersionId,
+          ...(taskContext.trim() ? { task_context: taskContext } : {}),
         }),
         signal: controller.signal,
       });
       if (!response.ok) {
         const error = await safeHttpError(response, "Cleanup");
-        if (sequence !== requestSequence || originalText !== elements.original.value) return;
+        if (
+          sequence !== requestSequence
+          || originalText !== elements.original.value
+          || correctionMode !== effectiveCorrectionMode()
+          || taskContext !== (correctionMode === "smart" ? elements.smartTaskContext.value : "")
+        ) return;
         elements.prepared.value = originalText;
         setStatus("error");
         setCleanupError(error);
@@ -617,10 +629,16 @@
         return;
       }
       const result = await readJson(response, "Cleanup");
-      if (sequence !== requestSequence || originalText !== elements.original.value) return;
+      if (
+        sequence !== requestSequence
+        || originalText !== elements.original.value
+        || correctionMode !== effectiveCorrectionMode()
+        || taskContext !== (correctionMode === "smart" ? elements.smartTaskContext.value : "")
+      ) return;
       if (
         !result || typeof result.prepared_text !== "string"
         || !["prepared", "unchanged", "empty_input", "disabled", "timeout", "provider_error"].includes(result.status)
+        || (correctionMode === "smart" && !Array.isArray(result.lexical_repairs))
       ) {
         elements.prepared.value = originalText;
         setStatus("error");
@@ -630,6 +648,9 @@
       }
 
       elements.prepared.value = result.prepared_text;
+      elements.prepared.dataset.repairCount = String(
+        correctionMode === "smart" ? result.lexical_repairs.length : 0,
+      );
       const statusMap = {
         prepared: "prepared",
         unchanged: "unchanged",
@@ -803,6 +824,10 @@
     applyCorrectionModeChange();
   });
 
+  elements.smartTaskContext.addEventListener("input", () => {
+    if (effectiveCorrectionMode() === "smart" && elements.original.value) scheduleCleanup();
+  });
+
   elements.toggleOriginal.addEventListener("click", () => {
     setOriginalCollapsed(!elements.workspace.classList.contains("is-original-collapsed"));
   });
@@ -826,6 +851,8 @@
     invalidateEvaluationCapture();
     elements.original.value = "";
     elements.prepared.value = "";
+    elements.prepared.dataset.repairCount = "0";
+    elements.smartTaskContext.value = "";
     setCleanupError(null);
     setStatus("unchanged");
     renderCorrectionMode();
@@ -1655,6 +1682,7 @@
         : "Evaluation storage is not configured and current.";
 
       elements.prepared.value = "";
+      elements.prepared.dataset.repairCount = "0";
       invalidateEvaluationCapture();
       originalOutgoingOverride = false;
       setStatus(elements.cleanupEnabled.checked ? "unchanged" : "disabled");

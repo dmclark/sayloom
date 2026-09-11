@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import difflib
 import json
 import logging
 import math
@@ -13,12 +14,12 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from email.utils import parsedate_to_datetime
 from enum import StrEnum
-from typing import Any, Literal, Protocol
+from typing import Annotated, Any, Literal, Protocol
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, model_serializer
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
-from local_text.prompts import effective_system_prompt
+from local_text.prompts import effective_smart_system_prompt, effective_system_prompt
 
 logger = logging.getLogger("uvicorn.error.local_text.cleanup")
 MODEL_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
@@ -76,12 +77,27 @@ class CorrectionMode(StrEnum):
 
 
 class CleanupRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     original_text: str = Field(max_length=100_000)
     enabled: bool = True
     prompt_version_id: int | None = Field(default=None, ge=1)
     correction_mode: CorrectionMode = CorrectionMode.CONSERVATIVE
+    task_context: str | None = Field(default=None, max_length=4_000)
+    curated_knowledge_enabled: bool = False
+    relevant_curated_knowledge: tuple[
+        Annotated[str, Field(min_length=1, max_length=500)], ...
+    ] = Field(default=(), max_length=50)
+
+    @model_validator(mode="after")
+    def evidence_is_smart_and_explicitly_enabled(self) -> CleanupRequest:
+        has_context = bool(self.task_context and self.task_context.strip())
+        has_knowledge = bool(self.relevant_curated_knowledge)
+        if self.correction_mode is not CorrectionMode.SMART and (has_context or has_knowledge):
+            raise ValueError("request evidence is available only in Smart mode")
+        if has_knowledge and not self.curated_knowledge_enabled:
+            raise ValueError("curated knowledge must be explicitly enabled")
+        return self
 
 
 class SafeError(BaseModel):
@@ -143,6 +159,25 @@ class EvaluationCaptureContext(BaseModel):
     cleanup_schema_version: str
 
 
+class TextSpan(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    start: int = Field(ge=0)
+    end: int = Field(ge=0)
+    text: str
+
+
+class LexicalRepair(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    operation: Literal["addition", "removal", "replacement"]
+    original_span: TextSpan
+    prepared_span: TextSpan
+    context: str
+    queue_position: int = Field(ge=1)
+    inspection_reason: str
+
+
 class CleanupResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -153,11 +188,14 @@ class CleanupResult(BaseModel):
     correction_mode: CorrectionMode
     error: SafeError | None = None
     attempts: list[CleanupAttempt] = Field(default_factory=list)
+    lexical_repairs: list[LexicalRepair] | None = None
     evaluation: EvaluationCaptureContext | None = None
 
     @model_serializer(mode="wrap")
     def omit_absent_evaluation(self, handler: Any) -> dict[str, Any]:
         serialized = handler(self)
+        if self.lexical_repairs is None:
+            serialized.pop("lexical_repairs", None)
         if self.evaluation is None:
             serialized.pop("evaluation", None)
         return serialized
@@ -167,7 +205,14 @@ class CleanupProvider(Protocol):
     provider_id: str
     model: str
 
-    async def clean(self, original_text: str, system_prompt: str) -> ProviderOutput: ...
+    async def clean(
+        self,
+        original_text: str,
+        system_prompt: str,
+        *,
+        task_context: str | None = None,
+        relevant_curated_knowledge: tuple[str, ...] = (),
+    ) -> ProviderOutput: ...
 
 
 @dataclass(frozen=True)
@@ -345,10 +390,30 @@ def frame_source_text(original_text: str) -> str:
     return SOURCE_TEXT_FRAME.format(original_text=original_text)
 
 
+def frame_smart_evidence(
+    original_text: str,
+    task_context: str | None,
+    relevant_curated_knowledge: tuple[str, ...],
+) -> str:
+    """Frame all request-scoped Smart evidence as one untrusted JSON value."""
+    return "<REQUEST_EVIDENCE>\n" + json.dumps(
+        {
+            "original_text": original_text,
+            "task_context": task_context or "",
+            "relevant_curated_knowledge": list(relevant_curated_knowledge),
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ) + "\n</REQUEST_EVIDENCE>"
+
+
 def gemini_request_payload(
     original_text: str,
     system_prompt: str,
     model: str,
+    *,
+    task_context: str | None = None,
+    relevant_curated_knowledge: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     generation_config = {
         "thinkingConfig": _thinking_config(model),
@@ -367,19 +432,45 @@ def gemini_request_payload(
         "contents": [
             {
                 "role": "user",
-                "parts": [{"text": frame_source_text(original_text)}],
+                "parts": [
+                    {
+                        "text": (
+                            frame_smart_evidence(
+                                original_text, task_context, relevant_curated_knowledge
+                            )
+                            if task_context or relevant_curated_knowledge
+                            else frame_source_text(original_text)
+                        )
+                    }
+                ],
             }
         ],
         "generationConfig": generation_config,
     }
 
 
-def openai_request_payload(original_text: str, system_prompt: str, model: str) -> dict[str, Any]:
+def openai_request_payload(
+    original_text: str,
+    system_prompt: str,
+    model: str,
+    *,
+    task_context: str | None = None,
+    relevant_curated_knowledge: tuple[str, ...] = (),
+) -> dict[str, Any]:
     return {
         "model": model,
         "input": [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": frame_source_text(original_text)},
+            {
+                "role": "user",
+                "content": (
+                    frame_smart_evidence(
+                        original_text, task_context, relevant_curated_knowledge
+                    )
+                    if task_context or relevant_curated_knowledge
+                    else frame_source_text(original_text)
+                ),
+            },
         ],
         "max_output_tokens": _output_token_cap(
             original_text,
@@ -415,7 +506,14 @@ class GeminiAdapter:
         if self.quota_group_id is not None and not SAFE_IDENTIFIER.fullmatch(self.quota_group_id):
             raise ValueError("provider quota group identifier is invalid")
 
-    async def clean(self, original_text: str, system_prompt: str) -> ProviderOutput:
+    async def clean(
+        self,
+        original_text: str,
+        system_prompt: str,
+        *,
+        task_context: str | None = None,
+        relevant_curated_knowledge: tuple[str, ...] = (),
+    ) -> ProviderOutput:
         started = time.monotonic()
         if not self.api_key:
             error = ProviderConfigurationError(
@@ -424,7 +522,13 @@ class GeminiAdapter:
             _attribute_failure(error, self, started)
             raise error
         url = f"{self.endpoint}/models/{self.model}:generateContent"
-        payload = gemini_request_payload(original_text, system_prompt, self.model)
+        payload = gemini_request_payload(
+            original_text,
+            system_prompt,
+            self.model,
+            task_context=task_context,
+            relevant_curated_knowledge=relevant_curated_knowledge,
+        )
         try:
             response = await self.client.post(
                 url,
@@ -492,7 +596,14 @@ class OpenAIAdapter:
         if self.quota_group_id is not None and not SAFE_IDENTIFIER.fullmatch(self.quota_group_id):
             raise ValueError("provider quota group identifier is invalid")
 
-    async def clean(self, original_text: str, system_prompt: str) -> ProviderOutput:
+    async def clean(
+        self,
+        original_text: str,
+        system_prompt: str,
+        *,
+        task_context: str | None = None,
+        relevant_curated_knowledge: tuple[str, ...] = (),
+    ) -> ProviderOutput:
         started = time.monotonic()
         if not self.api_key:
             error = ProviderConfigurationError(
@@ -500,7 +611,13 @@ class OpenAIAdapter:
             )
             _attribute_failure(error, self, started)
             raise error
-        payload = openai_request_payload(original_text, system_prompt, self.model)
+        payload = openai_request_payload(
+            original_text,
+            system_prompt,
+            self.model,
+            task_context=task_context,
+            relevant_curated_knowledge=relevant_curated_knowledge,
+        )
         try:
             response = await self.client.post(
                 self.endpoint,
@@ -639,6 +756,9 @@ class SequentialCleanupProvider:
         original_text: str,
         system_prompt: str,
         correction_mode: CorrectionMode = CorrectionMode.CONSERVATIVE,
+        *,
+        task_context: str | None = None,
+        relevant_curated_knowledge: tuple[str, ...] = (),
     ) -> ProviderOutput:
         if self._active_cleanups >= self.max_active_cleanups:
             error = ProviderBusyError("local cleanup capacity is full", model=self.model)
@@ -646,7 +766,13 @@ class SequentialCleanupProvider:
             raise error
         self._active_cleanups += 1
         try:
-            return await self._clean_with_routes(original_text, system_prompt, correction_mode)
+            return await self._clean_with_routes(
+                original_text,
+                system_prompt,
+                correction_mode,
+                task_context=task_context,
+                relevant_curated_knowledge=relevant_curated_knowledge,
+            )
         finally:
             self._active_cleanups -= 1
 
@@ -655,11 +781,18 @@ class SequentialCleanupProvider:
         original_text: str,
         system_prompt: str,
         correction_mode: CorrectionMode,
+        task_context: str | None = None,
+        relevant_curated_knowledge: tuple[str, ...] = (),
     ) -> ProviderOutput:
         deadline = self._clock() + self.total_budget_seconds
         failures: list[ProviderFailure] = []
         last_failure: ProviderFailure | None = None
-        for route_index, route in enumerate(self.routes):
+        selected_routes = (
+            self.routes[:1]
+            if correction_mode is CorrectionMode.SMART
+            else self.routes
+        )
+        for route_index, route in enumerate(selected_routes):
             now = self._clock()
             remaining = deadline - now
             attempt_budget = min(route.attempt_budget_seconds, remaining)
@@ -678,9 +811,17 @@ class SequentialCleanupProvider:
 
             attempt_started = self._clock()
             try:
-                output = await self._timeout_runner(
-                    route.adapter.clean(original_text, system_prompt), attempt_budget
+                provider_call = (
+                    route.adapter.clean(
+                        original_text,
+                        system_prompt,
+                        task_context=task_context,
+                        relevant_curated_knowledge=relevant_curated_knowledge,
+                    )
+                    if task_context or relevant_curated_knowledge
+                    else route.adapter.clean(original_text, system_prompt)
                 )
+                output = await self._timeout_runner(provider_call, attempt_budget)
             except asyncio.CancelledError:
                 _release_probe(route_breaker, route_half_open)
                 _release_probe(quota_breaker, quota_half_open)
@@ -748,11 +889,11 @@ class SequentialCleanupProvider:
 
         if last_failure is not None:
             raise last_failure
-        route = self.routes[-1]
+        route = selected_routes[-1]
         error = ProviderCoolingDownError("all cleanup routes are unavailable", model=route.model)
         error.provider_id = route.provider_id
         error.quota_group_id = route.quota_group_id
-        error.route_index = len(self.routes) - 1
+        error.route_index = len(selected_routes) - 1
         raise error
 
     def _attribute_route_failure(
@@ -1067,9 +1208,6 @@ def _validate_output(
     prepared_text: str,
     correction_mode: CorrectionMode = CorrectionMode.CONSERVATIVE,
 ) -> str:
-    # Smart is contract-only in this gate. Until its correction behavior lands,
-    # every selected mode retains the existing Conservative lexical boundary.
-    _ = correction_mode
     prepared = prepared_text.strip()
     if not prepared:
         raise ProviderRejectedOutputError("The cleanup result was empty")
@@ -1083,6 +1221,16 @@ def _validate_output(
 
     original_words = _lexical_word_forms(original_text)
     prepared_words = _lexical_word_forms(prepared)
+    if correction_mode is CorrectionMode.SMART:
+        edits = _lexical_edits(original_text, prepared)
+        edit_distance = sum(max(i2 - i1, j2 - j1) for _tag, i1, i2, j1, j2 in edits)
+        maximum_edits = max(1, math.ceil(len(original_words) * 0.25))
+        if edit_distance > maximum_edits:
+            raise ProviderRejectedOutputError(
+                "The Smart result exceeded the least-change lexical limit"
+            )
+        return prepared
+
     removable_prefix = 0
     while (
         removable_prefix < len(original_words)
@@ -1115,6 +1263,119 @@ def _lexical_word_forms(text: str) -> tuple[frozenset[str], ...]:
 
 
 @dataclass(frozen=True)
+class _LexicalToken:
+    start: int
+    end: int
+    text: str
+    canonical: str
+    forms: frozenset[str]
+
+
+def _lexical_tokens(text: str) -> tuple[_LexicalToken, ...]:
+    forms = _lexical_word_forms(text)
+    return tuple(
+        _LexicalToken(
+            start=match.start(),
+            end=match.end(),
+            text=match.group(),
+            canonical=min(word_forms, key=lambda value: (len(value), value)),
+            forms=word_forms,
+        )
+        for match, word_forms in zip(LEXICAL_WORD.finditer(text), forms, strict=True)
+    )
+
+
+def _lexical_edits(
+    original_text: str,
+    prepared_text: str,
+) -> tuple[tuple[str, int, int, int, int], ...]:
+    original = _lexical_tokens(original_text)
+    prepared = _lexical_tokens(prepared_text)
+    removable_prefix = 0
+    while (
+        removable_prefix < len(original)
+        and original[removable_prefix].forms & REMOVABLE_LEADING_FILLERS
+    ):
+        removable_prefix += 1
+    compared_original = original[removable_prefix:]
+    matcher = difflib.SequenceMatcher(
+        None,
+        [token.canonical for token in compared_original],
+        [token.canonical for token in prepared],
+        autojunk=False,
+    )
+    return tuple(
+        (tag, i1 + removable_prefix, i2 + removable_prefix, j1, j2)
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes()
+        if tag != "equal"
+    )
+
+
+def _text_span(
+    text: str,
+    tokens: tuple[_LexicalToken, ...],
+    start: int,
+    end: int,
+) -> TextSpan:
+    if start < end:
+        span_start = tokens[start].start
+        span_end = tokens[end - 1].end
+    else:
+        span_start = tokens[start].start if start < len(tokens) else len(text)
+        span_end = span_start
+    return TextSpan(start=span_start, end=span_end, text=text[span_start:span_end])
+
+
+def _sentence_context(text: str, span: TextSpan) -> str:
+    left = max(text.rfind(mark, 0, span.start) for mark in ".!?\n") + 1
+    right_candidates = [
+        position + 1
+        for mark in ".!?\n"
+        if (position := text.find(mark, span.end)) >= 0
+    ]
+    right = min(right_candidates, default=len(text))
+    context = text[left:right].strip()
+    if len(context) <= 240:
+        return context
+    relative_start = max(0, span.start - left)
+    window_start = max(0, min(relative_start - 100, len(context) - 240))
+    window = context[window_start : window_start + 240]
+    return ("…" if window_start else "") + window + (
+        "…" if window_start + 240 < len(context) else ""
+    )
+
+
+def _lexical_repairs(original_text: str, prepared_text: str) -> list[LexicalRepair]:
+    original_tokens = _lexical_tokens(original_text)
+    prepared_tokens = _lexical_tokens(prepared_text)
+    reasons = {
+        "insert": "Prepared adds wording; verify it matches the intended meaning.",
+        "delete": "Prepared removes wording; verify it matches the intended meaning.",
+        "replace": "Prepared replaces wording; verify it matches the intended meaning.",
+    }
+    operations = {"insert": "addition", "delete": "removal", "replace": "replacement"}
+    repairs: list[LexicalRepair] = []
+    for position, (tag, i1, i2, j1, j2) in enumerate(
+        _lexical_edits(original_text, prepared_text), start=1
+    ):
+        original_span = _text_span(original_text, original_tokens, i1, i2)
+        prepared_span = _text_span(prepared_text, prepared_tokens, j1, j2)
+        context_text = original_text if tag == "delete" else prepared_text
+        context_span = original_span if tag == "delete" else prepared_span
+        repairs.append(
+            LexicalRepair(
+                operation=operations[tag],
+                original_span=original_span,
+                prepared_span=prepared_span,
+                context=_sentence_context(context_text, context_span),
+                queue_position=position,
+                inspection_reason=reasons[tag],
+            )
+        )
+    return repairs
+
+
+@dataclass(frozen=True)
 class CleanupService:
     provider: CleanupProvider | None
     model: str
@@ -1133,7 +1394,19 @@ class CleanupService:
                 original_text, CleanupStatus.DISABLED, correction_mode=correction_mode
             )
 
-        provider_prompt = effective_system_prompt(system_prompt)
+        provider_prompt = (
+            effective_smart_system_prompt(system_prompt)
+            if correction_mode is CorrectionMode.SMART
+            else effective_system_prompt(system_prompt)
+        )
+        task_context = (
+            request.task_context
+            if request.task_context and request.task_context.strip()
+            else None
+        )
+        relevant_knowledge = (
+            request.relevant_curated_knowledge if request.curated_knowledge_enabled else ()
+        )
         started = time.monotonic()
         category = "success"
         http_status: int | None = None
@@ -1143,11 +1416,25 @@ class CleanupService:
         try:
             if isinstance(self.provider, SequentialCleanupProvider):
                 provider_output = await self.provider.clean(
-                    original_text, provider_prompt, correction_mode
+                    original_text,
+                    provider_prompt,
+                    correction_mode,
+                    task_context=task_context,
+                    relevant_curated_knowledge=relevant_knowledge,
                 )
             else:
+                provider_call = (
+                    self.provider.clean(
+                        original_text,
+                        provider_prompt,
+                        task_context=task_context,
+                        relevant_curated_knowledge=relevant_knowledge,
+                    )
+                    if task_context or relevant_knowledge
+                    else self.provider.clean(original_text, provider_prompt)
+                )
                 provider_output = await asyncio.wait_for(
-                    self.provider.clean(original_text, provider_prompt),
+                    provider_call,
                     timeout=self.timeout_seconds,
                 )
             selected_provider = provider_output.provider_id
@@ -1245,6 +1532,11 @@ class CleanupService:
                 provider=selected_provider,
                 model=selected_model,
                 attempts=attempts,
+                lexical_repairs=(
+                    _lexical_repairs(original_text, prepared_text)
+                    if correction_mode is CorrectionMode.SMART
+                    else None
+                ),
             )
         finally:
             _log_cleanup(
@@ -1268,6 +1560,7 @@ class CleanupService:
         provider: str | None = None,
         model: str | None = None,
         attempts: list[CleanupAttempt] | None = None,
+        lexical_repairs: list[LexicalRepair] | None = None,
     ) -> CleanupResult:
         return CleanupResult(
             prepared_text=text,
@@ -1280,6 +1573,13 @@ class CleanupService:
             correction_mode=correction_mode,
             error=error,
             attempts=attempts or [],
+            lexical_repairs=(
+                lexical_repairs
+                if lexical_repairs is not None
+                else []
+                if correction_mode is CorrectionMode.SMART
+                else None
+            ),
         )
 
 

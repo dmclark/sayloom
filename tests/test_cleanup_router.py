@@ -65,7 +65,14 @@ class FakeAdapter:
         self.output_tokens = output_tokens
         self.calls = 0
 
-    async def clean(self, raw_text: str, system_prompt: str) -> ProviderOutput:
+    async def clean(
+        self,
+        raw_text: str,
+        system_prompt: str,
+        *,
+        task_context: str | None = None,
+        relevant_curated_knowledge: tuple[str, ...] = (),
+    ) -> ProviderOutput:
         self.calls += 1
         outcome = (
             self.outcomes.pop(0)
@@ -273,6 +280,54 @@ def test_eligible_failure_advances_once_with_ordered_safe_attribution() -> None:
     serialized = result.model_dump_json()
     assert "synthetic source" not in serialized
     assert "Synthetic instruction" not in serialized
+
+
+def test_smart_failure_does_not_make_a_paid_fallback_attempt() -> None:
+    primary = FakeAdapter("primary", transient_http(503), quota_group_id="quota-a")
+    fallback = FakeAdapter(
+        "fallback",
+        provider_id="provider-b",
+        quota_group_id="quota-b",
+    )
+    provider = router(primary, fallback)
+    service = CleanupService(provider, provider.model, provider.total_budget_seconds)
+
+    result = asyncio.run(
+        service.clean(
+            CleanupRequest(original_text="synthetic source", correction_mode="smart"),
+            "Synthetic instruction",
+        )
+    )
+
+    assert result.status is CleanupStatus.PROVIDER_ERROR
+    assert result.prepared_text == "synthetic source"
+    assert result.lexical_repairs == []
+    assert primary.calls == 1
+    assert fallback.calls == 0
+    assert len(result.attempts) == 1
+
+
+def test_smart_cooldown_is_attributed_to_its_only_selected_route() -> None:
+    primary = FakeAdapter("primary", transient_http(503), quota_group_id="quota-a")
+    fallback = FakeAdapter("fallback", provider_id="provider-b", quota_group_id="quota-b")
+    provider = router(primary, fallback)
+    assert run_service(provider).model == "fallback"
+
+    async def smart_attempt() -> ProviderCoolingDownError:
+        with pytest.raises(ProviderCoolingDownError) as caught:
+            await provider.clean(
+                "synthetic source",
+                "Synthetic instruction",
+                CorrectionMode.SMART,
+            )
+        return caught.value
+
+    error = asyncio.run(smart_attempt())
+
+    assert error.provider_id == "provider-a"
+    assert error.model == "primary"
+    assert error.route_index == 0
+    assert fallback.calls == 1
 
 
 @pytest.mark.parametrize(

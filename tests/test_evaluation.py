@@ -346,6 +346,15 @@ def test_api_issues_proof_and_evaluation_operations_never_call_provider(tmp_path
     ).json()
     context = cleanup["evaluation"]
     assert context["capture_proof"]
+    smart_cleanup = client.post(
+        "/api/cleanup",
+        json={
+            "original_text": "Synthetic API source.",
+            "enabled": True,
+            "correction_mode": "smart",
+        },
+    ).json()
+    assert "evaluation" not in smart_cleanup
     safe_attempts = []
     for attempt in cleanup["attempts"]:
         safe_attempt = dict(attempt)
@@ -401,7 +410,7 @@ def test_api_issues_proof_and_evaluation_operations_never_call_provider(tmp_path
     assert invalid.status_code == 422
     assert invalid.json()["detail"]["code"] == "invalid_evaluation_request"
     assert "private synthetic" not in invalid.text
-    assert provider_calls == 1
+    assert provider_calls == 2
 
 
 def test_evaluation_ui_is_explicit_accessible_and_destination_first(

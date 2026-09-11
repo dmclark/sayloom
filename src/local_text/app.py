@@ -461,6 +461,7 @@ def create_app(
         successful_attempt = any(attempt.outcome == "success" for attempt in result.attempts)
         if (
             evaluation_store is not None
+            and request.correction_mode is CorrectionMode.CONSERVATIVE
             and successful_attempt
             and result.status in {CleanupStatus.PREPARED, CleanupStatus.UNCHANGED}
         ):
