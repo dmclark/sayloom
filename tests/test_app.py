@@ -116,10 +116,15 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert '<h2>Prepared</h2>' in response.text
     assert '>Prepared</button>' in response.text
     assert 'aria-label="Resize Original and Prepared fields"' in response.text
-    assert 'aria-valuetext="Original 65 percent, Prepared 35 percent"' in response.text
+    assert 'aria-valuetext="Original 55 percent, Prepared 45 percent"' in response.text
     assert '<h2>Cleaned</h2>' not in response.text
     assert '>Cleaned</button>' not in response.text
-    assert 'id="toggle-original"' in response.text
+    assert 'id="toggle-original"' not in response.text
+    assert 'id="layout-stacked"' in response.text
+    assert 'id="layout-side-by-side"' in response.text
+    assert 'id="maximize-original"' in response.text
+    assert 'id="maximize-prepared"' in response.text
+    assert 'id="toggle-sidebar"' in response.text
     assert 'id="default-correction-mode"' in response.text
     assert 'id="current-correction-mode"' in response.text
     assert 'id="active-correction-mode"' in response.text
@@ -136,14 +141,17 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     control_rail = response.text.split('class="control-rail"', maxsplit=1)[1].split(
         "</section>", maxsplit=1
     )[0]
-    assert 'id="toggle-original"' in control_rail
+    assert 'id="layout-stacked"' in control_rail
+    assert 'id="layout-side-by-side"' in control_rail
+    assert 'id="run-cleanup"' in control_rail
+    assert 'id="clear-text"' in control_rail
     original_panel = response.text.split('class="text-panel original-panel"', maxsplit=1)[
         1
     ].split("</article>", maxsplit=1)[0]
-    assert 'id="toggle-original"' not in original_panel
     assert 'class="panel-footer original-panel-footer"' in original_panel
-    assert 'id="run-cleanup"' in original_panel
-    assert 'id="clear-text"' in original_panel
+    assert 'id="maximize-original"' in original_panel
+    assert 'id="run-cleanup"' not in original_panel
+    assert 'id="clear-text"' not in original_panel
     prepared_panel = response.text.split('class="text-panel prepared-panel"', maxsplit=1)[
         1
     ].split("</article>", maxsplit=1)[0]
@@ -1278,7 +1286,9 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     assert "setPublicationError" in script.text
     assert 'message: "The browser could not connect to the local API."' in script.text
     assert "cancelCleanup" not in script.text
-    assert "setOriginalCollapsed" in script.text
+    assert "toggleMaximizedPane" in script.text
+    assert "WORKSPACE_PREFERENCES_KEY" in script.text
+    assert 'window.matchMedia("(max-width: 980px)")' in script.text
     assert "correction_mode: effectiveCorrectionMode()" in script.text
     assert "task_context: taskContext" in script.text
     assert 'fetch("/api/preferences/correction-mode"' in script.text
@@ -1786,28 +1796,54 @@ async function run({
     assert "Example added to private corpus" in observed["prepared"]["outgoingLabelAfterSuccess"]
 
 
-def test_stacked_workspace_uses_native_caret_and_accessible_resizer(
+def test_configurable_workspace_uses_native_caret_and_accessible_controls(
     initialized_settings: Settings,
 ) -> None:
     client = TestClient(create_app(initialized_settings))
 
     stylesheet = client.get("/static/app.css")
+    script = client.get("/static/app.js")
     page = client.get("/")
 
     assert stylesheet.status_code == 200
+    assert script.status_code == 200
     assert "caret-color: var(--blue)" in stylesheet.text
     assert "caret-color: transparent" not in stylesheet.text
     assert ".faux-caret" not in stylesheet.text
     assert "grid-template-rows:" in stylesheet.text
     assert "cursor: row-resize" in stylesheet.text
+    assert "cursor: col-resize" in stylesheet.text
     assert ".utility-rail" in stylesheet.text
-    assert ".workspace.is-original-collapsed" in stylesheet.text
+    assert ".workspace.is-side-by-side" in stylesheet.text
+    assert ".workspace.is-original-maximized" in stylesheet.text
+    assert ".workspace.is-prepared-maximized" in stylesheet.text
+    assert ".workspace-shell.is-sidebar-collapsed" in stylesheet.text
+    assert ".workspace-shell.is-sidebar-collapsed .utility-rail-icon { display: block; }" in (
+        stylesheet.text
+    )
     assert "min-width: 720px" not in stylesheet.text
     assert "@media (max-width: 760px)" in stylesheet.text
     assert 'role="separator"' in page.text
-    assert 'aria-valuemin="45"' in page.text
-    assert 'aria-valuemax="80"' in page.text
+    assert 'aria-valuemin="25"' in page.text
+    assert 'aria-valuemax="75"' in page.text
     assert 'class="panel-prompt-control"' in page.text
+    assert page.text.count('class="utility-rail-icon"') == 3
+    assert 'setLayoutPreference("side-by-side")' in script.text
+    assert 'aria-orientation", sideBySide ? "vertical" : "horizontal"' in script.text
+    assert "ArrowLeft: sideBySide ? currentShare - 2" in script.text
+    assert "ArrowDown: sideBySide ? undefined : currentShare + 2" in script.text
+    saved_preferences = script.text.split(
+        "function saveWorkspacePreferences()", maxsplit=1
+    )[1].split("function effectiveLayout()", maxsplit=1)[0]
+    assert "layout: layoutPreference" in saved_preferences
+    assert "stackedShare" in saved_preferences
+    assert "sideBySideShare" in saved_preferences
+    assert "sidebarCollapsed" in saved_preferences
+    assert "maximizedPane" not in saved_preferences
+    responsive_layout = script.text.split("function effectiveLayout()", maxsplit=1)[1].split(
+        "function setWorkspaceShare", maxsplit=1
+    )[0]
+    assert 'return narrowWorkspace.matches ? "stacked" : layoutPreference' in responsive_layout
 
 
 def test_regular_desktop_workspace_uses_the_remaining_viewport_height(
