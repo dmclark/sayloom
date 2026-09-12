@@ -13,14 +13,10 @@
     <header class="masthead">
       <div class="brand-lockup">
         <span class="thread-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-        <div>
-          <div class="eyebrow">Local text workspace</div>
-          <div class="brand-line">
-            <h1>__DISPLAY_NAME__</h1>
-            __DEVELOPMENT_BADGE__
-          </div>
-        </div>
+        <h1>__DISPLAY_NAME__</h1>
+        <span class="product-context">Local text workspace</span>
       </div>
+      __DEVELOPMENT_BADGE__
     </header>
 
     <main>
@@ -52,28 +48,47 @@
           </span>
           <span id="mode-save-state" class="visually-hidden" role="status" aria-live="polite"></span>
         </fieldset>
-        <button
-          id="toggle-original"
-          class="panel-toggle"
-          type="button"
-          aria-controls="original-editor-wrap"
-          aria-expanded="true"
-        >Hide input</button>
+        <div class="layout-controls" role="group" aria-label="Editor layout">
+          <button id="layout-stacked" type="button" aria-pressed="true">Stacked</button>
+          <button id="layout-side-by-side" type="button" aria-pressed="false">Side by side</button>
+        </div>
+        <div class="toolbar-actions">
+          <button
+            id="run-cleanup"
+            class="button button-primary"
+            type="button"
+            aria-keyshortcuts="Meta+Enter Control+Enter"
+            title="Run cleanup (⌘↵)"
+          >
+            <span aria-hidden="true">↻</span> Run cleanup
+          </button>
+          <button id="clear-text" class="button" type="button">Clear</button>
+        </div>
       </section>
 
       <div class="workspace-shell">
         <nav class="utility-rail" aria-label="Workspace sections">
+          <button
+            id="toggle-sidebar"
+            class="utility-rail-collapse"
+            type="button"
+            aria-label="Collapse navigation"
+            aria-expanded="true"
+          ><span aria-hidden="true">‹</span></button>
           <button id="nav-workspace" class="utility-rail-item is-active" type="button" aria-current="page">
             <span class="utility-rail-index" aria-hidden="true">01</span>
-            <span>Workspace</span>
+            <span class="utility-rail-icon" aria-hidden="true">▣</span>
+            <span class="utility-rail-label">Workspace</span>
           </button>
           <button id="nav-targets" class="utility-rail-item" type="button">
             <span class="utility-rail-index" aria-hidden="true">02</span>
-            <span>Targets</span>
+            <span class="utility-rail-icon" aria-hidden="true">◎</span>
+            <span class="utility-rail-label">Targets</span>
           </button>
           <button id="nav-evaluation" class="utility-rail-item" type="button">
             <span class="utility-rail-index" aria-hidden="true">03</span>
-            <span>Evaluation</span>
+            <span class="utility-rail-icon" aria-hidden="true">◇</span>
+            <span class="utility-rail-label">Evaluation</span>
           </button>
         </nav>
 
@@ -85,6 +100,13 @@
                 <h2>Original</h2>
               </div>
               <span class="panel-note">Type, paste, or dictate here</span>
+              <button
+                id="maximize-original"
+                class="panel-maximize"
+                type="button"
+                aria-label="Maximize Original pane"
+                aria-pressed="false"
+              ><span aria-hidden="true">Maximize</span></button>
               <label
                 id="smart-task-context-field"
                 class="smart-task-context"
@@ -112,18 +134,6 @@
             </div>
             <footer class="panel-footer original-panel-footer">
               <span><strong id="original-count">0</strong> characters</span>
-              <div class="panel-footer-actions">
-                <button
-                  id="run-cleanup"
-                  class="button button-primary"
-                  type="button"
-                  aria-keyshortcuts="Meta+Enter Control+Enter"
-                  title="Run cleanup (⌘↵)"
-                >
-                  <span aria-hidden="true">↻</span> Run cleanup
-                </button>
-                <button id="clear-text" class="button button-quiet" type="button">Clear</button>
-              </div>
             </footer>
           </article>
 
@@ -134,10 +144,10 @@
             tabindex="0"
             aria-label="Resize Original and Prepared fields"
             aria-orientation="horizontal"
-            aria-valuemin="45"
-            aria-valuemax="80"
-            aria-valuenow="65"
-            aria-valuetext="Original 65 percent, Prepared 35 percent"
+            aria-valuemin="25"
+            aria-valuemax="75"
+            aria-valuenow="55"
+            aria-valuetext="Original 55 percent, Prepared 45 percent"
           >
             <span aria-hidden="true"></span><i aria-hidden="true"></i><span aria-hidden="true"></span>
           </div>
@@ -155,6 +165,13 @@
                   aria-label="Cleanup prompt version for this page session"
                 ></select>
               </div>
+              <button
+                id="maximize-prepared"
+                class="panel-maximize"
+                type="button"
+                aria-label="Maximize Prepared pane"
+                aria-pressed="false"
+              ><span aria-hidden="true">Maximize</span></button>
             </header>
             <div class="editor-wrap">
               <textarea

@@ -3,9 +3,14 @@
 
   const CLEANUP_DEBOUNCE_MS = 700;
   const PUBLICATION_DEBOUNCE_MS = 150;
-  const DEFAULT_ORIGINAL_SHARE = 65;
-  const MINIMUM_ORIGINAL_SHARE = 45;
-  const MAXIMUM_ORIGINAL_SHARE = 80;
+  const WORKSPACE_PREFERENCES_KEY = "local-text.workspace-preferences.v1";
+  const DEFAULT_STACKED_SHARE = 55;
+  const DEFAULT_SIDE_BY_SIDE_SHARE = 50;
+  const MINIMUM_ORIGINAL_SHARE = 25;
+  const MAXIMUM_ORIGINAL_SHARE = 75;
+  const narrowWorkspace = window.matchMedia
+    ? window.matchMedia("(max-width: 980px)")
+    : { matches: false, addEventListener() {} };
 
   const elements = {
     original: document.querySelector("#original-text"),
@@ -19,7 +24,6 @@
     smartTaskContext: document.querySelector("#smart-task-context"),
     runCleanup: document.querySelector("#run-cleanup"),
     clear: document.querySelector("#clear-text"),
-    toggleOriginal: document.querySelector("#toggle-original"),
     status: document.querySelector("#cleanup-status"),
     statusText: document.querySelector("#cleanup-status-text"),
     originalCount: document.querySelector("#original-count"),
@@ -36,8 +40,17 @@
     cleanupFallbackDisclosure: document.querySelector("#cleanup-fallback-disclosure"),
     cleanupCorpusDisclosure: document.querySelector("#cleanup-corpus-disclosure"),
     cleanupValidationDetail: document.querySelector("#cleanup-validation-detail"),
+    workspaceShell: document.querySelector(".workspace-shell"),
     workspace: document.querySelector(".workspace"),
     workspaceResizer: document.querySelector("#workspace-resizer"),
+    layoutStacked: document.querySelector("#layout-stacked"),
+    layoutSideBySide: document.querySelector("#layout-side-by-side"),
+    maximizeOriginal: document.querySelector("#maximize-original"),
+    maximizeOriginalIcon: document.querySelector("#maximize-original span"),
+    maximizePrepared: document.querySelector("#maximize-prepared"),
+    maximizePreparedIcon: document.querySelector("#maximize-prepared span"),
+    toggleSidebar: document.querySelector("#toggle-sidebar"),
+    toggleSidebarIcon: document.querySelector("#toggle-sidebar span"),
     activePromptSelector: document.querySelector("#active-prompt-selector"),
     errorDialog: document.querySelector("#error-details-dialog"),
     errorLedger: document.querySelector("#error-details-ledger"),
@@ -144,6 +157,11 @@
   let promptVersions = [];
   let selectedPromptVersionId = null;
   let activeResizePointer = null;
+  let layoutPreference = "stacked";
+  let stackedShare = DEFAULT_STACKED_SHARE;
+  let sideBySideShare = DEFAULT_SIDE_BY_SIDE_SHARE;
+  let sidebarCollapsed = false;
+  let maximizedPane = null;
   let originalOutgoingOverride = false;
   let defaultCorrectionMode = "conservative";
   let currentCorrectionModeOverride = null;
@@ -200,23 +218,42 @@
     else publishNow();
   }
 
-  function setOriginalCollapsed(collapsed) {
-    const selectionStart = elements.original.selectionStart;
-    const selectionEnd = elements.original.selectionEnd;
-    elements.workspace.classList.toggle("is-original-collapsed", collapsed);
-    elements.toggleOriginal.textContent = collapsed ? "Show input" : "Hide input";
-    elements.toggleOriginal.setAttribute("aria-expanded", String(!collapsed));
-    window.requestAnimationFrame(() => {
-      elements.original.focus({ preventScroll: true });
-      elements.original.setSelectionRange(selectionStart, selectionEnd);
-    });
+  function readWorkspacePreferences() {
+    try {
+      const saved = JSON.parse(window.localStorage?.getItem(WORKSPACE_PREFERENCES_KEY) || "{}");
+      if (["stacked", "side-by-side"].includes(saved.layout)) layoutPreference = saved.layout;
+      if (Number.isFinite(saved.stackedShare)) stackedShare = saved.stackedShare;
+      if (Number.isFinite(saved.sideBySideShare)) sideBySideShare = saved.sideBySideShare;
+      sidebarCollapsed = saved.sidebarCollapsed === true;
+    } catch (_error) {
+      // Browser storage can be unavailable; interface preferences are optional.
+    }
   }
 
-  function setWorkspaceShare(value) {
+  function saveWorkspacePreferences() {
+    try {
+      window.localStorage?.setItem(WORKSPACE_PREFERENCES_KEY, JSON.stringify({
+        layout: layoutPreference,
+        stackedShare,
+        sideBySideShare,
+        sidebarCollapsed,
+      }));
+    } catch (_error) {
+      // Keep the workspace usable when browser storage is blocked.
+    }
+  }
+
+  function effectiveLayout() {
+    return narrowWorkspace.matches ? "stacked" : layoutPreference;
+  }
+
+  function setWorkspaceShare(value, persist = false) {
     const originalShare = Math.min(
       MAXIMUM_ORIGINAL_SHARE,
       Math.max(MINIMUM_ORIGINAL_SHARE, Math.round(value)),
     );
+    if (effectiveLayout() === "side-by-side") sideBySideShare = originalShare;
+    else stackedShare = originalShare;
     elements.workspace.style.setProperty("--original-share", `${originalShare}fr`);
     elements.workspace.style.setProperty("--prepared-share", `${100 - originalShare}fr`);
     elements.workspaceResizer.setAttribute("aria-valuenow", String(originalShare));
@@ -224,11 +261,67 @@
       "aria-valuetext",
       `Original ${originalShare} percent, Prepared ${100 - originalShare} percent`,
     );
+    if (persist) saveWorkspacePreferences();
+  }
+
+  function renderWorkspaceLayout() {
+    const layout = effectiveLayout();
+    const sideBySide = layout === "side-by-side";
+    elements.workspace.classList.toggle("is-side-by-side", sideBySide);
+    elements.layoutStacked.setAttribute("aria-pressed", String(!sideBySide));
+    elements.layoutSideBySide.setAttribute("aria-pressed", String(sideBySide));
+    elements.layoutSideBySide.disabled = narrowWorkspace.matches;
+    elements.layoutSideBySide.title = narrowWorkspace.matches
+      ? "Side-by-side layout is available on wider viewports"
+      : "";
+    elements.workspaceResizer.setAttribute("aria-orientation", sideBySide ? "vertical" : "horizontal");
+    setWorkspaceShare(sideBySide ? sideBySideShare : stackedShare);
+  }
+
+  function setLayoutPreference(layout) {
+    layoutPreference = layout;
+    maximizedPane = null;
+    renderMaximizedPane();
+    renderWorkspaceLayout();
+    saveWorkspacePreferences();
+  }
+
+  function renderSidebar() {
+    elements.workspaceShell.classList.toggle("is-sidebar-collapsed", sidebarCollapsed);
+    elements.toggleSidebar.setAttribute("aria-expanded", String(!sidebarCollapsed));
+    elements.toggleSidebar.setAttribute(
+      "aria-label",
+      sidebarCollapsed ? "Expand navigation" : "Collapse navigation",
+    );
+    elements.toggleSidebarIcon.textContent = sidebarCollapsed ? "›" : "‹";
+  }
+
+  function renderMaximizedPane() {
+    elements.workspace.classList.toggle("is-original-maximized", maximizedPane === "original");
+    elements.workspace.classList.toggle("is-prepared-maximized", maximizedPane === "prepared");
+    [
+      ["original", elements.maximizeOriginal, elements.maximizeOriginalIcon],
+      ["prepared", elements.maximizePrepared, elements.maximizePreparedIcon],
+    ].forEach(([pane, button, icon]) => {
+        const maximized = maximizedPane === pane;
+        const label = pane === "original" ? "Original" : "Prepared";
+        button.setAttribute("aria-pressed", String(maximized));
+        button.setAttribute("aria-label", `${maximized ? "Restore" : "Maximize"} ${label} pane`);
+        icon.textContent = maximized ? "Restore" : "Maximize";
+      });
+  }
+
+  function toggleMaximizedPane(pane) {
+    maximizedPane = maximizedPane === pane ? null : pane;
+    renderMaximizedPane();
   }
 
   function resizeFromPointer(event) {
     const bounds = elements.workspace.getBoundingClientRect();
-    setWorkspaceShare(((event.clientY - bounds.top) / bounds.height) * 100);
+    const share = effectiveLayout() === "side-by-side"
+      ? ((event.clientX - bounds.left) / bounds.width) * 100
+      : ((event.clientY - bounds.top) / bounds.height) * 100;
+    setWorkspaceShare(share);
   }
 
   function preparedIsCurrent() {
@@ -828,8 +921,16 @@
     if (effectiveCorrectionMode() === "smart" && elements.original.value) scheduleCleanup();
   });
 
-  elements.toggleOriginal.addEventListener("click", () => {
-    setOriginalCollapsed(!elements.workspace.classList.contains("is-original-collapsed"));
+  elements.layoutStacked.addEventListener("click", () => setLayoutPreference("stacked"));
+  elements.layoutSideBySide.addEventListener("click", () => {
+    if (!narrowWorkspace.matches) setLayoutPreference("side-by-side");
+  });
+  elements.maximizeOriginal.addEventListener("click", () => toggleMaximizedPane("original"));
+  elements.maximizePrepared.addEventListener("click", () => toggleMaximizedPane("prepared"));
+  elements.toggleSidebar.addEventListener("click", () => {
+    sidebarCollapsed = !sidebarCollapsed;
+    renderSidebar();
+    saveWorkspacePreferences();
   });
   elements.runCleanup.addEventListener("click", runCleanup);
   elements.selectOriginal.addEventListener("click", () => {
@@ -945,24 +1046,33 @@
     if (event.pointerId !== activeResizePointer) return;
     activeResizePointer = null;
     elements.workspaceResizer.classList.remove("is-resizing");
+    saveWorkspacePreferences();
   }
   elements.workspaceResizer.addEventListener("pointerup", finishResize);
   elements.workspaceResizer.addEventListener("pointercancel", finishResize);
   elements.workspaceResizer.addEventListener("dblclick", () => {
-    setWorkspaceShare(DEFAULT_ORIGINAL_SHARE);
+    setWorkspaceShare(
+      effectiveLayout() === "side-by-side" ? DEFAULT_SIDE_BY_SIDE_SHARE : DEFAULT_STACKED_SHARE,
+      true,
+    );
   });
   elements.workspaceResizer.addEventListener("keydown", (event) => {
     const currentShare = Number(elements.workspaceResizer.getAttribute("aria-valuenow"));
+    const sideBySide = effectiveLayout() === "side-by-side";
     const nextShare = {
-      ArrowUp: currentShare - 2,
-      ArrowDown: currentShare + 2,
+      ArrowUp: sideBySide ? undefined : currentShare - 2,
+      ArrowDown: sideBySide ? undefined : currentShare + 2,
+      ArrowLeft: sideBySide ? currentShare - 2 : undefined,
+      ArrowRight: sideBySide ? currentShare + 2 : undefined,
       Home: MINIMUM_ORIGINAL_SHARE,
       End: MAXIMUM_ORIGINAL_SHARE,
     }[event.key];
     if (nextShare === undefined) return;
     event.preventDefault();
-    setWorkspaceShare(nextShare);
+    setWorkspaceShare(nextShare, true);
   });
+
+  narrowWorkspace.addEventListener("change", renderWorkspaceLayout);
 
   async function loadPromptHistory() {
     const response = await fetch("/api/prompts");
@@ -1658,6 +1768,10 @@
 
   async function initialize() {
     try {
+      readWorkspacePreferences();
+      renderSidebar();
+      renderMaximizedPane();
+      renderWorkspaceLayout();
       const [configResponse] = await Promise.all([
         fetch("/api/config"),
         clearPublishedState(),
@@ -1687,7 +1801,6 @@
       originalOutgoingOverride = false;
       setStatus(elements.cleanupEnabled.checked ? "unchanged" : "disabled");
       renderCountsAndSelection();
-      setWorkspaceShare(DEFAULT_ORIGINAL_SHARE);
       await loadPromptHistory();
       if (!elements.original.value) elements.original.focus({ preventScroll: true });
     } catch (error) {
