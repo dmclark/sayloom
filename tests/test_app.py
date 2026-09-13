@@ -130,6 +130,13 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="active-correction-mode"' in response.text
     assert 'id="smart-task-context"' in response.text
     assert "Task context · this request only" in response.text
+    assert 'id="smart-repair-review"' in response.text
+    assert 'id="smart-repair-list"' in response.text
+    assert 'id="copy-outgoing"' in response.text
+    assert (
+        "Select a repair to inspect its corresponding wording and sentence context."
+        in response.text
+    )
     assert 'id="cleanup-disclosure"' in response.text
     assert 'id="cleanup-route-list"' in response.text
     assert "This does not save an evaluation corpus." not in response.text
@@ -1407,7 +1414,13 @@ async function settle() {
   const currentRun = elements["#run-cleanup"].dispatch("click");
   await settle();
   cleanupResolvers[1](response({
-    prepared_text: "Send the report.", status: "prepared", lexical_repairs: [],
+    prepared_text: "Send the report.", status: "prepared", lexical_repairs: [{
+      operation: "replacement",
+      original_span: { start: 5, end: 8, text: "teh" },
+      prepared_span: { start: 5, end: 8, text: "the" },
+      context: "Send the report.", queue_position: 1,
+      inspection_reason: "Prepared replaces wording; verify meaning.",
+    }],
   }));
   await currentRun;
   cleanupResolvers[0](response({
@@ -1437,8 +1450,187 @@ async function settle() {
         "Current transient context",
     ]
     assert observed["prepared"] == "Send the report."
-    assert observed["repairCount"] == "0"
+    assert observed["repairCount"] == "1"
     assert observed["taskContextHidden"] is False
+
+
+def test_browser_smart_repair_queue_selects_span_and_does_not_gate_outgoing(
+    initialized_settings: Settings,
+) -> None:
+    script = TestClient(create_app(initialized_settings)).get("/static/app.js").text
+
+    assert "function validateSmartRepairs" in script
+    assert "function invalidateSmartRepairReview" in script
+    assert "function selectSmartRepair" in script
+    assert 'elements.smartTaskContext.addEventListener("input"' in script
+    assert 'elements.activePromptSelector.addEventListener("change"' in script
+    assert 'elements.copyOutgoing.addEventListener("click"' in script
+    assert "navigator.clipboard.writeText(selectedOutgoingState().outgoing_text)" in script
+
+    selected_state = script.split("function selectedOutgoingState()", maxsplit=1)[1].split(
+        "function renderCountsAndSelection()", maxsplit=1
+    )[0]
+    assert "selectedSmartRepair" not in selected_state
+
+    validation = script.split("function validateSmartRepairs", maxsplit=1)[1].split(
+        "function invalidateSmartRepairReview", maxsplit=1
+    )[0]
+    for required in (
+        "queue_position",
+        "inspection_reason",
+        "original_span",
+        "prepared_span",
+        "addition",
+        "removal",
+        "replacement",
+    ):
+        assert required in validation
+
+    harness = r"""
+const vm = require("vm");
+class Element {
+  constructor() {
+    this.value = ""; this.checked = true; this.disabled = false; this.hidden = false;
+    this.dataset = {}; this.options = [{ textContent: "" }]; this.children = [];
+    this.listeners = {}; this.textContent = ""; this.attributes = {};
+    this.style = { setProperty() {} };
+    this.classList = { add() {}, remove() {}, toggle() {}, contains() { return false; } };
+    this.lastElementChild = { textContent: "" };
+    this.selectionStart = 0; this.selectionEnd = 0;
+  }
+  addEventListener(type, callback) { (this.listeners[type] ||= []).push(callback); }
+  async dispatch(type, event = {}) {
+    event.target ||= this; event.preventDefault ||= () => {};
+    for (const callback of this.listeners[type] || []) await callback(event);
+  }
+  append(...children) { this.children.push(...children); }
+  setAttribute(name, value) { this.attributes[name] = String(value); }
+  getAttribute(name) { return this.attributes[name] || (name === "aria-valuenow" ? "65" : null); }
+  removeAttribute(name) { delete this.attributes[name]; }
+  toggleAttribute() {}
+  setPointerCapture() {}
+  setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
+  getBoundingClientRect() { return { top: 0, height: 100 }; }
+  focus() { document.activeElement = this; }
+  close() {}
+}
+const elements = {};
+const document = {
+  activeElement: null,
+  querySelector(selector) { return elements[selector] ||= new Element(); },
+  createElement() { return new Element(); },
+  addEventListener() {},
+};
+const publications = [];
+const copied = [];
+let malformed = false;
+const response = (body) => ({ ok: true, status: 200, json: async () => body });
+const fetch = async (url, options = {}) => {
+  if (url === "/api/config") return response({
+    cleanup_enabled_by_default: true, default_correction_mode: "smart",
+    cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
+    correction_benchmark_configuration: { available: false },
+    evaluation_configuration: { available: false },
+  });
+  if (url === "/api/prompts") return response({ versions: [], active_prompt_version_id: null });
+  if (url === "/api/outgoing-state") {
+    if (options.body) publications.push(JSON.parse(options.body));
+    return response({ revision: publications.length + 1 });
+  }
+  if (url === "/api/cleanup" && malformed) return response({
+    prepared_text: "unlisted lexical change", status: "prepared", provider: "test",
+    model: "model-b", lexical_repairs: [], attempts: [],
+  });
+  if (url === "/api/cleanup") return response({
+    prepared_text: "send the report now", status: "prepared", provider: "test", model: "model-a",
+    lexical_repairs: [
+      { operation: "replacement", original_span: { start: 5, end: 8, text: "teh" },
+        prepared_span: { start: 5, end: 8, text: "the" }, context: "send the report now",
+        queue_position: 1, inspection_reason: "Prepared replaces wording; verify meaning." },
+      { operation: "addition", original_span: { start: 15, end: 15, text: "" },
+        prepared_span: { start: 16, end: 19, text: "now" }, context: "send the report now",
+        queue_position: 2, inspection_reason: "Prepared adds wording; verify meaning." },
+    ], attempts: [],
+  });
+  throw new Error(`Unexpected request: ${url}`);
+};
+const window = {
+  clearTimeout() {}, setTimeout() { return 1; }, requestAnimationFrame(callback) { callback(); },
+  addEventListener() {},
+};
+const navigator = { clipboard: { async writeText(text) { copied.push(text); } } };
+const context = { document, window, navigator, fetch, AbortController, Promise, console };
+async function settle() { await new Promise((resolve) => setImmediate(resolve)); }
+(async () => {
+  vm.runInNewContext(process.argv[1], context); await settle(); await settle();
+  elements["#original-text"].value = "send teh report";
+  await elements["#run-cleanup"].dispatch("click"); await settle();
+  await elements["#select-prepared"].dispatch("click"); await settle();
+  const queue = elements["#smart-repair-list"];
+  const before = {
+    hidden: elements["#smart-repair-review"].hidden,
+    summary: elements["#smart-repair-summary"].textContent,
+    outgoing: publications.at(-1).outgoing_text,
+    queue: queue.children.map((item) => {
+      const button = item.children[0];
+      return [
+        button.children[0].textContent,
+        button.children[1].children[0].textContent,
+        button.children[1].children[2].textContent,
+      ];
+    }),
+  };
+  await queue.children[0].children[0].dispatch("click");
+  const inspected = {
+    selection: [
+      elements["#prepared-text"].selectionStart,
+      elements["#prepared-text"].selectionEnd,
+    ],
+    context: elements["#smart-repair-context"].textContent,
+    reason: elements["#smart-repair-reason"].textContent,
+    selected: elements["#smart-repair-list"].children.some(
+      (item) => item.children[0].attributes["aria-current"] === "true",
+    ),
+  };
+  await elements["#copy-outgoing"].dispatch("click");
+  elements["#smart-task-context"].value = "changed";
+  await elements["#smart-task-context"].dispatch("input");
+  malformed = true;
+  await elements["#run-cleanup"].dispatch("click");
+  process.stdout.write(JSON.stringify({
+    before, inspected, copied, invalidated: elements["#smart-repair-review"].hidden,
+    malformed: {
+      prepared: elements["#prepared-text"].value,
+      status: elements["#cleanup-status"].dataset.state,
+    },
+  }));
+})().catch((error) => { process.stderr.write(error.stack); process.exit(1); });
+"""
+    result = subprocess.run(
+        ["node", "-e", harness, script], check=True, capture_output=True, text=True
+    )
+    observed = json.loads(result.stdout)
+
+    assert observed == {
+        "before": {
+            "hidden": False,
+            "summary": "2 repairs",
+            "outgoing": "send the report now",
+            "queue": [
+                ["1 · replacement", "teh", "the"],
+                ["2 · addition", "∅", "now"],
+            ],
+        },
+        "inspected": {
+            "selection": [5, 8],
+            "context": "Context: send the report now",
+            "reason": "Prepared replaces wording; verify meaning.",
+            "selected": True,
+        },
+        "copied": ["send the report now"],
+        "invalidated": True,
+        "malformed": {"prepared": "send teh report", "status": "error"},
+    }
 
 
 def test_workspace_initialization_focuses_only_an_empty_original_editor(

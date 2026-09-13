@@ -173,15 +173,39 @@
                 aria-pressed="false"
               ><span aria-hidden="true">Maximize</span></button>
             </header>
-            <div class="editor-wrap">
-              <textarea
-                id="prepared-text"
-                aria-label="Prepared text"
-                autocomplete="off"
-                placeholder="Prepared text appears here."
-                readonly
-                spellcheck="true"
-              ></textarea>
+            <div class="prepared-body">
+              <div class="editor-wrap">
+                <textarea
+                  id="prepared-text"
+                  aria-label="Prepared text"
+                  autocomplete="off"
+                  placeholder="Prepared text appears here."
+                  readonly
+                  spellcheck="true"
+                ></textarea>
+              </div>
+              <section
+                id="smart-repair-review"
+                class="smart-repair-review"
+                aria-labelledby="smart-repair-review-title"
+                hidden
+              >
+                <header>
+                  <div>
+                    <span class="eyebrow">Smart inspection</span>
+                    <h3 id="smart-repair-review-title">Repair queue</h3>
+                  </div>
+                  <strong id="smart-repair-summary">0 repairs</strong>
+                </header>
+                <p id="smart-repair-note" class="smart-repair-note">
+                  Select a repair to inspect its corresponding wording and sentence context.
+                </p>
+                <ol id="smart-repair-list" aria-label="Smart lexical repairs"></ol>
+                <div id="smart-repair-selection" class="smart-repair-selection" hidden>
+                  <p id="smart-repair-context"></p>
+                  <p id="smart-repair-reason"></p>
+                </div>
+              </section>
             </div>
             <footer class="panel-footer">
               <span><strong id="prepared-count">0</strong> characters</span>
@@ -346,6 +370,8 @@
               <button id="select-original" type="button" aria-pressed="true">Original</button>
             </div>
             <strong id="outgoing-kind">Nothing yet</strong>
+            <button id="copy-outgoing" class="button button-quiet" type="button" disabled>Copy outgoing</button>
+            <span id="copy-outgoing-state" class="visually-hidden" role="status" aria-live="polite"></span>
           </div>
           <div class="outgoing-statuses">
             <button id="cleanup-status" class="status-pill" data-state="unchanged" type="button" aria-haspopup="dialog" aria-controls="error-details-dialog" disabled>

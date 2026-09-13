@@ -505,6 +505,22 @@ main { padding-top: 8px; }
 .workspace.is-original-maximized .workspace-resizer,
 .workspace.is-prepared-maximized .workspace-resizer { display: none; }
 
+.workspace.has-smart-repair-review {
+  grid-template-rows: minmax(0, 35fr) 18px minmax(0, 65fr);
+}
+
+.workspace.is-original-collapsed.has-smart-repair-review {
+  grid-template-rows: auto 0 minmax(0, 1fr);
+}
+
+.workspace.is-original-collapsed .original-panel { grid-template-rows: auto 0 0; }
+.workspace.is-original-collapsed .original-panel .editor-wrap {
+  overflow: hidden;
+  pointer-events: none;
+}
+.workspace.is-original-collapsed .original-panel-footer,
+.workspace.is-original-collapsed .workspace-resizer { display: none; }
+
 .targets-manager,
 .evaluation-manager {
   min-width: 0;
@@ -806,6 +822,75 @@ main { padding-top: 8px; }
 .panel-maximize:active { box-shadow: 0 1px 4px rgba(11, 18, 27, 0.08); transform: translateY(0); }
 
 .editor-wrap { position: relative; min-height: 0; }
+
+.prepared-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.42fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.prepared-body > .editor-wrap { min-width: 0; }
+
+.smart-repair-review {
+  display: grid;
+  grid-template-rows: auto auto minmax(70px, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 14px;
+  overflow: hidden;
+  border-left: 1px solid var(--line);
+  background: rgba(219, 234, 246, 0.42);
+}
+
+.smart-repair-review > * { min-width: 0; }
+
+.smart-repair-review > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.smart-repair-review h3 { margin: 2px 0 0; font: 500 1.08rem "Iowan Old Style", Palatino, serif; }
+.smart-repair-review header > strong { color: var(--blue-dark); font-size: 0.68rem; }
+.smart-repair-note,
+.smart-repair-selection p { margin: 10px 0; color: var(--muted); font-size: 0.68rem; line-height: 1.45; }
+.smart-repair-review ol {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  margin: 8px 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.smart-repair-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--ink);
+  background: var(--paper-bright);
+  cursor: pointer;
+  text-align: left;
+}
+
+.smart-repair-item[aria-current="true"] { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(23, 105, 170, 0.13); }
+.smart-repair-item-meta { color: var(--muted); font-size: 0.62rem; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; }
+.smart-repair-item-change { overflow-wrap: anywhere; font: 0.8rem/1.4 Charter, Georgia, serif; }
+.smart-repair-item del { color: #7d2630; }
+.smart-repair-item ins { color: var(--blue-dark); font-weight: 700; text-decoration: none; }
+.smart-repair-selection { padding-top: 2px; border-top: 1px solid var(--line); }
+.smart-repair-selection p {
+  margin: 4px 0;
+}
+.smart-repair-selection #smart-repair-reason { color: var(--ink); }
 
 textarea {
   display: block;
@@ -1169,6 +1254,10 @@ textarea::placeholder { color: #9a988f; font-style: italic; }
   .thread-mark { width: 40px; height: 40px; }
   .thread-mark i { width: 34px; }
   .workspace { height: 720px; }
+  .workspace.has-smart-repair-review {
+    grid-template-rows: 360px 18px minmax(640px, auto);
+    height: 1018px;
+  }
   .panel-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
   .panel-prompt-control { width: 100%; }
   .panel-prompt-control select { width: 100%; }
@@ -1178,6 +1267,11 @@ textarea::placeholder { color: #9a988f; font-style: italic; }
     flex-wrap: wrap;
     justify-content: flex-end;
   }
+  .prepared-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(140px, 1fr) minmax(300px, auto);
+  }
+  .smart-repair-review { max-height: 360px; border-top: 1px solid var(--line); border-left: 0; }
   .correction-mode-controls { align-items: stretch; flex-direction: column; }
   .correction-mode-controls label { justify-content: space-between; }
   .correction-mode-controls select { width: min(68vw, 260px); }

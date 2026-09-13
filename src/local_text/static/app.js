@@ -22,6 +22,13 @@
     modeSaveState: document.querySelector("#mode-save-state"),
     smartTaskContextField: document.querySelector("#smart-task-context-field"),
     smartTaskContext: document.querySelector("#smart-task-context"),
+    smartRepairReview: document.querySelector("#smart-repair-review"),
+    smartRepairNote: document.querySelector("#smart-repair-note"),
+    smartRepairSummary: document.querySelector("#smart-repair-summary"),
+    smartRepairList: document.querySelector("#smart-repair-list"),
+    smartRepairSelection: document.querySelector("#smart-repair-selection"),
+    smartRepairContext: document.querySelector("#smart-repair-context"),
+    smartRepairReason: document.querySelector("#smart-repair-reason"),
     runCleanup: document.querySelector("#run-cleanup"),
     clear: document.querySelector("#clear-text"),
     status: document.querySelector("#cleanup-status"),
@@ -31,6 +38,8 @@
     outgoingKind: document.querySelector("#outgoing-kind"),
     selectPrepared: document.querySelector("#select-prepared"),
     selectOriginal: document.querySelector("#select-original"),
+    copyOutgoing: document.querySelector("#copy-outgoing"),
+    copyOutgoingState: document.querySelector("#copy-outgoing-state"),
     publication: document.querySelector("#publication-state"),
     modelLabel: document.querySelector("#model-label"),
     cleanupDisclosure: document.querySelector("#cleanup-disclosure"),
@@ -165,6 +174,9 @@
   let originalOutgoingOverride = false;
   let defaultCorrectionMode = "conservative";
   let currentCorrectionModeOverride = null;
+  let smartRepairs = [];
+  let selectedSmartRepair = null;
+  let smartRepairResultCurrent = false;
   let targetRecords = [];
   let selectedTargetId = null;
   let targetDirty = false;
@@ -197,6 +209,160 @@
     return currentCorrectionModeOverride || defaultCorrectionMode;
   }
 
+  function validateSmartRepairs(repairs, originalText, preparedText) {
+    if (!Array.isArray(repairs)) return false;
+    const operations = new Set(["addition", "removal", "replacement"]);
+    const originalCharacters = Array.from(originalText);
+    const preparedCharacters = Array.from(preparedText);
+    const codePointOffsets = (characters) => {
+      const offsets = [0];
+      characters.forEach((character) => offsets.push(offsets.at(-1) + character.length));
+      return offsets;
+    };
+    const originalOffsets = codePointOffsets(originalCharacters);
+    const preparedOffsets = codePointOffsets(preparedCharacters);
+    const lexicalTokens = (text) => [...text.matchAll(/[\p{L}\p{N}\p{M}_]+(?:['’][\p{L}\p{N}\p{M}_]+)*['’]?/gu)]
+      .map((match) => {
+        const word = match[0].toLocaleLowerCase().replaceAll("’", "'");
+        const forms = [word.replaceAll("'", "")];
+        if (word.endsWith("'s")) forms.push(word.slice(0, -2).replaceAll("'", ""));
+        return {
+          start: match.index,
+          end: match.index + match[0].length,
+          canonical: forms.sort((left, right) => left.length - right.length || left.localeCompare(right))[0],
+        };
+      });
+    const originalTokens = lexicalTokens(originalText);
+    const preparedTokens = lexicalTokens(preparedText);
+    const validSpan = (span, characters) => {
+      return span
+      && Number.isInteger(span.start)
+      && Number.isInteger(span.end)
+      && span.start >= 0
+      && span.end >= span.start
+      && span.end <= characters.length
+      && typeof span.text === "string"
+      && span.text === characters.slice(span.start, span.end).join("");
+    };
+    let previousOriginalEnd = 0;
+    let previousPreparedEnd = 0;
+    const validRepairs = repairs.every((repair, index) => {
+      if (
+        !repair || !operations.has(repair.operation)
+        || repair.queue_position !== index + 1
+        || typeof repair.context !== "string"
+        || typeof repair.inspection_reason !== "string"
+        || !validSpan(repair.original_span, originalCharacters)
+        || !validSpan(repair.prepared_span, preparedCharacters)
+      ) return false;
+      const originalEmpty = repair.original_span.start === repair.original_span.end;
+      const preparedEmpty = repair.prepared_span.start === repair.prepared_span.end;
+      const ordered = repair.original_span.start >= previousOriginalEnd
+        && repair.prepared_span.start >= previousPreparedEnd;
+      previousOriginalEnd = repair.original_span.end;
+      previousPreparedEnd = repair.prepared_span.end;
+      return ordered && {
+        addition: originalEmpty && !preparedEmpty,
+        removal: !originalEmpty && preparedEmpty,
+        replacement: !originalEmpty && !preparedEmpty,
+      }[repair.operation];
+    });
+    if (!validRepairs) return false;
+    const unaffected = (tokens, spans) => tokens
+      .filter((token) => !spans.some(
+        (span) => span.start < span.end && token.start >= span.start && token.end <= span.end,
+      ))
+      .map((token) => token.canonical);
+    const utf16Spans = (key, offsets) => repairs.map((repair) => ({
+      start: offsets[repair[key].start],
+      end: offsets[repair[key].end],
+    }));
+    const originalUnaffected = unaffected(originalTokens, utf16Spans("original_span", originalOffsets));
+    const preparedUnaffected = unaffected(preparedTokens, utf16Spans("prepared_span", preparedOffsets));
+    return originalUnaffected.length === preparedUnaffected.length
+      && originalUnaffected.every((token, index) => token === preparedUnaffected[index]);
+  }
+
+  function invalidateSmartRepairReview() {
+    smartRepairs = [];
+    selectedSmartRepair = null;
+    smartRepairResultCurrent = false;
+    elements.prepared.dataset.repairCount = "0";
+    renderSmartRepairReview();
+  }
+
+  function renderSmartRepairReview() {
+    elements.smartRepairReview.hidden = !smartRepairResultCurrent;
+    elements.workspace.classList.toggle("has-smart-repair-review", smartRepairResultCurrent);
+    elements.smartRepairList.textContent = "";
+    if (!smartRepairResultCurrent) {
+      elements.smartRepairSelection.hidden = true;
+      return;
+    }
+
+    elements.smartRepairSummary.textContent = smartRepairs.length === 0
+      ? "No lexical repairs"
+      : `${smartRepairs.length} repair${smartRepairs.length === 1 ? "" : "s"}`;
+    smartRepairs.forEach((repair) => {
+      const item = document.createElement("li");
+      const button = document.createElement("button");
+      const meta = document.createElement("span");
+      const change = document.createElement("span");
+      const original = document.createElement("del");
+      const separator = document.createElement("span");
+      const prepared = document.createElement("ins");
+      button.type = "button";
+      button.className = "smart-repair-item";
+      button.setAttribute("aria-current", String(repair.queue_position === selectedSmartRepair));
+      meta.className = "smart-repair-item-meta";
+      meta.textContent = `${repair.queue_position} · ${repair.operation}`;
+      change.className = "smart-repair-item-change";
+      original.textContent = repair.original_span.text || "∅";
+      original.setAttribute("aria-label", `Original: ${original.textContent}`);
+      separator.textContent = " → ";
+      separator.setAttribute("aria-hidden", "true");
+      prepared.textContent = repair.prepared_span.text || "∅";
+      prepared.setAttribute("aria-label", `Prepared: ${prepared.textContent}`);
+      change.append(original, separator, prepared);
+      button.append(meta, change);
+      button.addEventListener("click", () => selectSmartRepair(repair.queue_position));
+      item.append(button);
+      elements.smartRepairList.append(item);
+    });
+
+    const selected = smartRepairs.find(
+      (repair) => repair.queue_position === selectedSmartRepair,
+    );
+    elements.smartRepairSelection.hidden = !selected;
+    elements.smartRepairNote.hidden = Boolean(selected);
+    if (!selected) return;
+    elements.smartRepairContext.textContent = `Context: ${selected.context}`;
+    elements.smartRepairContext.title = elements.smartRepairContext.textContent;
+    elements.smartRepairReason.textContent = selected.inspection_reason;
+    elements.smartRepairReason.title = elements.smartRepairReason.textContent;
+  }
+
+  function selectSmartRepair(queuePosition) {
+    const repair = smartRepairs.find((candidate) => candidate.queue_position === queuePosition);
+    if (!repair) return;
+    selectedSmartRepair = queuePosition;
+    renderSmartRepairReview();
+    const span = repair.operation === "removal" ? repair.original_span : repair.prepared_span;
+    const editor = repair.operation === "removal" ? elements.original : elements.prepared;
+    const utf16Start = Array.from(editor.value).slice(0, span.start).join("").length;
+    const utf16End = Array.from(editor.value).slice(0, span.end).join("").length;
+    editor.focus({ preventScroll: true });
+    editor.setSelectionRange(utf16Start, utf16End);
+  }
+
+  function showSmartRepairResult(repairs) {
+    smartRepairs = repairs;
+    selectedSmartRepair = null;
+    smartRepairResultCurrent = true;
+    elements.prepared.dataset.repairCount = String(repairs.length);
+    renderSmartRepairReview();
+  }
+
   function renderCorrectionMode() {
     const mode = effectiveCorrectionMode();
     const source = currentCorrectionModeOverride ? "this Original" : "default";
@@ -211,6 +377,7 @@
   }
 
   function applyCorrectionModeChange() {
+    invalidateSmartRepairReview();
     renderCorrectionMode();
     invalidateEvaluationCapture();
     setCleanupError(null);
@@ -372,6 +539,7 @@
     elements.selectPrepared.setAttribute("aria-pressed", String(usePrepared));
     elements.selectOriginal.setAttribute("aria-pressed", String(!usePrepared));
     elements.outgoingKind.textContent = fallbackLabel();
+    elements.copyOutgoing.disabled = !selectedOutgoingState().outgoing_text;
     elements.correctAndAddExample.disabled = !benchmarkAvailable
       || !preparedIsCurrent()
       || benchmarkCapturedForCurrentPrepared;
@@ -501,6 +669,19 @@
       elements.copyError.textContent = "Copy unavailable";
     }
     window.setTimeout(() => { elements.copyError.textContent = "Copy details"; }, 1_500);
+  }
+
+  async function copyOutgoing() {
+    if (!selectedOutgoingState().outgoing_text) return;
+    try {
+      await navigator.clipboard.writeText(selectedOutgoingState().outgoing_text);
+      elements.copyOutgoing.textContent = "Copied";
+      elements.copyOutgoingState.textContent = "Outgoing copied.";
+    } catch (_error) {
+      elements.copyOutgoing.textContent = "Copy unavailable";
+      elements.copyOutgoingState.textContent = "Outgoing could not be copied.";
+    }
+    window.setTimeout(() => { elements.copyOutgoing.textContent = "Copy outgoing"; }, 1_500);
   }
 
   async function safeHttpError(response, operation) {
@@ -664,6 +845,7 @@
     cleanupTimer = null;
     abortActiveRequest();
     setCleanupError(null);
+    invalidateSmartRepairReview();
     invalidateEvaluationCapture();
     benchmarkCapturedForCurrentPrepared = false;
 
@@ -731,7 +913,9 @@
       if (
         !result || typeof result.prepared_text !== "string"
         || !["prepared", "unchanged", "empty_input", "disabled", "timeout", "provider_error"].includes(result.status)
-        || (correctionMode === "smart" && !Array.isArray(result.lexical_repairs))
+        || (correctionMode === "smart" && !validateSmartRepairs(
+          result.lexical_repairs, originalText, result.prepared_text,
+        ))
       ) {
         elements.prepared.value = originalText;
         setStatus("error");
@@ -741,9 +925,6 @@
       }
 
       elements.prepared.value = result.prepared_text;
-      elements.prepared.dataset.repairCount = String(
-        correctionMode === "smart" ? result.lexical_repairs.length : 0,
-      );
       const statusMap = {
         prepared: "prepared",
         unchanged: "unchanged",
@@ -753,6 +934,10 @@
         provider_error: "error",
       };
       setStatus(statusMap[result.status]);
+      if (
+        correctionMode === "smart"
+        && ["prepared", "unchanged"].includes(result.status)
+      ) showSmartRepairResult(result.lexical_repairs);
       if (result.status === "timeout" || result.status === "provider_error") {
         const safe = result.error;
         setCleanupError(makeError({
@@ -814,6 +999,7 @@
   function scheduleCleanup() {
     window.clearTimeout(cleanupTimer);
     setCleanupError(null);
+    invalidateSmartRepairReview();
     invalidateEvaluationCapture();
     if (!elements.cleanupEnabled.checked) {
       elements.prepared.value = elements.original.value;
@@ -866,6 +1052,7 @@
   elements.original.addEventListener("input", handleOriginalInput);
 
   elements.cleanupEnabled.addEventListener("change", () => {
+    invalidateSmartRepairReview();
     invalidateEvaluationCapture();
     if (!elements.cleanupEnabled.checked) {
       window.clearTimeout(cleanupTimer);
@@ -942,6 +1129,7 @@
     originalOutgoingOverride = false;
     publishNow();
   });
+  elements.copyOutgoing.addEventListener("click", copyOutgoing);
   elements.clear.addEventListener("click", () => {
     window.clearTimeout(cleanupTimer);
     window.clearTimeout(publicationTimer);
@@ -949,6 +1137,7 @@
     replaceAllPending = false;
     originalOutgoingOverride = false;
     currentCorrectionModeOverride = null;
+    invalidateSmartRepairReview();
     invalidateEvaluationCapture();
     elements.original.value = "";
     elements.prepared.value = "";
@@ -1796,7 +1985,7 @@
         : "Evaluation storage is not configured and current.";
 
       elements.prepared.value = "";
-      elements.prepared.dataset.repairCount = "0";
+      invalidateSmartRepairReview();
       invalidateEvaluationCapture();
       originalOutgoingOverride = false;
       setStatus(elements.cleanupEnabled.checked ? "unchanged" : "disabled");
