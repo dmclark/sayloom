@@ -10,6 +10,10 @@ milestones.
 The editable source text supplied to Sayloom.
 _Avoid_: Raw text, input copy
 
+**Intended text**:
+User-confirmed wording that serves as the authority for judging correction quality.
+_Avoid_: Ground truth, corrected Original
+
 **Conservative preparation**:
 Source-preserving preparation that may change presentation but not lexical wording.
 _Avoid_: Smart correction, rewrite
@@ -22,6 +26,11 @@ _Avoid_: Cleaned text, output
 Least-change repair of likely intended words, followed by Conservative preparation. Its
 meaning-bearing changes remain reviewable.
 _Avoid_: Cleanup, rewrite, transcript recovery
+
+**Automatic correction strategy**:
+The complete Smart correction arrangement that automatically selects among multiple correction
+methods to produce Prepared.
+_Avoid_: Single correction method, manual method selection
 
 **Repair**:
 A reviewable lexical addition, removal, or replacement proposed by Smart correction.
