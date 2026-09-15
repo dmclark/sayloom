@@ -29,6 +29,12 @@ Least-change repair of likely intended words, followed by Conservative preparati
 meaning-bearing changes remain reviewable.
 _Avoid_: Cleanup, rewrite, transcript recovery
 
+**Correction method**:
+A bounded way to propose or abstain from lexical repairs. An Automatic correction strategy selects
+among multiple correction methods; Conservative preparation follows lexical repair and is not a
+correction method.
+_Avoid_: Automatic correction strategy, Conservative preparation
+
 **Automatic correction strategy**:
 The complete Smart correction arrangement that automatically selects among multiple correction
 methods to produce Prepared.
