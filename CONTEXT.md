@@ -11,8 +11,10 @@ The editable source text supplied to Sayloom.
 _Avoid_: Raw text, input copy
 
 **Intended text**:
-User-confirmed wording that serves as the authority for judging correction quality.
-_Avoid_: Ground truth, corrected Original
+Wording that the user who produced Original confirms or rewrites to express what they meant. It is
+the authority for correction evaluation: one canonical wording may have additional user-confirmed
+acceptable variants, and neither a model nor an evaluator may substitute its judgment.
+_Avoid_: Ground-truth transcript, inferred intent
 
 **Conservative preparation**:
 Source-preserving preparation that may change presentation but not lexical wording.
