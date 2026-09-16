@@ -93,6 +93,11 @@ runner, and cleanup evidence does not validate Smart correction. Issue
 contract before issue [#15](https://github.com/dmclark/sayloom/issues/15) may receive separate
 approval for a private run.
 
+The separate [intended-meaning evidence collection workflow](docs/intended-meaning-evidence-collection.md)
+prospectively freezes actual Voiceitt-generated English with producer-confirmed Intended variants
+in a new approved external package. It does not inspect practice evidence, expose private text,
+assign acceptance partitions, or authorize provider execution.
+
 Set `LOCAL_TEXT_CORRECTION_BENCHMARK_CASES_PATH` to an absolute cases-file path outside both the
 repository and application state to enable **Correct and add example**. Explicit confirmation adds
 the current Original and corrected intended wording as an ineligible practice candidate using the
