@@ -104,7 +104,7 @@ negative results; do not select only favorable strata.
 Pre-register numeric margins before opening results. Existing cleanup research
 already establishes the discipline: no post-results threshold tuning and no
 provider-order inference from model-quality arms
-([cleanup evaluation](../cleanup-resilience-evaluation.md)). For this proof:
+([cleanup evaluation](cleanup-resilience-evaluation.md)). For this proof:
 
 - **Stop immediately** for privacy-gate failure, an unplanned prompt/model
   change, expected-answer leakage, corpus drift, or any unblinding before labels

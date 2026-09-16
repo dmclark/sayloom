@@ -1,7 +1,7 @@
 # Transcript fidelity product and research specification
 
 > **Superseded product-direction document (2026-09-02).**
-> [`PRODUCT.md`](../PRODUCT.md) replaces this specification as the sole product
+> [`PRODUCT.md`](../../PRODUCT.md) replaces this specification as the sole product
 > authority. Sayloom receives Voiceitt-generated text, not audio, and its
 > confirmed outcome is intended-text correction rather than recovery of a
 > provably faithful transcript. This file is retained only as historical
@@ -38,7 +38,7 @@ Authority is ordered as follows:
    [Sayloom fresh-start plan](https://github.com/dmclark/voiceitt-orchestration/blob/e17acb0e/docs/plans/sayloom-fresh-start.md),
    and the explicitly subordinate
    [version-one shape summary](https://github.com/dmclark/voiceitt-orchestration/blob/e17acb0e/docs/ui/sayloom-version-one-shape.md).
-2. [`PRODUCT.md`](../PRODUCT.md) governs Sayloom's product outcome, terminology,
+2. [`PRODUCT.md`](../../PRODUCT.md) governs Sayloom's product outcome, terminology,
    and scope. This specification does not override it.
 3. [`docs/shape-plan.md`](shape-plan.md) and this file remain historical evidence
    only. Their assumptions require fresh confirmation before reuse.

@@ -1,7 +1,7 @@
 # Sayloom UX shape plan
 
 > **Superseded product-scope document (2026-09-02).**
-> [`PRODUCT.md`](../PRODUCT.md) is the sole authority for Sayloom's product
+> [`PRODUCT.md`](../../PRODUCT.md) is the sole authority for Sayloom's product
 > direction and scope. This plan remains historical UX and information-
 > architecture evidence only. Its audience, outcome, object model, navigation,
 > version-one scope, and future-phase statements are not current product

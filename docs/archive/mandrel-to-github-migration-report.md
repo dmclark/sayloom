@@ -1,5 +1,10 @@
 # Mandrel-to-GitHub migration completion report
 
+> **Historical completion record.** This report preserves the validated migration
+> outcome. Use the [documentation map](../README.md) and current repository guidance
+> for present-day workflow authority.
+
+- **Status:** Completed; historical migration evidence
 - **Validation completed:** 2026-09-08T14:49:09Z
 - **Authority cutoff:** 2026-09-08T02:26:56Z
 - **Repository:** Private `dmclark/sayloom`
@@ -24,7 +29,7 @@ validated state.
 | Disposition | Rows | Validated result |
 | --- | ---: | --- |
 | Create Issue | 14 | All 14 open Issues resolve, contain approved provenance, and belong to the private Sayloom Project. |
-| Update canonical document | 11 | All 11 sources resolve to the canonical [product implementation plan](product-implementation-plan.md), which contains their approved provenance. |
+| Update canonical document | 11 | All 11 sources resolve to the canonical [product implementation plan](../product-implementation-plan.md), which contains their approved provenance. |
 | Link existing artifact | 18 | All approved existing-artifact destinations resolve. |
 | Archive only | 16 | All rows remain provenance-only; no new artifact was created. |
 | Retain in Mandrel | 7 | All rows remain in read-only Mandrel; no content was copied. |

@@ -1,7 +1,12 @@
 # Sayloom handoff prompt template
 
+> **Historical workflow template.** This file predates the completed
+> GitHub/repository cutover and incorrectly assigns reusable project context to
+> Mandrel. Do not use it for current handoffs; follow current repository guidance
+> and the [documentation map](../README.md).
+
 Use this template when one bounded Sayloom deliverable moves to another Amp
-thread or executor. [`PRODUCT.md`](../PRODUCT.md) is the product authority; a
+thread or executor. [`PRODUCT.md`](../../PRODUCT.md) is the product authority; a
 handoff references it but does not reproduce it.
 
 ## Generate a concise handoff

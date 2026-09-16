@@ -6,7 +6,7 @@
 - **Machine-readable authority:**
   [`cleanup-evaluation-benchmark-v2.json`](cleanup-evaluation-benchmark-v2.json)
 - **Supersedes:**
-  [`cleanup-evaluation-benchmark-v1.json`](cleanup-evaluation-benchmark-v1.json), preserved unchanged
+  [`cleanup-evaluation-benchmark-v1.json`](archive/cleanup-evaluation-benchmark-v1.json), preserved unchanged
   as history
 - **Scope:** Current source-preserving cleanup only; no rewrite, Smart correction, transcript
   fidelity, stable routing, or provider promotion

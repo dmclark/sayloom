@@ -85,13 +85,11 @@ by an explicit browser-selected local destination; it streams deterministic UTF-
 recording a path or export event. Saving is for polished-cleanup evaluation only and is not consent
 to training or personalization.
 
-The independent, provider-free [Smart correction benchmark scaffold](docs/correction-benchmark-pipeline.md)
-validates external-only run registration, single-attempt output import, blind scoring, aggregate
-reporting, and the hard fidelity gate across a synthetic 2 × 2 × 2 matrix. It is not the cleanup
-runner, and cleanup evidence does not validate Smart correction. Issue
-[#14](https://github.com/dmclark/sayloom/issues/14) must bind the scaffold to the real Smart product
-contract before issue [#15](https://github.com/dmclark/sayloom/issues/15) may receive separate
-approval for a private run.
+The provider-free [automatic-strategy evaluation harness](docs/automatic-strategy-evaluation-harness.md)
+is the current Smart evaluation contract. It supersedes the historical fixed
+2 × 2 × 2 [Smart correction benchmark scaffold](docs/archive/correction-benchmark-pipeline.md)
+for prototype acceptance. Neither harness is the cleanup runner, and cleanup
+evidence does not validate Smart correction or authorize a private run.
 
 Set `LOCAL_TEXT_CORRECTION_BENCHMARK_CASES_PATH` to an absolute cases-file path outside both the
 repository and application state to enable **Correct and add example**. Explicit confirmation adds

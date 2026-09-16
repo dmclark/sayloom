@@ -1,6 +1,11 @@
 # Mandrel-to-GitHub migration implementation plan
 
-- **Status:** Approved for implementation; not yet executed
+> **Historical migration plan.** The migration is complete. Keep this procedure
+> only as provenance; use the [completion report](mandrel-to-github-migration-report.md)
+> for the recorded outcome and the [documentation map](../README.md) for current
+> workflow authorities.
+
+- **Status:** Completed; historical implementation plan
 - **Repository:** `dmclark/sayloom`
 - **Approver:** `dmclark`
 - **Audience:** Migration operator and repository maintainer
@@ -13,8 +18,8 @@ provide the workflow view, and versioned repository documents and ADRs will
 hold durable current knowledge and decisions.
 
 Mandrel remains intact as a permanent, read-only provenance archive. It must
-not remain a second active system after cutover. This plan documents the later
-migration procedure; it does not authorize or perform the migration.
+not remain a second active system after cutover. This plan records the procedure
+used for the completed migration; it does not authorize another migration.
 
 ## Authority after cutover
 
