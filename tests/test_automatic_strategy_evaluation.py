@@ -9,6 +9,9 @@ from pydantic import ValidationError
 from local_text.automatic_strategy_evaluation import (
     PIPELINE_VERSION,
     AdapterRequest,
+    Candidate,
+    Ceilings,
+    ExecutionBudget,
     ExecutionResult,
     build_report,
     execute_run,
@@ -22,6 +25,27 @@ def write_json(path: Path, value: object) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value))
     return path
+
+
+def repair_trace(
+    original: str,
+    prepared: str,
+    before: str,
+    after: str,
+    *,
+    uncertain: bool = False,
+) -> dict[str, object]:
+    original_start = original.index(before)
+    prepared_start = prepared.index(after)
+    return {
+        "before": before,
+        "after": after,
+        "original_start": original_start,
+        "original_end": original_start + len(before),
+        "prepared_start": prepared_start,
+        "prepared_end": prepared_start + len(after),
+        "uncertain": uncertain,
+    }
 
 
 def candidate(
@@ -233,6 +257,95 @@ def test_adapter_receives_only_frozen_candidate_evidence(tmp_path: Path) -> None
         first.original = "changed"
 
 
+def lexical_request(
+    original: str,
+    profile: tuple[str, ...],
+    *,
+    context: str = "",
+    maximum_repairs: int = 2,
+) -> AdapterRequest:
+    return AdapterRequest(
+        original=original,
+        request_context=context,
+        enabled_profile_evidence=profile,
+        candidate_configuration=Candidate.model_validate(
+            {
+                **candidate(
+                    "lexical",
+                    kind="component",
+                    family="deterministic_lexical",
+                    methods=["lexical"],
+                    executor="deterministic-lexical-v1",
+                ),
+                "routing": {
+                    "policy": "deterministic_lexical",
+                    "version": "v1",
+                    "maximum_profile_terms": 8,
+                    "maximum_term_tokens": 2,
+                    "maximum_term_characters": 32,
+                    "maximum_edit_distance": 1,
+                    "minimum_term_characters": 3,
+                    "maximum_repairs": maximum_repairs,
+                },
+            }
+        ),
+        seed="frozen-attempt-seed",
+        execution_budget=ExecutionBudget(
+            timeout_seconds=30,
+            maximum_internal_retries=0,
+            ceilings=Ceilings(
+                provider_calls=0,
+                input_tokens=0,
+                output_tokens=0,
+                cost_usd_micros=0,
+            ),
+        ),
+    )
+
+
+def test_lexical_candidate_is_deterministic_bounded_and_traces_each_repair() -> None:
+    request = lexical_request(
+        "Ask Alise and Bpb about Atlas.",
+        ("Alice", "Bob", "Atlas", "Alicia"),
+        context="Use the exact contextual spelling Alyse.",
+        maximum_repairs=1,
+    )
+
+    first = EVALUATION_ADAPTERS["deterministic-lexical-v1"](request)
+    second = EVALUATION_ADAPTERS["deterministic-lexical-v1"](request)
+
+    assert first == second
+    assert first.model_dump(mode="json") == {
+        "outcome": "success",
+        "prepared_text": "Ask Alice and Bpb about Atlas.",
+        "selected_method": "lexical",
+        "repairs": [
+            repair_trace(
+                "Ask Alise and Bpb about Atlas.",
+                "Ask Alice and Bpb about Atlas.",
+                "Alise",
+                "Alice",
+            )
+        ],
+        "internal_retries": 0,
+        "latency_ms": 0,
+        "provider_calls": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd_micros": 0,
+    }
+
+
+def test_lexical_candidate_abstains_for_ambiguous_or_already_correct_terms() -> None:
+    ambiguous = lexical_request("Keep Atlas and use cot.", ("Atlas", "cat", "cut"))
+
+    result = EVALUATION_ADAPTERS["deterministic-lexical-v1"](ambiguous)
+
+    assert result.outcome == "abstention"
+    assert result.prepared_text is None
+    assert result.repairs == []
+
+
 def test_each_adapter_attempt_receives_an_isolated_candidate_configuration(
     tmp_path: Path,
 ) -> None:
@@ -351,7 +464,17 @@ def test_unknown_and_invalid_executor_identifiers_fail_open(tmp_path: Path) -> N
     "repairs",
     [
         [],
-        [{"before": "not in Original", "after": "not in Prepared", "uncertain": False}],
+        [
+            {
+                "before": "not in Original",
+                "after": "not in Prepared",
+                "original_start": 0,
+                "original_end": 15,
+                "prepared_start": 0,
+                "prepared_end": 15,
+                "uncertain": False,
+            }
+        ],
     ],
 )
 def test_malformed_or_unreviewable_adapter_output_has_content_free_failure(
@@ -392,9 +515,21 @@ def test_malformed_or_unreviewable_adapter_output_has_content_free_failure(
 def test_registration_freezes_dynamic_candidates_and_approval_manifest(tmp_path: Path) -> None:
     private = tmp_path / "private"
     app_database = tmp_path / "application-state" / "local-text.sqlite3"
+    config = configuration()
+    config["candidates"][0]["executor"] = "deterministic-lexical-v1"
+    config["candidates"][0]["routing"].update(
+        {
+            "maximum_profile_terms": 8,
+            "maximum_term_tokens": 2,
+            "maximum_term_characters": 32,
+            "maximum_edit_distance": 1,
+            "minimum_term_characters": 3,
+            "maximum_repairs": 1,
+        }
+    )
 
     result = register_run(
-        configuration_path=write_json(private / "configuration.json", configuration()),
+        configuration_path=write_json(private / "configuration.json", config),
         cases_path=write_json(private / "cases.json", synthetic_cases()),
         runs_directory=private / "runs",
         application_database_path=app_database,
@@ -421,6 +556,16 @@ def test_registration_freezes_dynamic_candidates_and_approval_manifest(tmp_path:
     }
     assert manifest["privacy"]["storage"] == "user-controlled-external"
     assert manifest["stop_conditions"][-1] == "ceiling_exceeded"
+    assert manifest["candidates"][0]["routing"] == {
+        "policy": "deterministic_lexical",
+        "version": "v1",
+        "maximum_profile_terms": 8,
+        "maximum_term_tokens": 2,
+        "maximum_term_characters": 32,
+        "maximum_edit_distance": 1,
+        "minimum_term_characters": 3,
+        "maximum_repairs": 1,
+    }
     assert manifest["candidates"][2]["routing"]["policy"] == "fixed_cascade"
     assert manifest["worst_case_totals"] == {
         "provider_calls": 48,
@@ -455,11 +600,13 @@ class SyntheticExecutor:
             prepared_text=prepared,
             selected_method=candidate.method_ids[-1],
             repairs=[
-                {
-                    "before": "wrong",
-                    "after": "correct" if candidate.candidate_id == "cascade" else "right",
-                    "uncertain": candidate.candidate_id == "cascade",
-                }
+                repair_trace(
+                    request.original,
+                    prepared,
+                    "wrong",
+                    "correct" if candidate.candidate_id == "cascade" else "right",
+                    uncertain=candidate.candidate_id == "cascade",
+                )
             ],
             internal_retries=1 if candidate.candidate_id == "router" else 0,
             latency_ms=40,
@@ -620,9 +767,9 @@ def test_bootstrap_resamples_cases_and_abstention_latency_uses_recorded_time(
             )
         return ExecutionResult(
             outcome="success",
-            prepared_text=request.original.replace("wrong", "right"),
+            prepared_text=(prepared := request.original.replace("wrong", "right")),
             selected_method=candidate.method_ids[-1],
-            repairs=[{"before": "wrong", "after": "right", "uncertain": False}],
+            repairs=[repair_trace(request.original, prepared, "wrong", "right")],
             internal_retries=0,
             latency_ms=40,
             provider_calls=0,
@@ -658,11 +805,11 @@ def test_repair_level_adjudication_preserves_mixed_correctness(tmp_path: Path) -
         final_word = intended.split()[-1].rstrip(".")
         return ExecutionResult(
             outcome="success",
-            prepared_text=intended.replace(final_word, "gamma"),
+            prepared_text=(prepared := intended.replace(final_word, "gamma")),
             selected_method="model",
             repairs=[
-                {"before": "wrong", "after": "right", "uncertain": False},
-                {"before": final_word, "after": "gamma", "uncertain": False},
+                repair_trace(request.original, prepared, "wrong", "right"),
+                repair_trace(request.original, prepared, final_word, "gamma"),
             ],
             internal_retries=0,
             latency_ms=40,
@@ -744,11 +891,12 @@ def test_routed_method_needs_adjusted_component_confidence_to_be_decision_grade(
     run_directory = private / "runs" / "routed-confidence"
 
     def wrong_executor(request: AdapterRequest) -> ExecutionResult:
+        prepared = request.original.replace("wrong", "worse")
         return ExecutionResult(
             outcome="success",
-            prepared_text=request.original.replace("wrong", "worse"),
+            prepared_text=prepared,
             selected_method="lexical",
-            repairs=[{"before": "wrong", "after": "worse", "uncertain": False}],
+            repairs=[repair_trace(request.original, prepared, "wrong", "worse")],
             internal_retries=0,
             latency_ms=40,
             provider_calls=1,
