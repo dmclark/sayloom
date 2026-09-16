@@ -2,7 +2,7 @@
 
 > **Historical migration plan.** The migration is complete. Keep this procedure
 > only as provenance; use the [completion report](mandrel-to-github-migration-report.md)
-> for the recorded outcome and the [documentation map](README.md) for current
+> for the recorded outcome and the [documentation map](../README.md) for current
 > workflow authorities.
 
 - **Status:** Completed; historical implementation plan

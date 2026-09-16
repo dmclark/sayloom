@@ -7,7 +7,7 @@
   "corpus_contract_version": "cleanup-evaluation-corpus-v1",
   "supersedes": {
     "protocol_id": "cleanup-evaluation-benchmark-v1",
-    "path": "cleanup-evaluation-benchmark-v1.json",
+    "path": "archive/cleanup-evaluation-benchmark-v1.json",
     "preserve_unchanged_as_history": true
   },
   "authorization": {

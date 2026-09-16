@@ -23,11 +23,18 @@ owns workflow state.
 - **Historical** is retained for provenance only. It may describe the state at
   a named revision, but it does not authorize current work.
 
+Current documents remain directly under `docs/` or in a purpose-specific
+current directory such as `docs/agents/`. Unfinished collateral lives under
+`docs/drafts/`, and superseded or completed material lives under
+`docs/archive/`. Do not add lifecycle suffixes such as `-current` or
+`-superseded` to filenames; moving a file between these directories is the
+lifecycle transition.
+
 This map is the canonical lifecycle inventory for `docs/`. When a document's
-lifecycle changes, move its entry here. Historical Markdown documents also keep
-a prominent warning at the top so direct links remain safe. More specific
-status, scope, and authorization limits belong in the document itself rather
-than being duplicated here.
+lifecycle changes, move both the file and its entry here. Historical Markdown
+documents also keep a prominent warning at the top so direct links remain safe.
+More specific status, scope, and authorization limits belong in the document
+itself rather than being duplicated here.
 
 ## Current authorities
 
@@ -51,20 +58,20 @@ than being duplicated here.
 
 | Document | Status |
 | --- | --- |
-| [Partner participant invitation](partner-participant-invitation.md) and [rendered PDF draft](partner-participant-invitation-draft.pdf) | Working draft with unresolved bracketed details; not participant-ready. |
-| [Partner demonstration](partner-demo.html) | Illustrative demonstration collateral, not efficacy evidence or authorization. |
+| [Partner participant invitation](drafts/partner-participant-invitation.md) and [rendered PDF draft](drafts/partner-participant-invitation-draft.pdf) | Working draft with unresolved bracketed details; not participant-ready. |
+| [Partner demonstration](drafts/partner-demo.html) | Illustrative demonstration collateral, not efficacy evidence or authorization. |
 
 ## Historical and superseded material
 
 | Document | Superseded or completed by |
 | --- | --- |
-| [Correction benchmark pipeline](correction-benchmark-pipeline.md) | Fixed eight-arm Smart scaffold; superseded for prototype acceptance by the automatic-strategy specification, map, and harness. |
-| [Cleanup resilience and local evaluation design](cleanup-resilience-evaluation.md) | Current cleanup corpus contract and version 2 protocol. |
-| [Cleanup benchmark protocol version 1](cleanup-evaluation-benchmark-v1.json) | Version 2 protocol; retained byte-for-byte as historical evidence. |
-| [Product roadmap](roadmap.md) | `PRODUCT.md` and the current evaluation/prototype map. |
-| [UX shape plan](shape-plan.md) | `PRODUCT.md`; retained as historical UX evidence. |
-| [Transcript fidelity specification](transcript-fidelity-spec.md) | `PRODUCT.md`; retained as historical research evidence. |
-| [First correction model and experiment matrix](research/first-correction-model-and-experiment-matrix.md) | Automatic-strategy specification, map, and harness. |
-| [Hosted AI delivery research](research/hosted-ai-delivery-privacy-unit-economics.md) | Historical provider research based on the superseded single-model proof; revalidate all volatile facts before reuse. |
-| [Handoff prompt template](handoff-prompt-template.md) | Predates the GitHub/repository cutover and incorrectly assigns reusable project context to Mandrel. Use current repository guidance instead. |
-| [Mandrel-to-GitHub migration plan](mandrel-to-github-migration-plan.md) and [completion report](mandrel-to-github-migration-report.md) | Completed migration record; current workflow authority is repository guidance and the agent documents above. |
+| [Correction benchmark pipeline](archive/correction-benchmark-pipeline.md) | Fixed eight-arm Smart scaffold; superseded for prototype acceptance by the automatic-strategy specification, map, and harness. |
+| [Cleanup resilience and local evaluation design](archive/cleanup-resilience-evaluation.md) | Current cleanup corpus contract and version 2 protocol. |
+| [Cleanup benchmark protocol version 1](archive/cleanup-evaluation-benchmark-v1.json) | Version 2 protocol; retained byte-for-byte as historical evidence. |
+| [Product roadmap](archive/roadmap.md) | `PRODUCT.md` and the current evaluation/prototype map. |
+| [UX shape plan](archive/shape-plan.md) | `PRODUCT.md`; retained as historical UX evidence. |
+| [Transcript fidelity specification](archive/transcript-fidelity-spec.md) | `PRODUCT.md`; retained as historical research evidence. |
+| [First correction model and experiment matrix](archive/first-correction-model-and-experiment-matrix.md) | Automatic-strategy specification, map, and harness. |
+| [Hosted AI delivery research](archive/hosted-ai-delivery-privacy-unit-economics.md) | Historical provider research based on the superseded single-model proof; revalidate all volatile facts before reuse. |
+| [Handoff prompt template](archive/handoff-prompt-template.md) | Predates the GitHub/repository cutover and incorrectly assigns reusable project context to Mandrel. Use current repository guidance instead. |
+| [Mandrel-to-GitHub migration plan](archive/mandrel-to-github-migration-plan.md) and [completion report](archive/mandrel-to-github-migration-report.md) | Completed migration record; current workflow authority is repository guidance and the agent documents above. |

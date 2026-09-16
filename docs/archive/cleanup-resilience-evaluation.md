@@ -4,7 +4,7 @@
 > benchmark/canary machinery implemented by issues #25–#32. That implementation does not establish
 > that a live run occurred and grants no operational authorization. Cleanup evaluation remains
 > independent from Smart evaluation; use the canonical
-> [evaluation and Smart MVP map](evaluation-mvp-map.md) for current cross-track status.
+> [evaluation and Smart MVP map](../evaluation-mvp-map.md) for current cross-track status.
 
 - **Status:** Historical design; version-one benchmark/canary design superseded
 - **Code baseline:** `8599efa3c3ac65e50ff44a4ad43f31d68af5ae00`
@@ -14,8 +14,8 @@
 
 The benchmark, scoring, sample, and canary sections originally recorded here are version-one
 history. The approved documentation-only successor is the
-[source-preserving cleanup benchmark and canary protocol](cleanup-evaluation-successor-protocol.md),
-with its [machine-readable version 2](cleanup-evaluation-benchmark-v2.json). Version 2 authorizes no
+[source-preserving cleanup benchmark and canary protocol](../cleanup-evaluation-successor-protocol.md),
+with its [machine-readable version 2](../cleanup-evaluation-benchmark-v2.json). Version 2 authorizes no
 runner implementation, corpus access, provider call, spending, benchmark, canary, routing change,
 or stable-product change. The original
 [machine-readable version 1](cleanup-evaluation-benchmark-v1.json) remains unchanged as superseded
@@ -263,7 +263,7 @@ Version 1 proposed broader transformation strata, a routed arm, 12-second/8-seco
 budgets, possible expansion toward 300 cases, several compensating metrics, and a 10/25/100 canary
 progression. Those rules are superseded and must not be used for implementation or operation.
 
-The [successor protocol](cleanup-evaluation-successor-protocol.md) records the full audit and the
+The [successor protocol](../cleanup-evaluation-successor-protocol.md) records the full audit and the
 approved replacement: exactly 60 challenge-balanced dictation cases within the shipped lexical
 boundary; two one-attempt arms under the same prompt, validator, and 30-second deadline; paired
 normalized code-point Levenshtein effort and non-compensating hard gates; and, only after passage and
@@ -289,10 +289,10 @@ sample expansion, automatic fallback, 25/100 continuation, or stable promotion.
    the same current text/instruction only after qualifying Gemini failure and saves no evaluation
    corpus. Legacy Gemini-only routing remains compatible; generic `OPENAI_API_KEY` is ignored.
 5. **Corpus contract and schema design (implemented):** the frozen
-   [corpus contract](cleanup-evaluation-corpus-contract.md) encodes the six confirmed decisions in
+   [corpus contract](../cleanup-evaluation-corpus-contract.md) encodes the six confirmed decisions in
    API, separate storage, consent, expiry, transactional deletion, and JSONL export contracts.
    [Version 1](cleanup-evaluation-benchmark-v1.json) is preserved unchanged as historical evidence;
-   [version 2](cleanup-evaluation-benchmark-v2.json) is the canonical protocol. Its approval itself
+   [version 2](../cleanup-evaluation-benchmark-v2.json) is the canonical protocol. Its approval itself
    authorized no implementation or operation.
 6. **Corpus persistence and lifecycle (implemented):** the separate opt-in evaluation database,
    proof-bound capture/confirm/review/delete/export, expiry command, and transactional deletion use

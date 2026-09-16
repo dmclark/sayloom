@@ -21,7 +21,7 @@ calls, spending, stable-state operation, deployment, or production hosting.
 | **Smart evaluation** | Original + legitimately available ephemeral evidence → automatic selection among Correction methods → reviewable repairs + Conservative preparation → Prepared | [`automatic_strategy_evaluation.py`](../src/local_text/automatic_strategy_evaluation.py), its [harness contract](automatic-strategy-evaluation-harness.md), and the issue [#46](https://github.com/dmclark/sayloom/issues/46) graph provide the provider-neutral pipeline. The latest audit found zero eligible cases, so evidence accumulation remains the first evidence gate. | Experimental methods stay outside runtime. Do not reuse Cleanup evidence or weaken the held-out minimum and strata requirements. The earlier fixed 2 × 2 × 2 Smart scaffold is historical only. |
 
 The cleanup protocol files are provenance-bearing records. In particular,
-[`cleanup-evaluation-benchmark-v1.json`](cleanup-evaluation-benchmark-v1.json) remains byte-for-byte
+[`cleanup-evaluation-benchmark-v1.json`](archive/cleanup-evaluation-benchmark-v1.json) remains byte-for-byte
 unchanged historical evidence. Implementation-status statements embedded in older protocol or
 design prose describe their recorded baseline; this map owns current cross-track status.
 
@@ -49,11 +49,11 @@ automatic-strategy path rather than parallel acceptance gates.
 - [`product-implementation-plan.md`](product-implementation-plan.md) remains the
   broader capability plan; the focused prototype specification controls the
   automatic-strategy definition of done and evidence gates.
-- [`correction-benchmark-pipeline.md`](correction-benchmark-pipeline.md) documents the existing Smart
+- [`correction-benchmark-pipeline.md`](archive/correction-benchmark-pipeline.md) documents the existing Smart
   fixed-arm scaffold, not the prototype acceptance benchmark or permission to
   run it.
 - [`cleanup-evaluation-successor-protocol.md`](cleanup-evaluation-successor-protocol.md) and its JSON
   protocols govern cleanup only. They are not Smart evaluation inputs.
-- [`roadmap.md`](roadmap.md) and
-  [`research/first-correction-model-and-experiment-matrix.md`](research/first-correction-model-and-experiment-matrix.md)
+- [`roadmap.md`](archive/roadmap.md) and
+  [`first-correction-model-and-experiment-matrix.md`](archive/first-correction-model-and-experiment-matrix.md)
   are retained historical context, not current milestone or execution authority.

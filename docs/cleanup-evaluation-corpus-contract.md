@@ -8,7 +8,7 @@
   [`cleanup-evaluation-benchmark-v2.json`](cleanup-evaluation-benchmark-v2.json) — approved protocol
   only; no implementation or operation authorized
 - **Superseded history:**
-  [`cleanup-evaluation-benchmark-v1.json`](cleanup-evaluation-benchmark-v1.json) — preserved unchanged
+  [`cleanup-evaluation-benchmark-v1.json`](archive/cleanup-evaluation-benchmark-v1.json) — preserved unchanged
 
 This contract governs a private corpus of user-confirmed polished cleanups. It does not authorize
 passive collection. The Stage 3 implementation exposes capture only after a successful current

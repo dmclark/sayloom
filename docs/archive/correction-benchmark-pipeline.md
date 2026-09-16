@@ -2,14 +2,14 @@
 
 > **Historical fixed-arm scaffold.** This file documents the implemented eight-arm
 > Smart benchmark scaffold, but it is not the current prototype acceptance path.
-> Use the [documentation map](README.md) and the current
-> [evaluation and automatic-correction prototype map](evaluation-mvp-map.md).
+> Use the [documentation map](../README.md) and the current
+> [evaluation and automatic-correction prototype map](../evaluation-mvp-map.md).
 
 - **Pipeline version:** `correction-benchmark-pipeline-v1`
 - **Status:** Historical implementation reference; product binding and private run were not completed
 - **Scope:** private text-only Smart-correction experiment
 - **Conditions:** prompt × task context × curated knowledge, each off/on
-- **Milestone map:** [`evaluation-mvp-map.md`](evaluation-mvp-map.md)
+- **Milestone map:** [`evaluation-mvp-map.md`](../evaluation-mvp-map.md)
 
 This bounded harness freezes and validates the benchmark pipeline before any
 private corpus or paid provider run. It does not call a provider and is not
