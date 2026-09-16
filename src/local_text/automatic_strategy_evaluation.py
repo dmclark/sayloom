@@ -174,12 +174,22 @@ class EvaluationCase(StrictModel):
 class RepairTrace(StrictModel):
     before: str = Field(max_length=100_000)
     after: str = Field(max_length=100_000)
+    original_start: int = Field(ge=0)
+    original_end: int = Field(ge=0)
+    prepared_start: int = Field(ge=0)
+    prepared_end: int = Field(ge=0)
     uncertain: bool
 
     @model_validator(mode="after")
     def repair_changes_text(self) -> RepairTrace:
         if self.before == self.after:
             raise ValueError("a repair must describe a lexical change")
+        if self.original_end < self.original_start or self.prepared_end < self.prepared_start:
+            raise ValueError("repair span ends must not precede their starts")
+        if self.original_end - self.original_start != len(self.before):
+            raise ValueError("the Original repair span must match before")
+        if self.prepared_end - self.prepared_start != len(self.after):
+            raise ValueError("the Prepared repair span must match after")
         return self
 
 
@@ -499,10 +509,27 @@ def _result_is_reviewable(result: ExecutionResult, request: AdapterRequest) -> b
         return True
     if result.prepared_text == request.original:
         return False
-    return all(
-        (not repair.before or repair.before in request.original)
-        and (not repair.after or repair.after in result.prepared_text)
-        for repair in result.repairs
+    original_cursor = 0
+    prepared_cursor = 0
+    reconstructed: list[str] = []
+    for repair in result.repairs:
+        if (
+            repair.original_start < original_cursor
+            or repair.prepared_start < prepared_cursor
+            or request.original[repair.original_start : repair.original_end] != repair.before
+            or result.prepared_text[repair.prepared_start : repair.prepared_end] != repair.after
+        ):
+            return False
+        unchanged = request.original[original_cursor : repair.original_start]
+        if result.prepared_text[prepared_cursor : repair.prepared_start] != unchanged:
+            return False
+        reconstructed.extend((unchanged, repair.after))
+        original_cursor = repair.original_end
+        prepared_cursor = repair.prepared_end
+    reconstructed.append(request.original[original_cursor:])
+    return (
+        result.prepared_text[prepared_cursor:] == request.original[original_cursor:]
+        and "".join(reconstructed) == result.prepared_text
     )
 
 
