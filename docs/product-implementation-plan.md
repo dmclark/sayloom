@@ -4,6 +4,8 @@
 - **Audience:** Product, design, engineering, research, and delivery contributors
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Evaluation and milestone authority:** [`evaluation-mvp-map.md`](evaluation-mvp-map.md)
+- **Automatic-correction prototype:**
+  [`automatic-correction-prototype-spec.md`](automatic-correction-prototype-spec.md)
 
 ## Purpose
 
@@ -16,11 +18,24 @@ before advancing.
 The Current product already provides Conservative source-preserving preparation, provider
 routing, editable Original text, a generated result named Prepared,
 explicit Outgoing selection, fail-open behavior, prompt versions, inspectable
-failures, and local Raycast delivery. Smart correction, meaning-bearing change
-review, user-scoped personalization, hosted identity, managed hosted provider
-access, and the hosted service remain implementation gaps.
+failures, local Raycast delivery, and a bounded single-method Smart path with
+server-derived repair metadata. Automatic selection among multiple correction
+methods, complete meaning-bearing change review, user-scoped personalization,
+hosted identity, managed hosted provider access, and the hosted service remain
+implementation gaps.
 
 ## Sequencing
+
+The automatic-correction prototype now follows the staged plan in the
+[focused specification](automatic-correction-prototype-spec.md), coordinated by
+[the automatic-correction initiative](https://github.com/dmclark/sayloom/issues/46).
+It treats automatic selection as a possible implementation inside Smart,
+compares experimental method families outside production runtime, and admits
+only an evidence-selected winner to runtime integration.
+
+The historical sequence below remains useful for the broader production Smart
+and personalization path. Its fixed single-Smart-prompt evidence steps are
+superseded and are not the current prototype strategy or acceptance authority.
 
 ```text
 #6 vocabulary
@@ -33,13 +48,13 @@ access, and the hosted service remain implementation gaps.
 #11 repair review  #12 Private correction profile
     └──────┬───────┘
            ▼
-#14 product-bound Smart benchmark acceptance
+#14 fixed-arm benchmark (superseded)
            ▼
-Smart MVP candidate
+Historical Smart MVP candidate
            ▼
-#15 separately approved private run and pass
+#15 fixed-arm private run (superseded)
            ▼
-Evidence-backed Smart MVP
+Historical evidence-backed Smart MVP
            ▼
 #13 optional memory + #16 local self-pilot
            ▼
@@ -48,10 +63,13 @@ Locally proven Smart product
 #17 Partner-demo ready
 ```
 
-Issue [#9](https://github.com/dmclark/sayloom/issues/9) coordinates the Smart work. The linked
-[evaluation and Smart MVP map](evaluation-mvp-map.md) defines milestone evidence and keeps cleanup
-evaluation independent from Smart evaluation. The capability sections below describe scope; they do
-not override this issue order. Memory and the full memory-inclusive self-pilot are outside the MVP.
+Issue [#9](https://github.com/dmclark/sayloom/issues/9) coordinates the broader
+production Smart and personalization work. The linked
+[evaluation map](evaluation-mvp-map.md) and focused prototype specification own
+the current automatic-strategy evidence path and keep Cleanup evaluation
+independent from Smart evaluation. The capability sections below describe
+scope; they do not override that path. Memory and the full memory-inclusive
+self-pilot are outside the prototype.
 
 ## Capability area: Prepared vocabulary and mode foundation
 
@@ -92,8 +110,10 @@ changes and uncertainty assistance.
 
 ### Confirmed local-proof contract
 
-The local proof uses an explicit Smart path for least-change intended-word
-repairs and then applies Conservative preparation. Original, optional
+The implemented baseline uses an explicit Smart path for least-change
+intended-word repairs and then applies Conservative preparation. The automatic
+prototype may replace that implementation with the evidence-selected
+multi-method strategy without adding a new user-visible mode. Original, optional
 request-scoped task context, and approved user knowledge are untrusted evidence,
 not instructions. Ambiguous wording is preserved instead of guessed, and any
 provider, deadline, validation, or malformed-response failure leaves Original
@@ -123,16 +143,14 @@ repair may produce a conservative memory proposal, but saving it requires a
 separate explicit approval; confirmation, copying, dismissal, and ordinary
 preparation save nothing.
 
-The controlled local proof uses Voiceitt Chrome insertion into Original, with
-paste as a labeled fallback. Its private text-only benchmark freezes cases,
-prompts, context, knowledge, model settings, arm order, rubric, and gates before
-execution; compares the prompt/context/knowledge arms blindly; permits no paid
-retry or output selection; and treats any introduced meaning error as a hard
-failure. Private cases, outputs, profile data, and judgments remain outside Git,
-Mandrel, and routine logs. Provider privacy posture, participant consent, and
-any new or increased spend require verification and explicit approval before a
-run. Automatic latency and lexical repair spans are diagnostics; personal
-review time is not measured.
+The current prototype protocol supersedes the older fixed
+prompt/context/knowledge-arm experiment. It compares correction methods and
+complete automatic strategies under the gates in the
+[focused specification](automatic-correction-prototype-spec.md). Private cases,
+outputs, profile data, and judgments remain outside Git, GitHub, Mandrel, orbs,
+application operating state, and routine logs. Provider privacy posture,
+participant consent, private-data access, and any spend require verification and
+explicit approval before a run.
 
 Legacy source: Mandrel record `ec7191dc`; qualifying Sayloom evidence: explicit
 `sayloom` tag. This is a provisional local-proof contract, not an ADR or a
@@ -251,38 +269,40 @@ Provide the initial hosted offering defined by the product contract.
 
 ### Outcome
 
-Verify independently that Smart correction improves intended-text accuracy and
-efficiency without hiding harmful changes or weakening privacy and fail-open
-guarantees.
+Verify independently that the complete automatic implementation of Smart
+improves intended-text accuracy and efficiency without hiding harmful changes
+or weakening privacy and fail-open guarantees.
 
 ### In scope
 
-- In issue #14, bind the generic Smart benchmark scaffold to the real Smart
-  generation and Private correction profile contracts, then complete synthetic
-  and product acceptance.
-- In issue #15, obtain separate approval before any private corpus or provider
-  operation, then run the frozen Smart benchmark and require its gates to pass.
+- Follow the candidate, development-comparison, held-out-selection, integration,
+  verification, and pilot stages in the focused automatic-correction
+  specification and issue #46 graph.
+- Treat issues #14 and #15 as superseded fixed-arm history; compatible isolated
+  mechanics moved to the automatic-strategy harness and evidence path.
 - Keep the cleanup benchmark runner, corpus, protocol, and evidence separate;
   none validates Smart correction.
-- Define release thresholds for intended-text accuracy, harmful corrections,
-  manual-edit reduction, latency, and fail-open reliability before launch.
+- Apply the frozen prototype thresholds for intended-text accuracy, harmful
+  corrections, manual-edit reduction, latency, and fail-open reliability.
 - Run one dedicated integration and release-verification phase after all
   constituent implementation and affected checks are resolved.
-- Use the controlled migrate, verify, and restart workflow for local releases.
+- Use the controlled verify-then-restart workflow for any later authorized
+  local release; prototype verification does not authorize runtime operation.
 
 ### Exit criteria
 
-- Frozen Smart thresholds pass on the separately approved private Smart corpus,
-  producing the Evidence-backed Smart MVP.
-- Full feature-mapped integration evidence covers local and hosted boundaries.
+- Frozen automatic-strategy thresholds pass on the separately approved private
+  evidence, producing an evidence-selected winner for Smart integration.
+- Feature-mapped verification covers the selected runtime boundary; the limited
+  pilot remains a separate operational gate and is not production hosting.
 - Remaining limitations and deferred scope are documented before release.
 
 ## Recommended implementation choice
 
-Implement the two confirmed modes directly instead of shipping a temporary
-combined mode. Conservative behavior already exists, so adding Smart as a
-distinct mode avoids a disposable API, persistence, and interface migration.
-This is the approved implementation approach.
+Keep the two confirmed user-visible modes. Conservative remains unchanged;
+automatic method selection is implemented inside Smart if the evidence selects
+a qualifying strategy. Do not expose experimental methods or a separate
+Automatic mode without a new approved product decision.
 
 ## Deferred scope
 

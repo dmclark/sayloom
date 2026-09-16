@@ -1,6 +1,11 @@
 # Hosted AI delivery: privacy and unit economics
 
-- **Status:** Research recommendation; hosting, provider spend, and production use remain gated
+> **Historical provider research.** This recommendation depends on the superseded
+> single-model proof and its sample assumptions. It is not a current provider
+> selection or hosting plan. Revalidate every volatile provider, privacy,
+> capacity, and price fact before reuse; see the [documentation map](../README.md).
+
+- **Status:** Historical research input; hosting, provider spend, and production use remain gated
 - **Product authority:** [`PRODUCT.md`](../../PRODUCT.md)
 - **Sources checked:** 2026-09-04
 

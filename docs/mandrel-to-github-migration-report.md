@@ -1,5 +1,10 @@
 # Mandrel-to-GitHub migration completion report
 
+> **Historical completion record.** This report preserves the validated migration
+> outcome. Use the [documentation map](README.md) and current repository guidance
+> for present-day workflow authority.
+
+- **Status:** Completed; historical migration evidence
 - **Validation completed:** 2026-09-08T14:49:09Z
 - **Authority cutoff:** 2026-09-08T02:26:56Z
 - **Repository:** Private `dmclark/sayloom`
