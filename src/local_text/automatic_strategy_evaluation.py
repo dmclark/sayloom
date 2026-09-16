@@ -8,7 +8,7 @@ import re
 import signal
 import time
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -37,6 +37,10 @@ class EvaluationError(RuntimeError):
 
 
 class _ExecutorTimeout(RuntimeError):
+    pass
+
+
+class _MalformedOutput(RuntimeError):
     pass
 
 
@@ -172,6 +176,12 @@ class RepairTrace(StrictModel):
     after: str = Field(max_length=100_000)
     uncertain: bool
 
+    @model_validator(mode="after")
+    def repair_changes_text(self) -> RepairTrace:
+        if self.before == self.after:
+            raise ValueError("a repair must describe a lexical change")
+        return self
+
 
 class ExecutionResult(StrictModel):
     outcome: Literal["success", "abstention", "failure"]
@@ -188,9 +198,15 @@ class ExecutionResult(StrictModel):
     @model_validator(mode="after")
     def result_is_complete_and_reviewable(self) -> ExecutionResult:
         if self.outcome == "success" and (
-            self.prepared_text is None or self.selected_method is None
+            not self.prepared_text
+            or not self.prepared_text.strip()
+            or not self.selected_method
+            or not self.selected_method.strip()
+            or not self.repairs
         ):
-            raise ValueError("a successful result requires Prepared and its selected method")
+            raise ValueError(
+                "a successful result requires Prepared, its selected method, and repairs"
+            )
         if self.outcome != "success" and (
             self.prepared_text is not None or self.selected_method is not None or self.repairs
         ):
@@ -198,23 +214,28 @@ class ExecutionResult(StrictModel):
         return self
 
 
-class ExecutionRequest:
-    """Frozen input supplied to a candidate executor adapter."""
+class ExecutionBudget(StrictModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
-    def __init__(
-        self,
-        *,
-        job_id: str,
-        seed: str,
-        candidate: Candidate,
-        case: EvaluationCase,
-        timeout_seconds: int = 30,
-    ) -> None:
-        self.job_id = job_id
-        self.seed = seed
-        self.candidate = candidate
-        self.case = case
-        self.timeout_seconds = timeout_seconds
+    timeout_seconds: int = Field(gt=0, le=30)
+    maximum_internal_retries: int = Field(ge=0, le=10)
+    ceilings: Ceilings
+
+
+class AdapterRequest(StrictModel):
+    """Frozen evidence packet supplied to an evaluation-only candidate adapter."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    original: str = Field(min_length=1, max_length=100_000)
+    request_context: str = Field(max_length=100_000)
+    enabled_profile_evidence: tuple[str, ...]
+    candidate_configuration: Candidate
+    seed: str = Field(min_length=1, max_length=256)
+    execution_budget: ExecutionBudget
+
+
+EvaluationAdapter = Callable[[AdapterRequest], object]
 
 
 class BlindAdjudication(StrictModel):
@@ -434,9 +455,7 @@ def _exceeds(used: Counter[str], ceilings: Ceilings) -> bool:
     return any(used[name] > value for name, value in ceilings.model_dump().items())
 
 
-def _invoke_executor(
-    executor: Callable[[ExecutionRequest], ExecutionResult], request: ExecutionRequest
-) -> ExecutionResult:
+def _invoke_adapter(adapter: EvaluationAdapter, request: AdapterRequest) -> object:
     previous_handler = signal.getsignal(signal.SIGALRM)
     previous_timer = signal.getitimer(signal.ITIMER_REAL)
     started = time.monotonic()
@@ -445,9 +464,9 @@ def _invoke_executor(
         raise _ExecutorTimeout
 
     signal.signal(signal.SIGALRM, timeout_handler)
-    signal.setitimer(signal.ITIMER_REAL, request.timeout_seconds)
+    signal.setitimer(signal.ITIMER_REAL, request.execution_budget.timeout_seconds)
     try:
-        return executor(request)
+        return adapter(request)
     finally:
         elapsed = time.monotonic() - started
         signal.setitimer(signal.ITIMER_REAL, 0)
@@ -475,10 +494,22 @@ def _failed_result(*, latency_ms: int) -> ExecutionResult:
     )
 
 
+def _result_is_reviewable(result: ExecutionResult, request: AdapterRequest) -> bool:
+    if result.outcome != "success":
+        return True
+    if result.prepared_text == request.original:
+        return False
+    return all(
+        (not repair.before or repair.before in request.original)
+        and (not repair.after or repair.after in result.prepared_text)
+        for repair in result.repairs
+    )
+
+
 def execute_run(
     *,
     run_directory: Path,
-    executor: Callable[[ExecutionRequest], ExecutionResult],
+    adapters: Mapping[str, EvaluationAdapter],
     application_database_path: Path,
 ) -> dict[str, object]:
     manifest, configuration, cases, schedule = _load_run(
@@ -502,23 +533,43 @@ def execute_run(
         if candidate.candidate_id in stopped:
             result = _failed_result(latency_ms=0)
             failure_class = "branch_stopped"
+        elif not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", candidate.executor):
+            result = _failed_result(latency_ms=0)
+            failure_class = "invalid_executor_identifier"
+        elif candidate.executor not in adapters:
+            result = _failed_result(latency_ms=0)
+            failure_class = "unknown_executor"
         else:
             started = time.monotonic()
             try:
-                result = ExecutionResult.model_validate(
-                    _invoke_executor(
-                        executor,
-                        ExecutionRequest(
-                            job_id=str(job["job_id"]),
-                            seed=str(job["seed"]),
-                            candidate=candidate,
-                            case=case,
-                        )
-                    )
+                request = AdapterRequest(
+                    original=case.original,
+                    request_context=case.context,
+                    enabled_profile_evidence=tuple(case.profile),
+                    candidate_configuration=candidate.model_copy(deep=True),
+                    seed=str(job["seed"]),
+                    execution_budget=ExecutionBudget(
+                        timeout_seconds=30,
+                        maximum_internal_retries=candidate.maximum_internal_retries,
+                        ceilings=candidate.ceilings.model_copy(deep=True),
+                    ),
                 )
+                try:
+                    result = ExecutionResult.model_validate(
+                        _invoke_adapter(adapters[candidate.executor], request)
+                    )
+                except ValidationError as exc:
+                    raise _MalformedOutput from exc
+                if not _result_is_reviewable(result, request):
+                    raise _MalformedOutput
             except _ExecutorTimeout:
                 result = _failed_result(latency_ms=30_000)
                 failure_class = "timeout"
+            except _MalformedOutput:
+                result = _failed_result(
+                    latency_ms=max(0, int((time.monotonic() - started) * 1000))
+                )
+                failure_class = "malformed_output"
             except Exception:
                 result = _failed_result(
                     latency_ms=max(0, int((time.monotonic() - started) * 1000))

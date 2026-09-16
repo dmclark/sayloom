@@ -29,13 +29,27 @@ evidence.
 
 ## Execution and review
 
-`execute_run(...)` passes each frozen job to an injected executor adapter through
-`ExecutionRequest` and requires an `ExecutionResult`. The result records the selected registered
-method, reviewable repair trace, internal retries, latency, calls, tokens, and cost. A 30-second
-wall-clock timeout interrupts the synchronous adapter and fails open. An adapter exception,
-unregistered route, excess retry, reported timeout, or exceeded ceiling also becomes a recorded
-per-attempt failure; execution continues, except that a ceiling stops only the affected candidate
-branch. Outputs and separate blind review/map artifacts are write-once and hash-frozen.
+`execute_run(...)` resolves each candidate's frozen executor identifier through the supplied
+evaluation-adapter registry. Unknown or syntactically invalid identifiers fail open for that attempt
+without aborting the run. Each adapter receives a frozen `AdapterRequest` containing only Original,
+request context, explicitly enabled profile evidence, candidate configuration, deterministic seed,
+and execution budget. Each attempt receives an isolated copy of mutable candidate configuration;
+case identity and Intended variants remain outside the adapter boundary.
+
+Adapters return the common `ExecutionResult` contract. The result records the selected registered
+method, reviewable repair trace, internal retries, latency, calls, tokens, and cost. Empty or
+otherwise unreviewable successful output, including repairs unrelated to Original and Prepared, is
+normalized to a content-free `malformed_output` failure. A 30-second wall-clock timeout interrupts
+the synchronous adapter and fails open. An adapter exception, unregistered route, excess retry,
+reported timeout, or exceeded ceiling also
+becomes a recorded per-attempt failure; execution continues, except that a ceiling stops only the
+affected candidate branch. Outputs and separate blind review/map artifacts are write-once and
+hash-frozen.
+
+The evaluation-only adapter module currently registers `abstention-v1`. It deterministically
+returns abstention with no Prepared text, selected method, repairs, usage, or provider calls, so the
+existing fail-open path preserves Original. The application runtime does not import the harness or
+its adapters.
 
 Blind review creates one item for each disputed repair and contains Original, user-confirmed
 Intended variants, one candidate result, and that repair, but no case, method, or candidate identity.

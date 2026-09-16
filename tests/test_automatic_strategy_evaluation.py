@@ -4,16 +4,18 @@ import stat
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from local_text.automatic_strategy_evaluation import (
     PIPELINE_VERSION,
-    ExecutionRequest,
+    AdapterRequest,
     ExecutionResult,
     build_report,
     execute_run,
     import_adjudications,
     register_run,
 )
+from local_text.automatic_strategy_evaluation_adapters import EVALUATION_ADAPTERS
 
 
 def write_json(path: Path, value: object) -> Path:
@@ -28,13 +30,14 @@ def candidate(
     kind: str,
     family: str,
     methods: list[str],
+    executor: str = "synthetic-v1",
 ) -> dict[str, object]:
     return {
         "candidate_id": candidate_id,
         "kind": kind,
         "family": family,
         "method_ids": methods,
-        "executor": "synthetic-v1",
+        "executor": executor,
         "provider": {
             "provider": "synthetic-provider",
             "model": "synthetic-model-v1",
@@ -154,6 +157,238 @@ def register_synthetic_run(tmp_path: Path) -> tuple[Path, Path]:
     return private / "runs" / "synthetic-automatic-v1", app_database
 
 
+def test_abstention_candidate_dispatches_through_its_registered_adapter(tmp_path: Path) -> None:
+    private = tmp_path / "private"
+    app_database = tmp_path / "application-state" / "local-text.sqlite3"
+    config = configuration("abstention-candidate")
+    config["candidates"] = [
+        candidate(
+            "abstention",
+            kind="component",
+            family="abstention",
+            methods=["abstention"],
+            executor="abstention-v1",
+        )
+    ]
+    register_run(
+        configuration_path=write_json(private / "configuration.json", config),
+        cases_path=write_json(private / "cases.json", synthetic_cases()),
+        runs_directory=private / "runs",
+        application_database_path=app_database,
+    )
+
+    result = execute_run(
+        run_directory=private / "runs" / "abstention-candidate",
+        adapters=EVALUATION_ADAPTERS,
+        application_database_path=app_database,
+    )
+
+    assert result["completed_attempt_count"] == 6
+    assert result["abstention_count"] == 6
+    executions = json.loads(
+        (private / "runs" / "abstention-candidate" / "executions.json").read_text()
+    )
+    assert {
+        (
+            row["outcome"],
+            row["prepared_text"],
+            row["selected_method"],
+            tuple(row["repairs"]),
+            row["failure_class"],
+            row["fail_open_to_original"],
+        )
+        for row in executions
+    } == {("abstention", None, None, (), None, True)}
+
+
+def test_adapter_receives_only_frozen_candidate_evidence(tmp_path: Path) -> None:
+    run_directory, app_database = register_synthetic_run(tmp_path)
+    observed: list[AdapterRequest] = []
+
+    def inspect_evidence(request: AdapterRequest) -> ExecutionResult:
+        observed.append(request)
+        return EVALUATION_ADAPTERS["abstention-v1"](request)
+
+    execute_run(
+        run_directory=run_directory,
+        adapters={"synthetic-v1": inspect_evidence},
+        application_database_path=app_database,
+    )
+
+    assert set(AdapterRequest.model_fields) == {
+        "original",
+        "request_context",
+        "enabled_profile_evidence",
+        "candidate_configuration",
+        "seed",
+        "execution_budget",
+    }
+    first = observed[0]
+    assert first.original == "Synthetic wrong alpha."
+    assert first.request_context == "Synthetic conversation context."
+    assert first.enabled_profile_evidence == ("alpha",)
+    assert first.execution_budget.timeout_seconds == 30
+    assert first.execution_budget.maximum_internal_retries == 1
+    with pytest.raises(ValidationError):
+        first.original = "changed"
+
+
+def test_each_adapter_attempt_receives_an_isolated_candidate_configuration(
+    tmp_path: Path,
+) -> None:
+    run_directory, app_database = register_synthetic_run(tmp_path)
+    observed_policies: list[object] = []
+
+    def mutate_local_copy(request: AdapterRequest) -> ExecutionResult:
+        observed_policies.append(request.candidate_configuration.routing["policy"])
+        request.candidate_configuration.routing["policy"] = "adapter mutation"
+        return EVALUATION_ADAPTERS["abstention-v1"](request)
+
+    execute_run(
+        run_directory=run_directory,
+        adapters={"synthetic-v1": mutate_local_copy},
+        application_database_path=app_database,
+    )
+
+    assert "adapter mutation" not in observed_policies
+
+
+def test_declared_executor_deterministically_selects_its_matching_adapter(
+    tmp_path: Path,
+) -> None:
+    private = tmp_path / "private"
+    app_database = tmp_path / "application-state" / "local-text.sqlite3"
+    config = configuration("deterministic-dispatch")
+    config["candidates"] = [
+        candidate(
+            "first",
+            kind="component",
+            family="first",
+            methods=["first"],
+            executor="first-v1",
+        ),
+        candidate(
+            "second",
+            kind="component",
+            family="second",
+            methods=["second"],
+            executor="second-v1",
+        ),
+    ]
+    register_run(
+        configuration_path=write_json(private / "configuration.json", config),
+        cases_path=write_json(private / "cases.json", synthetic_cases()),
+        runs_directory=private / "runs",
+        application_database_path=app_database,
+    )
+    calls: list[tuple[str, str]] = []
+
+    def adapter_named(name: str):
+        def adapter(request: AdapterRequest) -> ExecutionResult:
+            calls.append((name, request.candidate_configuration.candidate_id))
+            return EVALUATION_ADAPTERS["abstention-v1"](request)
+
+        return adapter
+
+    execute_run(
+        run_directory=private / "runs" / "deterministic-dispatch",
+        adapters={"first-v1": adapter_named("first"), "second-v1": adapter_named("second")},
+        application_database_path=app_database,
+    )
+
+    assert set(calls) == {("first", "first"), ("second", "second")}
+    assert len(calls) == 12
+
+
+def test_unknown_and_invalid_executor_identifiers_fail_open(tmp_path: Path) -> None:
+    private = tmp_path / "private"
+    app_database = tmp_path / "application-state" / "local-text.sqlite3"
+    config = configuration("unavailable-executors")
+    config["candidates"] = [
+        candidate(
+            "unknown",
+            kind="component",
+            family="unknown",
+            methods=["unknown"],
+            executor="not-registered",
+        ),
+        candidate(
+            "invalid",
+            kind="component",
+            family="invalid",
+            methods=["invalid"],
+            executor="invalid executor",
+        ),
+    ]
+    register_run(
+        configuration_path=write_json(private / "configuration.json", config),
+        cases_path=write_json(private / "cases.json", synthetic_cases()),
+        runs_directory=private / "runs",
+        application_database_path=app_database,
+    )
+
+    result = execute_run(
+        run_directory=private / "runs" / "unavailable-executors",
+        adapters=EVALUATION_ADAPTERS,
+        application_database_path=app_database,
+    )
+
+    assert result["completed_attempt_count"] == 12
+    assert result["failed_attempt_count"] == 12
+    executions = json.loads(
+        (private / "runs" / "unavailable-executors" / "executions.json").read_text()
+    )
+    assert {
+        row["candidate_id"]: row["failure_class"] for row in executions
+    } == {
+        "unknown": "unknown_executor",
+        "invalid": "invalid_executor_identifier",
+    }
+    assert all(row["fail_open_to_original"] is True for row in executions)
+
+
+@pytest.mark.parametrize(
+    "repairs",
+    [
+        [],
+        [{"before": "not in Original", "after": "not in Prepared", "uncertain": False}],
+    ],
+)
+def test_malformed_or_unreviewable_adapter_output_has_content_free_failure(
+    tmp_path: Path, repairs: list[dict[str, object]]
+) -> None:
+    run_directory, app_database = register_synthetic_run(tmp_path)
+
+    def malformed_output(_request: AdapterRequest) -> dict[str, object]:
+        return {
+            "outcome": "success",
+            "prepared_text": "unreviewable private candidate text",
+            "selected_method": "lexical",
+            "repairs": repairs,
+            "internal_retries": 0,
+            "latency_ms": 1,
+            "provider_calls": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd_micros": 0,
+        }
+
+    result = execute_run(
+        run_directory=run_directory,
+        adapters={"synthetic-v1": malformed_output},
+        application_database_path=app_database,
+    )
+
+    assert result["failed_attempt_count"] == 24
+    executions_text = (run_directory / "executions.json").read_text()
+    executions = json.loads(executions_text)
+    assert {row["failure_class"] for row in executions} == {"malformed_output"}
+    assert "unreviewable private candidate text" not in executions_text
+    assert all(row["prepared_text"] is None for row in executions)
+    assert all(row["selected_method"] is None for row in executions)
+    assert all(row["repairs"] == [] for row in executions)
+
+
 def test_registration_freezes_dynamic_candidates_and_approval_manifest(tmp_path: Path) -> None:
     private = tmp_path / "private"
     app_database = tmp_path / "application-state" / "local-text.sqlite3"
@@ -207,27 +442,28 @@ def test_registration_freezes_dynamic_candidates_and_approval_manifest(tmp_path:
 
 
 class SyntheticExecutor:
-    def __call__(self, request: ExecutionRequest) -> ExecutionResult:
-        intended = request.case.intended_variants[0]
+    def __call__(self, request: AdapterRequest) -> ExecutionResult:
+        candidate = request.candidate_configuration
+        intended = request.original.replace("wrong", "right")
         prepared = (
             intended.replace("right", "correct")
-            if request.candidate.candidate_id == "cascade"
+            if candidate.candidate_id == "cascade"
             else intended
         )
         return ExecutionResult(
             outcome="success",
             prepared_text=prepared,
-            selected_method=request.candidate.method_ids[-1],
+            selected_method=candidate.method_ids[-1],
             repairs=[
                 {
                     "before": "wrong",
-                    "after": "correct" if request.candidate.candidate_id == "cascade" else "right",
-                    "uncertain": request.candidate.candidate_id == "cascade",
+                    "after": "correct" if candidate.candidate_id == "cascade" else "right",
+                    "uncertain": candidate.candidate_id == "cascade",
                 }
             ],
-            internal_retries=1 if request.candidate.candidate_id == "router" else 0,
+            internal_retries=1 if candidate.candidate_id == "router" else 0,
             latency_ms=40,
-            provider_calls=2 if request.candidate.candidate_id == "router" else 1,
+            provider_calls=2 if candidate.candidate_id == "router" else 1,
             input_tokens=10,
             output_tokens=5,
             cost_usd_micros=1,
@@ -239,7 +475,7 @@ def test_synthetic_execution_blinds_review_and_reports_without_text(tmp_path: Pa
 
     execution = execute_run(
         run_directory=run_directory,
-        executor=SyntheticExecutor(),
+        adapters={"synthetic-v1": SyntheticExecutor()},
         application_database_path=app_database,
     )
 
@@ -302,7 +538,7 @@ def test_candidate_ceiling_stops_only_its_branch_and_fails_open(tmp_path: Path) 
 
     result = execute_run(
         run_directory=run_directory,
-        executor=SyntheticExecutor(),
+        adapters={"synthetic-v1": SyntheticExecutor()},
         application_database_path=app_database,
     )
 
@@ -321,12 +557,12 @@ def test_candidate_ceiling_stops_only_its_branch_and_fails_open(tmp_path: Path) 
 def test_executor_exceptions_fail_open_without_aborting_the_run(tmp_path: Path) -> None:
     run_directory, app_database = register_synthetic_run(tmp_path)
 
-    def failing_executor(_request: ExecutionRequest) -> ExecutionResult:
+    def failing_executor(_request: AdapterRequest) -> ExecutionResult:
         raise RuntimeError("synthetic executor failure")
 
     result = execute_run(
         run_directory=run_directory,
-        executor=failing_executor,
+        adapters={"synthetic-v1": failing_executor},
         application_database_path=app_database,
     )
 
@@ -342,13 +578,13 @@ def test_executor_timeout_is_enforced_and_signal_state_is_restored(tmp_path: Pat
     previous_handler = signal.getsignal(signal.SIGALRM)
     previous_timer = signal.getitimer(signal.ITIMER_REAL)
 
-    def timed_out_executor(_request: ExecutionRequest) -> ExecutionResult:
+    def timed_out_executor(_request: AdapterRequest) -> ExecutionResult:
         signal.raise_signal(signal.SIGALRM)
         raise AssertionError("the timeout signal should interrupt the executor")
 
     result = execute_run(
         run_directory=run_directory,
-        executor=timed_out_executor,
+        adapters={"synthetic-v1": timed_out_executor},
         application_database_path=app_database,
     )
 
@@ -367,8 +603,9 @@ def test_bootstrap_resamples_cases_and_abstention_latency_uses_recorded_time(
     run_directory, app_database = register_synthetic_run(tmp_path)
     attempts: dict[tuple[str, str], int] = {}
 
-    def repeated_executor(request: ExecutionRequest) -> ExecutionResult:
-        key = (request.candidate.candidate_id, request.case.case_id)
+    def repeated_executor(request: AdapterRequest) -> ExecutionResult:
+        candidate = request.candidate_configuration
+        key = (candidate.candidate_id, request.original)
         attempts[key] = attempts.get(key, 0) + 1
         if attempts[key] > 1:
             return ExecutionResult(
@@ -383,8 +620,8 @@ def test_bootstrap_resamples_cases_and_abstention_latency_uses_recorded_time(
             )
         return ExecutionResult(
             outcome="success",
-            prepared_text=request.case.intended_variants[0],
-            selected_method=request.candidate.method_ids[-1],
+            prepared_text=request.original.replace("wrong", "right"),
+            selected_method=candidate.method_ids[-1],
             repairs=[{"before": "wrong", "after": "right", "uncertain": False}],
             internal_retries=0,
             latency_ms=40,
@@ -396,7 +633,7 @@ def test_bootstrap_resamples_cases_and_abstention_latency_uses_recorded_time(
 
     execute_run(
         run_directory=run_directory,
-        executor=repeated_executor,
+        adapters={"synthetic-v1": repeated_executor},
         application_database_path=app_database,
     )
     import_adjudications(
@@ -414,10 +651,10 @@ def test_bootstrap_resamples_cases_and_abstention_latency_uses_recorded_time(
 def test_repair_level_adjudication_preserves_mixed_correctness(tmp_path: Path) -> None:
     run_directory, app_database = register_synthetic_run(tmp_path)
 
-    def mixed_executor(request: ExecutionRequest) -> ExecutionResult:
-        if request.candidate.candidate_id != "cascade":
+    def mixed_executor(request: AdapterRequest) -> ExecutionResult:
+        if request.candidate_configuration.candidate_id != "cascade":
             return SyntheticExecutor()(request)
-        intended = request.case.intended_variants[0]
+        intended = request.original.replace("wrong", "right")
         final_word = intended.split()[-1].rstrip(".")
         return ExecutionResult(
             outcome="success",
@@ -437,7 +674,7 @@ def test_repair_level_adjudication_preserves_mixed_correctness(tmp_path: Path) -
 
     execution = execute_run(
         run_directory=run_directory,
-        executor=mixed_executor,
+        adapters={"synthetic-v1": mixed_executor},
         application_database_path=app_database,
     )
     mapping = json.loads((run_directory / "blind-map.json").read_text())
@@ -506,10 +743,10 @@ def test_routed_method_needs_adjusted_component_confidence_to_be_decision_grade(
     )
     run_directory = private / "runs" / "routed-confidence"
 
-    def wrong_executor(request: ExecutionRequest) -> ExecutionResult:
+    def wrong_executor(request: AdapterRequest) -> ExecutionResult:
         return ExecutionResult(
             outcome="success",
-            prepared_text=request.case.original.replace("wrong", "worse"),
+            prepared_text=request.original.replace("wrong", "worse"),
             selected_method="lexical",
             repairs=[{"before": "wrong", "after": "worse", "uncertain": False}],
             internal_retries=0,
@@ -522,7 +759,7 @@ def test_routed_method_needs_adjusted_component_confidence_to_be_decision_grade(
 
     execute_run(
         run_directory=run_directory,
-        executor=wrong_executor,
+        adapters={"synthetic-v1": wrong_executor},
         application_database_path=app_database,
     )
     mapping = json.loads((run_directory / "blind-map.json").read_text())
