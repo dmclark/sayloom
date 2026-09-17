@@ -71,6 +71,7 @@ class Candidate(StrictModel):
     prompt: str = Field(min_length=1, max_length=100_000)
     routing: dict[str, object]
     maximum_internal_retries: int = Field(ge=0, le=10)
+    timeout_seconds: int = Field(gt=0, le=30)
     ceilings: Ceilings
     ablation_of: str | None = None
 
@@ -224,6 +225,7 @@ class ExecutionResult(StrictModel):
     input_tokens: int = Field(ge=0)
     output_tokens: int = Field(ge=0)
     cost_usd_micros: int = Field(ge=0)
+    failure_class: str | None = Field(default=None, min_length=1, max_length=128, exclude=True)
 
     @model_validator(mode="after")
     def result_is_complete_and_reviewable(self) -> ExecutionResult:
@@ -243,6 +245,8 @@ class ExecutionResult(StrictModel):
             raise ValueError("a failure or abstention must fail open without proposed repairs")
         if self.outcome == "failure" and self.proposal_scores:
             raise ValueError("a failure must not expose proposal scores")
+        if self.outcome != "failure" and self.failure_class is not None:
+            raise ValueError("only a failure may include a failure classification")
         return self
 
 
@@ -598,7 +602,7 @@ def execute_run(
                     candidate_configuration=candidate.model_copy(deep=True),
                     seed=str(job["seed"]),
                     execution_budget=ExecutionBudget(
-                        timeout_seconds=30,
+                        timeout_seconds=candidate.timeout_seconds,
                         maximum_internal_retries=candidate.maximum_internal_retries,
                         ceilings=candidate.ceilings.model_copy(deep=True),
                     ),
@@ -612,7 +616,7 @@ def execute_run(
                 if not _result_is_reviewable(result, request):
                     raise _MalformedOutput
             except _ExecutorTimeout:
-                result = _failed_result(latency_ms=30_000)
+                result = _failed_result(latency_ms=candidate.timeout_seconds * 1000)
                 failure_class = "timeout"
             except _MalformedOutput:
                 result = _failed_result(
@@ -625,7 +629,7 @@ def execute_run(
                 )
                 failure_class = "executor_exception"
             else:
-                failure_class = None
+                failure_class = result.failure_class
                 if (
                     result.selected_method not in candidate.method_ids
                     and result.outcome == "success"
@@ -633,7 +637,7 @@ def execute_run(
                     failure_class = "unregistered_route"
                 elif result.internal_retries > candidate.maximum_internal_retries:
                     failure_class = "retry_ceiling_exceeded"
-                elif result.latency_ms >= 30_000:
+                elif result.latency_ms >= candidate.timeout_seconds * 1000:
                     failure_class = "timeout"
             for name in ("provider_calls", "input_tokens", "output_tokens", "cost_usd_micros"):
                 usage[candidate.candidate_id][name] += int(getattr(result, name))
