@@ -1246,6 +1246,323 @@ def test_adjudication_registration_and_private_trace_visibility(tmp_path: Path) 
     assert "retrieval-model-adjudication-v1" not in EVALUATION_ADAPTERS
 
 
+def test_complete_adapter_slate_executes_through_one_frozen_synthetic_run(
+    tmp_path: Path, monkeypatch
+) -> None:
+    private = tmp_path / "private"
+    app_database = tmp_path / "application-state" / "local-text.sqlite3"
+    config = configuration("complete-adapter-slate-verification")
+    abstention = candidate(
+        "abstention",
+        kind="component",
+        family="abstention",
+        methods=["abstention"],
+        executor="abstention-v1",
+    )
+    lexical = lexical_request(
+        "Send Jahn the packet.", ("John",), maximum_repairs=1
+    ).candidate_configuration.model_dump(mode="json")
+    phonetic = phonetic_request(
+        "Send Jahn the packet.", context="John John", profile=("John",)
+    ).candidate_configuration.model_dump(mode="json")
+    general_model = general_model_request(
+        "Send Jahn the packet.", context="John John", profile=("John",)
+    ).candidate_configuration.model_dump(mode="json")
+    adjudication = adjudication_request(
+        "Send Jahn the packet.", context="John John", profile=("John",)
+    ).candidate_configuration.model_dump(mode="json")
+    retry_ceiling = json.loads(json.dumps(general_model))
+    retry_ceiling["candidate_id"] = "retry-ceiling"
+    retry_ceiling["ceilings"]["provider_calls"] = 4
+
+    def fault_candidate(candidate_id: str, executor: str) -> dict[str, object]:
+        return candidate(
+            candidate_id,
+            kind="component",
+            family="synthetic-verification-fault",
+            methods=[candidate_id],
+            executor=executor,
+        )
+
+    malformed = fault_candidate("malformed", "malformed-v1")
+    exception = fault_candidate("exception", "exception-v1")
+    timeout = fault_candidate("timeout", "timeout-v1")
+    unregistered_route = fault_candidate("unregistered-route", "unregistered-route-v1")
+    unknown_executor = fault_candidate("unknown-executor", "unknown-executor-v1")
+    budget_stop = fault_candidate("budget-stop", "budget-stop-v1")
+    budget_stop["ceilings"] = {
+        "provider_calls": 0,
+        "input_tokens": 1200,
+        "output_tokens": 600,
+        "cost_usd_micros": 120,
+    }
+    frozen_candidates = [
+        abstention,
+        lexical,
+        phonetic,
+        general_model,
+        adjudication,
+        retry_ceiling,
+        malformed,
+        exception,
+        timeout,
+        unregistered_route,
+        unknown_executor,
+        budget_stop,
+    ]
+    config["candidates"] = frozen_candidates
+    config["phase"] = "validation"
+    config["required_strata"] = ["conversation"]
+    config["stratum_weights"] = {"conversation": 1.0}
+    cases = [
+        {
+            "case_id": "complete-slate-1",
+            "group_id": "complete-slate-group-1",
+            "partition": "validation",
+            "eligible": True,
+            "synthetic": True,
+            "stratum": "conversation",
+            "original": "Send Jahn the packet.",
+            "intended_variants": ["Send Jane the packet."],
+            "context": "John John",
+            "profile": ["John"],
+        }
+    ]
+    cases.append(
+        {
+            **cases[0],
+            "case_id": "complete-slate-2",
+            "group_id": "complete-slate-group-2",
+        }
+    )
+    register_run(
+        configuration_path=write_json(private / "configuration.json", config),
+        cases_path=write_json(private / "cases.json", cases),
+        runs_directory=private / "runs",
+        application_database_path=app_database,
+    )
+    run_directory = private / "runs" / "complete-adapter-slate-verification"
+    manifest = json.loads((run_directory / "manifest.json").read_text())
+    schedule = json.loads((run_directory / "schedule.json").read_text())
+    expected_candidates = [
+        Candidate.model_validate(item).model_dump(mode="json") for item in frozen_candidates
+    ]
+    assert manifest["candidates"] == expected_candidates
+    assert all(
+        {
+            "provider",
+            "prompt",
+            "routing",
+            "maximum_internal_retries",
+            "timeout_seconds",
+            "ceilings",
+        }
+        <= frozen.keys()
+        for frozen in manifest["candidates"]
+    )
+    assert {
+        frozen["family"]
+        for frozen in manifest["candidates"]
+        if frozen["candidate_id"]
+        in {
+            "abstention",
+            "lexical",
+            "phonetic",
+            "constrained-general-model-v1-synthetic",
+            "retrieval-model-adjudication-v1-synthetic",
+        }
+    } == {
+        "abstention",
+        "deterministic_lexical",
+        "bounded_phonetic_contextual",
+        "constrained-general-model",
+        "retrieval-model-adjudication",
+    }
+    assert "specialized" not in json.dumps(manifest["candidates"]).casefold()
+
+    retry_seeds = {str(row["seed"]) for row in schedule if row["candidate_id"] == "retry-ceiling"}
+    transport_calls: dict[str, int] = {}
+    transported_evidence: list[dict[str, object]] = []
+
+    def fake_transport(request: GeneralModelRequest) -> GeneralModelTransportResult:
+        transport_calls[request.seed] = transport_calls.get(request.seed, 0) + 1
+        prefix, encoded = request.untrusted_evidence_json.split("\n", 1)
+        evidence = json.loads(encoded)
+        transported_evidence.append(evidence)
+        assert evidence["original"] == "Send Jahn the packet."
+        assert evidence["request_context"] == "John John"
+        assert evidence["enabled_profile_evidence"] == ["John"]
+        assert "Jane" not in encoded
+        if request.seed in retry_seeds:
+            return model_transport_result("retryable_error")
+        if prefix == "UNTRUSTED_REQUEST_EVIDENCE_JSON":
+            return model_transport_result(
+                "success", response='{"prepared_text":"Send John the packet."}'
+            )
+        assert prefix == "UNTRUSTED_ADJUDICATION_EVIDENCE_JSON"
+        return model_transport_result("success", response='{"selection_id":"p0001"}')
+
+    def valid_result(
+        request: AdapterRequest,
+        *,
+        selected_method: str | None = None,
+        provider_calls: int = 0,
+    ) -> ExecutionResult:
+        prepared = "Send John the packet."
+        return ExecutionResult(
+            outcome="success",
+            prepared_text=prepared,
+            selected_method=selected_method or request.candidate_configuration.method_ids[0],
+            repairs=[
+                repair_trace(
+                    request.original,
+                    prepared,
+                    "Jahn",
+                    "John",
+                )
+            ],
+            internal_retries=0,
+            latency_ms=1,
+            provider_calls=provider_calls,
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd_micros=0,
+        )
+
+    def malformed_output(_request: AdapterRequest) -> dict[str, object]:
+        return {
+            "outcome": "success",
+            "prepared_text": "unreviewable synthetic output",
+            "selected_method": "malformed",
+            "repairs": [],
+            "internal_retries": 0,
+            "latency_ms": 1,
+            "provider_calls": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd_micros": 0,
+        }
+
+    def raise_exception(_request: AdapterRequest) -> ExecutionResult:
+        raise RuntimeError("synthetic executor failure")
+
+    def raise_timeout(_request: AdapterRequest) -> ExecutionResult:
+        signal.raise_signal(signal.SIGALRM)
+        raise AssertionError("the harness timeout must interrupt the adapter")
+
+    observed_requests: list[AdapterRequest] = []
+
+    def inspect(adapter):
+        def execute(request: AdapterRequest):
+            observed_requests.append(request)
+            assert set(AdapterRequest.model_fields) == {
+                "original",
+                "request_context",
+                "enabled_profile_evidence",
+                "candidate_configuration",
+                "seed",
+                "execution_budget",
+            }
+            assert not hasattr(request, "intended_variants")
+            assert request.original == "Send Jahn the packet."
+            assert request.request_context == "John John"
+            assert request.enabled_profile_evidence == ("John",)
+            return adapter(request)
+
+        return execute
+
+    model_adapter = constrained_general_model_adapter(fake_transport)
+    adapters = {
+        **EVALUATION_ADAPTERS,
+        "constrained-general-model-v1": model_adapter,
+        "retrieval-model-adjudication-v1": retrieval_model_adjudication_adapter(fake_transport),
+        "malformed-v1": malformed_output,
+        "exception-v1": raise_exception,
+        "timeout-v1": raise_timeout,
+        "unregistered-route-v1": lambda request: valid_result(
+            request, selected_method="not-registered"
+        ),
+        "budget-stop-v1": lambda request: valid_result(request, provider_calls=1),
+    }
+    adapters = {name: inspect(adapter) for name, adapter in adapters.items()}
+
+    def network_forbidden(*_args, **_kwargs):
+        raise AssertionError("synthetic verification must not create a network socket")
+
+    monkeypatch.setattr("socket.socket", network_forbidden)
+    result = execute_run(
+        run_directory=run_directory,
+        adapters=adapters,
+        application_database_path=app_database,
+    )
+
+    executions_text = (run_directory / "executions.json").read_text()
+    executions = json.loads(executions_text)
+    by_candidate = {
+        candidate_id: [row for row in executions if row["candidate_id"] == candidate_id]
+        for candidate_id in manifest["candidate_ids"]
+    }
+    assert result == {
+        "scheduled_attempt_count": 24,
+        "completed_attempt_count": 24,
+        "failed_attempt_count": 14,
+        "abstention_count": 2,
+        "review_count": 8,
+        "stopped_candidates": ["budget-stop"],
+    }
+    assert len(observed_requests) == 21
+    assert transported_evidence
+    assert all(transport_calls[seed] == 2 for seed in retry_seeds)
+    assert {row["failure_class"] for row in by_candidate["retry-ceiling"]} == {"retryable_error"}
+
+    for candidate_id in (
+        "lexical",
+        "phonetic",
+        "constrained-general-model-v1-synthetic",
+        "retrieval-model-adjudication-v1-synthetic",
+    ):
+        rows = by_candidate[candidate_id]
+        assert all(row["outcome"] == "success" for row in rows)
+        assert all(row["prepared_text"] == "Send John the packet." for row in rows)
+        assert all(row["repairs"] for row in rows)
+        assert all(row["fail_open_to_original"] is False for row in rows)
+        assert len({json.dumps(row["repairs"], sort_keys=True) for row in rows}) == 1
+    assert {
+        (repair["before"], repair["after"], repair["uncertain"])
+        for row in by_candidate["constrained-general-model-v1-synthetic"]
+        for repair in row["repairs"]
+    } == {("a", "o", True)}
+    assert all(row["outcome"] == "abstention" for row in by_candidate["abstention"])
+    assert all(row["fail_open_to_original"] is True for row in by_candidate["abstention"])
+
+    expected_failures = {
+        "malformed": {"malformed_output"},
+        "exception": {"executor_exception"},
+        "timeout": {"timeout"},
+        "unregistered-route": {"unregistered_route"},
+        "unknown-executor": {"unknown_executor"},
+        "budget-stop": {"ceiling_exceeded", "branch_stopped"},
+    }
+    for candidate_id, failure_classes in expected_failures.items():
+        rows = by_candidate[candidate_id]
+        assert {row["failure_class"] for row in rows} == failure_classes
+        assert all(row["outcome"] == "failure" for row in rows)
+        assert all(row["fail_open_to_original"] is True for row in rows)
+        assert all(row["prepared_text"] is None for row in rows)
+        assert all(row["repairs"] == [] for row in rows)
+    assert "unreviewable synthetic output" not in executions_text
+
+    adapter_module = "automatic_strategy_evaluation_adapters"
+    package = Path(__file__).parents[1] / "src" / "local_text"
+    assert all(
+        adapter_module not in source.read_text()
+        for source in package.glob("*.py")
+        if source.name != f"{adapter_module}.py"
+    )
+    assert adapter_module not in (package / "app.py").read_text()
+    assert "specialized" not in json.dumps(sorted(EVALUATION_ADAPTERS)).casefold()
+
+
 def test_each_adapter_attempt_receives_an_isolated_candidate_configuration(
     tmp_path: Path,
 ) -> None:
