@@ -6,7 +6,7 @@
 - **Audience:** Product, design, engineering, research, and delivery contributors
 - **Authority:** This document is the sole authority for Sayloom's product
   vision, positioning, roadmap direction, audience, and scope.
-- **Confirmed:** 2026-09-02
+- **Confirmed:** 2026-09-17
 
 ## Authority and supersession
 
@@ -95,6 +95,34 @@ default and may override it for the current text.
 Version one may provide one combined improved result before the complete mode
 system exists. That simplification is an implementation stage, not the final
 product model.
+
+## Intended-meaning evidence collection
+
+The local application may provide **Evidence Collection**, an optional research
+interaction for one primary user to prospectively record actual
+Voiceitt-generated English text and user-confirmed Intended text. Evidence
+Collection is independent of Conservative and Smart correction; it is not a
+third correction or polishing mode and does not change either mode's contract.
+
+Evidence Collection must be visibly armed for the current browser session and
+must never become a durable default. Arming requires a fresh source attestation
+and an externally administered, approved private evidence package. Before a
+consequential Smart, Copy, or local-delivery action can expose a candidate or
+consume Outgoing, the user confirms or corrects Intended text or excludes the
+observation. Intended text is never supplied to correction as candidate input.
+
+The user can cancel collection, continue ordinary uncollected use, exclude an
+observation, or withdraw previously collected private content. Collection
+failure must disarm the interaction without silently exposing a candidate or
+converting the action into uncollected evidence. Private evidence remains in
+the approved user-controlled external package, outside application operating
+state, routine logs, Git, GitHub, Mandrel, and orbs.
+
+This is bounded, single-producer research instrumentation for the local
+prototype. It does not introduce accounts, roles, multi-user evidence, implicit
+personalization, provider execution authorization, deployment, or pilot
+operation. The detailed interaction and package boundary is defined by the
+[intended-meaning evidence collection contract](docs/intended-meaning-evidence-collection-contract.md).
 
 ## Review and CART display
 
@@ -193,7 +221,9 @@ reserve **Outgoing** for the exact selected delivery value.
 ### Durable constraints
 
 - **Never block the user:** Original remains available, and unavailable or
-  failed processing must leave a usable path forward.
+  failed processing must leave a usable path forward. An explicitly armed
+  Evidence Collection session may block candidate exposure and delivery until
+  the user completes, cancels, or leaves that research interaction.
 - **User authority:** Sayloom proposes intended wording; it does not claim to
   know what was spoken or override the user's correction.
 - **Private by default:** Dictated text, generated text, credentials, databases,
@@ -229,6 +259,8 @@ The following remain open and must not be presented as committed behavior:
 
 - The confirmed product interview and decision ledger in
   https://ampcode.com/threads/T-01a05f4e-9fac-71ec-96dc-2fea35b0d4e4.
+- The confirmed Evidence Collection product and interaction contract in
+  https://ampcode.com/threads/T-01a0b132-326f-705b-957f-3c80041999e5.
 - `ref:sayloom-product-contract` in the existing `voiceitt-bridge` Mandrel
   project.
 - The current repository implementation and its technical documentation for
