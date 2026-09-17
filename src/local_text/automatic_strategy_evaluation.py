@@ -193,11 +193,31 @@ class RepairTrace(StrictModel):
         return self
 
 
+class ProposalScoreTrace(StrictModel):
+    after: str = Field(min_length=1, max_length=100_000)
+    original_start: int = Field(ge=0)
+    original_end: int = Field(ge=0)
+    phonetic: int = Field(ge=0)
+    context: int = Field(ge=0)
+    profile: int = Field(ge=0)
+    edit_penalty: int = Field(ge=0)
+    total: int
+
+    @model_validator(mode="after")
+    def total_matches_components(self) -> ProposalScoreTrace:
+        if self.original_end < self.original_start:
+            raise ValueError("proposal span end must not precede its start")
+        if self.total != self.phonetic + self.context + self.profile - self.edit_penalty:
+            raise ValueError("proposal total must match its inspectable score components")
+        return self
+
+
 class ExecutionResult(StrictModel):
     outcome: Literal["success", "abstention", "failure"]
     prepared_text: str | None = Field(default=None, max_length=100_000)
     selected_method: str | None = Field(default=None, max_length=128)
     repairs: list[RepairTrace]
+    proposal_scores: list[ProposalScoreTrace] = Field(default_factory=list, max_length=64)
     internal_retries: int = Field(ge=0)
     latency_ms: int = Field(ge=0)
     provider_calls: int = Field(ge=0)
@@ -221,6 +241,8 @@ class ExecutionResult(StrictModel):
             self.prepared_text is not None or self.selected_method is not None or self.repairs
         ):
             raise ValueError("a failure or abstention must fail open without proposed repairs")
+        if self.outcome == "failure" and self.proposal_scores:
+            raise ValueError("a failure must not expose proposal scores")
         return self
 
 
@@ -625,6 +647,7 @@ def execute_run(
                         "prepared_text": None,
                         "selected_method": None,
                         "repairs": [],
+                        "proposal_scores": [],
                     }
                 )
         row = {
