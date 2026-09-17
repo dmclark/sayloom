@@ -23,9 +23,10 @@ separately authorized limited pilot may then demonstrate the result to a small
 audience without making a broad efficacy claim.
 
 The prototype is a possible implementation of the product's existing **Smart
-correction** mode. It does not add a user-visible mode. Any evidence that a new
-mode is required is a product decision that must be approved in `PRODUCT.md`
-before implementation.
+correction** mode. It does not add a correction mode. The separately authorized
+**Evidence Collection** interaction is optional research instrumentation layered
+across Conservative and Smart; it does not change either mode's behavior or
+become a durable product default.
 
 The following are not prototype outcomes:
 
@@ -113,6 +114,20 @@ user. Intended text is wording confirmed or rewritten by that user before any
 candidate output is shown; one canonical wording may have additional
 user-confirmed acceptable variants.
 
+Prospective collection follows the
+[intended-meaning evidence collection contract](intended-meaning-evidence-collection-contract.md).
+An armed browser session freezes Original and only contemporaneously available
+context and explicitly enabled profile evidence before the producer judges
+Intended text. Correction may begin only after the resulting observation or
+content-free exclusion is immutably written, reread, and hash-verified. Intended
+text never enters candidate input. Copy and local delivery remain blocked until
+the current revision has a verified observation or exclusion receipt.
+
+Collection produces distinct observations and may suggest only exact-repeat
+relationships. Private review owns final eligibility and exclusions, additional
+Intended variants, classifications, exact-repeat confirmation,
+near-duplicate/related-version grouping, observed-use weights, and partitioning.
+
 The private package must freeze eligibility, exclusions, related-case groups,
 near-duplicates, 60/20/20 development-validation-held-out partitions,
 time-appropriate context and profile snapshots, all required strata, and
@@ -198,7 +213,7 @@ pilot starts.
 | Stage | Observable exit criteria |
 | --- | --- |
 | 1. Reconcile planning | This specification and the two coordinating plans agree; the issue graph and existing Project show one executable path. |
-| 2. Accumulate and audit evidence | A new content-free audit proves grouped 60/20/20 partitions, observed-use weights, all required strata, and at least 200 eligible held-out cases. Until then the outcome remains insufficient evidence. |
+| 2. Accumulate and audit evidence | The armed browser interaction prospectively collects verified observations into the approved external package. Separate private review then freezes eligibility, grouping, classifications, observed-use weights, and 60/20/20 partitions. A new content-free audit proves all required strata and at least 200 eligible held-out cases; until then the outcome remains insufficient evidence. |
 | 3. Build experimental adapters | Required method families implement the common harness contract, remain outside runtime, and pass synthetic privacy, determinism, repair-trace, fail-open, timeout, and budget tests without provider traffic. |
 | 4. Compare on development evidence | The staged search and one allowed targeted expansion finish; surviving complete strategies, routers, manifests, budgets, and planned ablations are frozen before held-out results open. |
 | 5. Evaluate held out and select | An approved run produces the write-once private evidence package and content-free report; a winner passes every gate, or the recorded outcome is no qualifying strategy. |
@@ -220,4 +235,6 @@ pilot starts.
 These decisions do not reopen the frozen evidence boundary, protocol, or gates.
 Any proposal for a user-visible mode beyond Conservative and Smart conflicts
 with the current product contract and must stop for an approved `PRODUCT.md`
-decision rather than changing that contract implicitly.
+decision rather than changing that contract implicitly. Evidence Collection is
+not such a mode; expanding it beyond the bounded single-producer research
+interaction requires a new product decision.

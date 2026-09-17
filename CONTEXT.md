@@ -62,6 +62,23 @@ _Avoid_: Smart benchmark, correction evidence
 The independent evidence track for Smart correction against user-confirmed intended wording.
 _Avoid_: Cleanup benchmark
 
+**Evidence Collection**:
+An optional, visibly armed research interaction that prospectively records actual
+Voiceitt-generated Original and producer-confirmed Intended text before any candidate Prepared text
+is exposed. It is independent of Conservative and Smart correction and is not a correction mode.
+_Avoid_: Evidence mode, automatic learning, correction mode
+
+**Evidence observation**:
+One prospectively frozen Original with its contemporaneous correction evidence and the producer's
+pre-exposure Intended-text judgment or content-free exclusion disposition. Observations remain
+distinct even when an exact-repeat relationship is suggested.
+_Avoid_: Training example, transcript, grouped case
+
+**Evidence package**:
+The approved, user-controlled external collection that retains immutable private observations and
+content-free audit records for later Smart evaluation preparation.
+_Avoid_: Application state, practice corpus, Cleanup evaluation corpus
+
 **Current product**:
 The product stage that turns Original into Prepared through Conservative preparation.
 

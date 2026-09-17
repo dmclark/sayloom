@@ -41,6 +41,7 @@ itself rather than being duplicated here.
 | Document | Authority |
 | --- | --- |
 | [Automatic correction prototype specification](automatic-correction-prototype-spec.md) | Focused definition of done for the automatic-correction prototype. |
+| [Intended-meaning evidence collection contract](intended-meaning-evidence-collection-contract.md) | Approved interaction, privacy, and external-package boundary for prospective evidence collection. |
 | [Evaluation and automatic-correction prototype map](evaluation-mvp-map.md) | Current milestone order and separation of Cleanup and Smart evaluation. |
 | [Product implementation plan](product-implementation-plan.md) | Broader capability sequence subordinate to `PRODUCT.md` and the focused prototype specification. |
 | [Automatic strategy evaluation harness](automatic-strategy-evaluation-harness.md) | Frozen harness contract for automatic-strategy evaluation; grants no operational authorization. |
