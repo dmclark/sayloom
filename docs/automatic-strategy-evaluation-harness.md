@@ -16,9 +16,9 @@ approved the frozen manifest.
 `register_run(...)` accepts absolute paths outside both Git and application operating data. It
 validates and exclusively writes mode-0600 copies of the configuration, cases, schedule, and
 manifest beneath a new mode-0700 run directory. The manifest exposes the full candidate slate,
-provider/model/settings, prompts, software version, routing policy, retry policy, per-candidate and
-total call/token/cost ceilings, privacy posture, approvals, stop conditions, and canonical SHA-256
-hashes. It is therefore the artifact the owner reviews before an evidence run.
+provider/model/settings, prompts, software version, routing policy, retry policy, timeout,
+per-candidate and total call/token/cost ceilings, privacy posture, approvals, stop conditions, and
+canonical SHA-256 hashes. It is therefore the artifact the owner reviews before an evidence run.
 
 Development registration schedules three independently seeded attempts per candidate and case;
 validation and held-out registration schedule one. Candidate order is deterministically randomized
@@ -46,10 +46,12 @@ becomes a recorded per-attempt failure; execution continues, except that a ceili
 affected candidate branch. Outputs and separate blind review/map artifacts are write-once and
 hash-frozen.
 
-The evaluation-only adapter module currently registers `abstention-v1`. It deterministically
-returns abstention with no Prepared text, selected method, repairs, usage, or provider calls, so the
-existing fail-open path preserves Original. The application runtime does not import the harness or
-its adapters.
+The evaluation-only adapter module statically registers only provider-free executors. Its constrained
+general-model factory requires an injected synchronous transport and has no network-capable default.
+That adapter builds canonical untrusted evidence JSON, validates the complete frozen provider/model,
+prompt, settings, retry, timeout, and ceiling contract, derives uncertain repair spans locally, and
+returns exact transport usage across its bounded attempts. The application runtime does not import
+the harness or its adapters.
 
 Blind review creates one item for each disputed repair and contains Original, user-confirmed
 Intended variants, one candidate result, and that repair, but no case, method, or candidate identity.
