@@ -21,9 +21,11 @@ from local_text.automatic_strategy_evaluation import (
 from local_text.automatic_strategy_evaluation_adapters import (
     CONSTRAINED_GENERAL_MODEL_PROMPT,
     EVALUATION_ADAPTERS,
+    RETRIEVAL_MODEL_ADJUDICATION_PROMPT,
     GeneralModelRequest,
     GeneralModelTransportResult,
     constrained_general_model_adapter,
+    retrieval_model_adjudication_adapter,
 )
 
 
@@ -335,6 +337,7 @@ def test_lexical_candidate_is_deterministic_bounded_and_traces_each_repair() -> 
             )
         ],
         "proposal_scores": [],
+        "routing_trace": None,
         "internal_retries": 0,
         "latency_ms": 0,
         "provider_calls": 0,
@@ -931,6 +934,316 @@ def test_general_model_synthetic_registration_freezes_authorized_candidate(
         },
         "timeout_seconds": 30,
     }
+
+
+def adjudication_request(
+    original: str = "Jahn",
+    *,
+    context: str = "John",
+    profile: tuple[str, ...] = ("Jain",),
+    routing_updates: dict[str, object] | None = None,
+) -> AdapterRequest:
+    routing: dict[str, object] = {
+        "policy": "retrieval_model_adjudication",
+        "version": "v1",
+        "response_schema_version": "proposal-selection-v1",
+        "use_context": True,
+        "use_profile": True,
+        "maximum_original_words": 256,
+        "maximum_context_words": 256,
+        "maximum_profile_entries": 64,
+        "maximum_term_characters": 64,
+        "maximum_edit_distance": 2,
+        "maximum_proposals": 64,
+        "maximum_context_occurrences": 2,
+        "phonetic_weight": 4,
+        "context_weight": 2,
+        "profile_weight": 3,
+        "edit_distance_weight": 1,
+        "minimum_score": 5,
+        "minimum_score_margin": 2,
+        "maximum_repairs": 1,
+    }
+    routing.update(routing_updates or {})
+    ceilings = Ceilings(
+        provider_calls=2,
+        input_tokens=4096,
+        output_tokens=128,
+        cost_usd_micros=0,
+    )
+    return AdapterRequest(
+        original=original,
+        request_context=context,
+        enabled_profile_evidence=profile,
+        candidate_configuration=Candidate.model_validate(
+            {
+                "candidate_id": "retrieval-model-adjudication-v1-synthetic",
+                "kind": "strategy",
+                "family": "retrieval-model-adjudication",
+                "method_ids": [
+                    "bounded-phonetic-contextual",
+                    "constrained-general-model",
+                ],
+                "executor": "retrieval-model-adjudication-v1",
+                "provider": {
+                    "provider": "synthetic",
+                    "model": "deterministic-general-model-v1",
+                    "settings": {
+                        "temperature": 0,
+                        "top_p": 1,
+                        "max_output_tokens": 64,
+                        "input_cost_usd_micros_per_million_tokens": 0,
+                        "output_cost_usd_micros_per_million_tokens": 0,
+                    },
+                },
+                "prompt": RETRIEVAL_MODEL_ADJUDICATION_PROMPT,
+                "routing": routing,
+                "maximum_internal_retries": 1,
+                "timeout_seconds": 30,
+                "ceilings": ceilings.model_dump(mode="json"),
+            }
+        ),
+        seed="deterministic-adjudication-seed",
+        execution_budget=ExecutionBudget(
+            timeout_seconds=30,
+            maximum_internal_retries=1,
+            ceilings=ceilings,
+        ),
+    )
+
+
+def test_adjudication_selects_exact_bounded_proposal_with_canonical_trace() -> None:
+    observed: list[GeneralModelRequest] = []
+
+    def transport(request: GeneralModelRequest) -> GeneralModelTransportResult:
+        observed.append(request)
+        return model_transport_result(
+            "success", response='{"selection_id":"p0002"}', input_tokens=8, output_tokens=2
+        )
+
+    request = adjudication_request()
+    result = retrieval_model_adjudication_adapter(transport)(request)
+    repeated = retrieval_model_adjudication_adapter(transport)(request)
+
+    prefix, encoded = observed[0].untrusted_evidence_json.split("\n", 1)
+    evidence = json.loads(encoded)
+    assert prefix == "UNTRUSTED_ADJUDICATION_EVIDENCE_JSON"
+    assert observed[0].system_prompt == RETRIEVAL_MODEL_ADJUDICATION_PROMPT
+    assert observed[0].inference_settings == {
+        "temperature": 0,
+        "top_p": 1,
+        "max_output_tokens": 64,
+    }
+    assert encoded == json.dumps(
+        evidence, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    )
+    assert evidence == {
+        "enabled_profile_evidence": ["Jain"],
+        "original": "Jahn",
+        "proposals": [
+            {
+                "after": "Jain",
+                "before": "Jahn",
+                "context": 0,
+                "edit_penalty": 1,
+                "original_end": 4,
+                "original_start": 0,
+                "phonetic": 4,
+                "profile": 3,
+                "selection_id": "p0001",
+                "total": 6,
+            },
+            {
+                "after": "John",
+                "before": "Jahn",
+                "context": 2,
+                "edit_penalty": 1,
+                "original_end": 4,
+                "original_start": 0,
+                "phonetic": 4,
+                "profile": 0,
+                "selection_id": "p0002",
+                "total": 5,
+            },
+        ],
+        "request_context": "John",
+    }
+    assert observed[1].untrusted_evidence_json == observed[0].untrusted_evidence_json
+    assert result.outcome == repeated.outcome == "success"
+    assert result.prepared_text == repeated.prepared_text == "John"
+    assert result.selected_method == "bounded-phonetic-contextual"
+    assert [(repair.before, repair.after, repair.uncertain) for repair in result.repairs] == [
+        ("Jahn", "John", True)
+    ]
+    assert result.routing_trace is not None
+    assert result.routing_trace.model_dump(mode="json") == {
+        "policy": "retrieval_model_adjudication",
+        "version": "v1",
+        "proposal_ids": ["p0001", "p0002"],
+        "selected_proposal_id": "p0002",
+        "adjudicator_invoked": True,
+    }
+
+
+def test_adjudication_abstains_explicitly_or_before_transport_without_proposals() -> None:
+    explicit = retrieval_model_adjudication_adapter(
+        lambda _request: model_transport_result(
+            "success", response='{"selection_id":null}'
+        )
+    )(adjudication_request())
+    calls = 0
+
+    def forbidden(_request: GeneralModelRequest) -> GeneralModelTransportResult:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("empty retrieval must not invoke the adjudicator")
+
+    empty = retrieval_model_adjudication_adapter(forbidden)(
+        adjudication_request(original="Alice", context="John", profile=("Atlas",))
+    )
+    invalid = retrieval_model_adjudication_adapter(forbidden)(
+        adjudication_request(routing_updates={"maximum_proposals": 63})
+    )
+
+    assert explicit.outcome == "abstention"
+    assert explicit.proposal_scores
+    assert explicit.routing_trace is not None
+    assert explicit.routing_trace.selected_proposal_id is None
+    assert empty.outcome == "abstention"
+    assert empty.routing_trace is None
+    assert invalid.failure_class == "invalid_candidate_configuration"
+    assert calls == 0
+
+
+@pytest.mark.parametrize(
+    ("response", "failure_class"),
+    [
+        ('{"selection_id":"p0065"}', "fabricated_selection"),
+        ('{"selection_id":"unknown"}', "malformed_output"),
+        ('{"selection_id":"p0001","extra":true}', "malformed_output"),
+        ('{"selection_id":"p0001","selection_id":"p0002"}', "malformed_output"),
+        ('```json\n{"selection_id":"p0001"}\n```', "malformed_output"),
+    ],
+)
+def test_adjudication_rejects_fabricated_or_malformed_selection(
+    response: str, failure_class: str
+) -> None:
+    result = retrieval_model_adjudication_adapter(
+        lambda _request: model_transport_result("success", response=response)
+    )(adjudication_request())
+
+    assert result.outcome == "failure"
+    assert result.failure_class == failure_class
+    assert result.proposal_scores == []
+    assert result.routing_trace is None
+
+
+def test_adjudication_combines_retries_usage_and_total_timeout(monkeypatch) -> None:
+    ticks = iter((10.0, 12.0))
+    monkeypatch.setattr(
+        "local_text.automatic_strategy_evaluation_adapters.time.monotonic",
+        lambda: next(ticks),
+    )
+    requests: list[GeneralModelRequest] = []
+    responses = iter(
+        (
+            model_transport_result(
+                "retryable_error", elapsed_ms=1_000, input_tokens=3, output_tokens=1
+            ),
+            model_transport_result(
+                "success",
+                response='{"selection_id":"p0001"}',
+                elapsed_ms=2_000,
+                input_tokens=4,
+                output_tokens=2,
+            ),
+        )
+    )
+
+    def transport(request: GeneralModelRequest) -> GeneralModelTransportResult:
+        requests.append(request)
+        return next(responses)
+
+    result = retrieval_model_adjudication_adapter(transport)(adjudication_request())
+
+    assert [request.remaining_timeout_seconds for request in requests] == [28, 27]
+    assert result.outcome == "success"
+    assert result.internal_retries == 1
+    assert result.latency_ms == 5_000
+    assert result.provider_calls == 2
+    assert result.input_tokens == 7
+    assert result.output_tokens == 3
+    assert result.cost_usd_micros == 0
+
+
+def test_adjudication_timeout_fails_open_with_combined_accounting() -> None:
+    result = retrieval_model_adjudication_adapter(
+        lambda _request: model_transport_result(
+            "timeout", elapsed_ms=30_000, input_tokens=5, output_tokens=2
+        )
+    )(adjudication_request())
+
+    assert result.outcome == "failure"
+    assert result.failure_class == "timeout"
+    assert result.latency_ms == 30_000
+    assert result.provider_calls == 1
+    assert result.input_tokens == 5
+    assert result.output_tokens == 2
+    assert result.routing_trace is None
+
+
+def test_adjudication_registration_and_private_trace_visibility(tmp_path: Path) -> None:
+    private = tmp_path / "private"
+    app_database = tmp_path / "application-state" / "local-text.sqlite3"
+    config = configuration("retrieval-adjudication-registration")
+    frozen = adjudication_request().candidate_configuration.model_dump(mode="json")
+    config["candidates"] = [frozen]
+    config["phase"] = "validation"
+    config["required_strata"] = ["conversation"]
+    config["stratum_weights"] = {"conversation": 1.0}
+    cases = [
+        {
+            "case_id": "adjudication-1",
+            "group_id": "adjudication-group-1",
+            "partition": "validation",
+            "eligible": True,
+            "synthetic": True,
+            "stratum": "conversation",
+            "original": "Jahn",
+            "intended_variants": ["June"],
+            "context": "John",
+            "profile": ["Jain"],
+        }
+    ]
+    register_run(
+        configuration_path=write_json(private / "configuration.json", config),
+        cases_path=write_json(private / "cases.json", cases),
+        runs_directory=private / "runs",
+        application_database_path=app_database,
+    )
+    run_directory = private / "runs" / "retrieval-adjudication-registration"
+    result = execute_run(
+        run_directory=run_directory,
+        adapters={
+            "retrieval-model-adjudication-v1": retrieval_model_adjudication_adapter(
+                lambda _request: model_transport_result(
+                    "success", response='{"selection_id":"p0002"}'
+                )
+            )
+        },
+        application_database_path=app_database,
+    )
+
+    manifest = json.loads((run_directory / "manifest.json").read_text())
+    executions = json.loads((run_directory / "executions.json").read_text())
+    blind_packet = json.loads((run_directory / "blind-review.json").read_text())
+    assert manifest["candidates"] == [frozen]
+    assert result["completed_attempt_count"] == 1
+    assert all(row["routing_trace"]["selected_proposal_id"] == "p0002" for row in executions)
+    assert all(row["proposal_scores"] for row in executions)
+    assert blind_packet
+    assert all("routing_trace" not in row and "proposal_scores" not in row for row in blind_packet)
+    assert "retrieval-model-adjudication-v1" not in EVALUATION_ADAPTERS
 
 
 def test_each_adapter_attempt_receives_an_isolated_candidate_configuration(
