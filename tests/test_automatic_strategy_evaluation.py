@@ -327,6 +327,7 @@ def test_lexical_candidate_is_deterministic_bounded_and_traces_each_repair() -> 
                 "Alice",
             )
         ],
+        "proposal_scores": [],
         "internal_retries": 0,
         "latency_ms": 0,
         "provider_calls": 0,
@@ -342,6 +343,196 @@ def test_lexical_candidate_abstains_for_ambiguous_or_already_correct_terms() -> 
     result = EVALUATION_ADAPTERS["deterministic-lexical-v1"](ambiguous)
 
     assert result.outcome == "abstention"
+    assert result.prepared_text is None
+    assert result.repairs == []
+
+
+def phonetic_request(
+    original: str,
+    *,
+    context: str,
+    profile: tuple[str, ...],
+    routing_updates: dict[str, object] | None = None,
+) -> AdapterRequest:
+    routing: dict[str, object] = {
+        "policy": "bounded_phonetic_contextual",
+        "version": "v1",
+        "use_context": True,
+        "use_profile": True,
+        "maximum_original_words": 256,
+        "maximum_context_words": 256,
+        "maximum_profile_entries": 64,
+        "maximum_term_characters": 64,
+        "maximum_edit_distance": 2,
+        "maximum_proposals": 64,
+        "maximum_context_occurrences": 2,
+        "phonetic_weight": 4,
+        "context_weight": 2,
+        "profile_weight": 3,
+        "edit_distance_weight": 1,
+        "minimum_score": 5,
+        "minimum_score_margin": 2,
+        "maximum_repairs": 1,
+    }
+    routing.update(routing_updates or {})
+    return AdapterRequest(
+        original=original,
+        request_context=context,
+        enabled_profile_evidence=profile,
+        candidate_configuration=Candidate.model_validate(
+            {
+                **candidate(
+                    "phonetic",
+                    kind="component",
+                    family="bounded_phonetic_contextual",
+                    methods=["phonetic"],
+                    executor="bounded-phonetic-contextual-v1",
+                ),
+                "routing": routing,
+            }
+        ),
+        seed="frozen-attempt-seed",
+        execution_budget=ExecutionBudget(
+            timeout_seconds=30,
+            maximum_internal_retries=0,
+            ceilings=Ceilings(
+                provider_calls=0,
+                input_tokens=0,
+                output_tokens=0,
+                cost_usd_micros=0,
+            ),
+        ),
+    )
+
+
+def test_phonetic_candidate_ranks_deterministically_and_traces_score_and_repair() -> None:
+    request = phonetic_request(
+        "Ask Jahn about Alice.",
+        context="John John",
+        profile=("John", "Atlas"),
+    )
+
+    first = EVALUATION_ADAPTERS["bounded-phonetic-contextual-v1"](request)
+    second = EVALUATION_ADAPTERS["bounded-phonetic-contextual-v1"](request)
+
+    assert first == second
+    assert first.outcome == "success"
+    assert first.prepared_text == "Ask John about Alice."
+    assert [repair.model_dump(mode="json") for repair in first.repairs] == [
+        repair_trace(
+            "Ask Jahn about Alice.",
+            "Ask John about Alice.",
+            "Jahn",
+            "John",
+        )
+    ]
+    assert [score.model_dump(mode="json") for score in first.proposal_scores] == [
+        {
+            "after": "John",
+            "original_start": 4,
+            "original_end": 8,
+            "phonetic": 4,
+            "context": 4,
+            "profile": 3,
+            "edit_penalty": 1,
+            "total": 10,
+        }
+    ]
+
+
+def test_phonetic_candidate_abstains_for_collision_tie_and_conflicting_evidence() -> None:
+    tied = phonetic_request(
+        "Jahn",
+        context="John Jain",
+        profile=(),
+        routing_updates={"use_profile": False},
+    )
+    conflicting = phonetic_request(
+        "Jahn",
+        context="John",
+        profile=("Jain",),
+    )
+
+    tied_result = EVALUATION_ADAPTERS["bounded-phonetic-contextual-v1"](tied)
+    conflicting_result = EVALUATION_ADAPTERS["bounded-phonetic-contextual-v1"](
+        conflicting
+    )
+
+    assert tied_result.outcome == "abstention"
+    assert [score.total for score in tied_result.proposal_scores] == [5, 5]
+    assert conflicting_result.outcome == "abstention"
+    assert [score.total for score in conflicting_result.proposal_scores] == [6, 5]
+
+
+def test_phonetic_candidate_enforces_score_boundary_and_evidence_isolation() -> None:
+    at_boundary = phonetic_request(
+        "Jahn",
+        context="John",
+        profile=(),
+        routing_updates={"use_profile": False},
+    )
+    below_boundary = phonetic_request(
+        "Jahn",
+        context="John",
+        profile=(),
+        routing_updates={"use_profile": False, "minimum_score": 6},
+    )
+    disabled_profile = phonetic_request(
+        "Jahn",
+        context="Atlas",
+        profile=("John",),
+        routing_updates={"use_profile": False},
+    )
+
+    assert EVALUATION_ADAPTERS["bounded-phonetic-contextual-v1"](
+        at_boundary
+    ).outcome == "success"
+    assert EVALUATION_ADAPTERS["bounded-phonetic-contextual-v1"](
+        below_boundary
+    ).outcome == "abstention"
+    assert EVALUATION_ADAPTERS["bounded-phonetic-contextual-v1"](
+        disabled_profile
+    ).outcome == "abstention"
+
+
+def test_phonetic_candidate_preserves_correct_words_and_ignores_irrelevant_profile() -> None:
+    request = phonetic_request(
+        "Jahn met Alice.",
+        context="John John",
+        profile=("Atlas", "John"),
+    )
+
+    result = EVALUATION_ADAPTERS["bounded-phonetic-contextual-v1"](request)
+
+    assert result.prepared_text == "John met Alice."
+    assert [(repair.before, repair.after) for repair in result.repairs] == [("Jahn", "John")]
+
+
+@pytest.mark.parametrize(
+    ("context", "profile", "routing_updates", "outcome"),
+    [
+        ("", ("John",), {}, "abstention"),
+        ("John", ("two words",), {}, "abstention"),
+        ("John", ("John",), {"unexpected": 1}, "failure"),
+        ("John", ("John",), {"maximum_proposals": 0}, "failure"),
+    ],
+)
+def test_phonetic_candidate_fails_open_for_empty_malformed_or_invalid_input(
+    context: str,
+    profile: tuple[str, ...],
+    routing_updates: dict[str, object],
+    outcome: str,
+) -> None:
+    request = phonetic_request(
+        "Jahn",
+        context=context,
+        profile=profile,
+        routing_updates=routing_updates,
+    )
+
+    result = EVALUATION_ADAPTERS["bounded-phonetic-contextual-v1"](request)
+
+    assert result.outcome == outcome
     assert result.prepared_text is None
     assert result.repairs == []
 
