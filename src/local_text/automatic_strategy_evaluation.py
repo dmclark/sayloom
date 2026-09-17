@@ -213,12 +213,39 @@ class ProposalScoreTrace(StrictModel):
         return self
 
 
+class RoutingTrace(StrictModel):
+    policy: Literal["retrieval_model_adjudication"]
+    version: Literal["v1"]
+    proposal_ids: list[str] = Field(max_length=64)
+    selected_proposal_id: str | None = Field(
+        default=None, pattern=r"p\d{4}"
+    )
+    adjudicator_invoked: bool
+
+    @model_validator(mode="after")
+    def selected_proposal_was_supplied(self) -> RoutingTrace:
+        if len(self.proposal_ids) != len(set(self.proposal_ids)) or any(
+            re.fullmatch(r"p\d{4}", proposal_id) is None
+            for proposal_id in self.proposal_ids
+        ):
+            raise ValueError("routing proposal IDs must be unique stable IDs")
+        if (
+            self.selected_proposal_id is not None
+            and self.selected_proposal_id not in self.proposal_ids
+        ):
+            raise ValueError("the selected proposal must be present in the routing trace")
+        if not self.adjudicator_invoked and self.selected_proposal_id is not None:
+            raise ValueError("an uninvoked adjudicator cannot select a proposal")
+        return self
+
+
 class ExecutionResult(StrictModel):
     outcome: Literal["success", "abstention", "failure"]
     prepared_text: str | None = Field(default=None, max_length=100_000)
     selected_method: str | None = Field(default=None, max_length=128)
     repairs: list[RepairTrace]
     proposal_scores: list[ProposalScoreTrace] = Field(default_factory=list, max_length=64)
+    routing_trace: RoutingTrace | None = None
     internal_retries: int = Field(ge=0)
     latency_ms: int = Field(ge=0)
     provider_calls: int = Field(ge=0)
@@ -243,8 +270,8 @@ class ExecutionResult(StrictModel):
             self.prepared_text is not None or self.selected_method is not None or self.repairs
         ):
             raise ValueError("a failure or abstention must fail open without proposed repairs")
-        if self.outcome == "failure" and self.proposal_scores:
-            raise ValueError("a failure must not expose proposal scores")
+        if self.outcome == "failure" and (self.proposal_scores or self.routing_trace is not None):
+            raise ValueError("a failure must not expose proposal or routing traces")
         if self.outcome != "failure" and self.failure_class is not None:
             raise ValueError("only a failure may include a failure classification")
         return self
@@ -652,6 +679,7 @@ def execute_run(
                         "selected_method": None,
                         "repairs": [],
                         "proposal_scores": [],
+                        "routing_trace": None,
                     }
                 )
         row = {
