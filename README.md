@@ -63,6 +63,25 @@ executes that worktree's own runtime scripts.
 
 The local default is the `development` profile and displays **Sayloom Development**. A release process can explicitly select release branding with `LOCAL_TEXT_PROFILE=release`. Application startup performs no database migrations or seed writes. If the database is absent or at the wrong schema revision, `/health` reports `setup_required` with HTTP 503 rather than changing it.
 
+## External evidence package administration
+
+The evidence package lives in the `intended-meaning-evidence` child of the absolute, user-owned
+external directory configured by `LOCAL_TEXT_EVALUATION_DATA_DIRECTORY`, outside Git and
+application state. Only the explicit administration script can create or approve it. Create the
+package, then approve the exact manifest digest returned by that command; the readiness response is
+content-free and never returns the package path. The script reads
+`LOCAL_TEXT_EVALUATION_DATA_DIRECTORY` from this checkout's development environment file; it does
+not need to be exported in the invoking shell.
+
+```sh
+scripts/dev.py evidence-package create
+scripts/dev.py evidence-package approve DIGEST
+scripts/dev.py evidence-package ready
+```
+
+The browser has no package creation, migration, repair, or approval interface. Package artifacts use
+owner-only permissions, create-exclusive writes, and immediate reread/hash verification.
+
 ## Private cleanup evaluation corpus
 
 Evaluation capture is disabled unless `LOCAL_TEXT_EVALUATION_DATA_DIRECTORY` names an absolute,

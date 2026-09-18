@@ -641,6 +641,7 @@ def test_help_lists_checkout_service_database_and_cleanup_commands() -> None:
         "remove",
         "prune",
         "db",
+        "evidence-package",
     ):
         assert command_name in result.stdout
     assert "Running without a command is equivalent to status" in result.stdout
