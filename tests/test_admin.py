@@ -725,6 +725,69 @@ def test_runtime_environment_rejects_state_overrides(tmp_path: Path) -> None:
     assert "invalid environment entry" in rejected.stderr
 
 
+def test_runtime_environment_passes_evaluation_data_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state_root = tmp_path / "states"
+    assert run_dev(state_root, "create", "selected").returncode == 0
+    manifest = json.loads((state_root / "selected/state.json").read_text())
+    config_root = tmp_path / "home/.config/local-text/development"
+    environment_path = config_root / "environment"
+    environment_path.parent.mkdir(parents=True)
+    evaluation_data_directory = tmp_path / "synthetic-evaluation-data"
+    environment_path.write_text(
+        f"LOCAL_TEXT_EVALUATION_DATA_DIRECTORY={evaluation_data_directory}\n"
+    )
+    environment_path.chmod(0o600)
+
+    scripts = str(REPOSITORY_ROOT / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        specification = importlib.util.spec_from_file_location(
+            "sayloom_run_development_script",
+            REPOSITORY_ROOT / "scripts/run-development.py",
+        )
+        assert specification is not None and specification.loader is not None
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+    finally:
+        sys.path.remove(scripts)
+
+    development_state = sys.modules[module.state_environment.__module__]
+    monkeypatch.setattr(development_state, "DEFAULT_CONFIG_ROOT", config_root)
+    captured_environment: dict[str, str] = {}
+
+    def capture_execve(
+        executable: Path, arguments: list[str], environment: dict[str, str]
+    ) -> None:
+        captured_environment.update(environment)
+        raise RuntimeError("execution intercepted")
+
+    monkeypatch.setattr(module.os, "execve", capture_execve)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run-development.py",
+            "--state-root",
+            str(state_root),
+            "--state",
+            "selected",
+            "--label",
+            manifest["label"],
+            "--port",
+            str(manifest["port"]),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="execution intercepted"):
+        module.main()
+
+    assert captured_environment["LOCAL_TEXT_EVALUATION_DATA_DIRECTORY"] == str(
+        evaluation_data_directory
+    )
+
+
 def test_shared_configuration_is_overridden_by_checkout_state_without_printing_secret(
     tmp_path: Path,
 ) -> None:
