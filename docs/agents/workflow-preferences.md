@@ -6,9 +6,9 @@ or explicit instructions in the current request.
 
 ## Overrides
 
-- For local code changes, use a Supacode-managed topic worktree and attach the
-  Amp runner to that exact worktree before editing. Keep the primary `main`
-  checkout clean for integration.
+- For local code changes, follow the root guidance's **Local worktree workflow**,
+  including its runner-directory gate and single-worktree boundary. Keep the
+  primary `main` checkout clean for integration.
 - Prefer an Amp orb for isolated work. Read-only research, planning, review, and
   documentation-only changes may run in an orb when their inputs are available
   there.
@@ -16,9 +16,6 @@ or explicit instructions in the current request.
   repository and use the private user-owned **Sayloom** Project for workflow
   state. Repository documents and ADRs own durable current knowledge and
   decisions.
-- Keep Mandrel project `voiceitt-bridge` unchanged as read-only legacy
-  provenance. Do not create a separate Sayloom Mandrel project or dual-write to
-  Mandrel.
 - For implementation changes, affected checks usually include
   `uv run ruff check .` and relevant `uv run pytest` coverage. Follow the root
   guidance for test frequency and scope-appropriate verification.

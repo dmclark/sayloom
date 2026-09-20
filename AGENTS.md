@@ -42,26 +42,15 @@ keep runtime and secret material outside Git.
   cleanup thread. Validate test or browser commands before rerunning them, and do not repeat an
   unchanged failing command or poll unchanged status without new evidence or a meaningful wait.
 
-## Mandrel project
-
-- Mandrel project `voiceitt-bridge`
-  (`c875b2af-9020-41b7-9595-d70221603464`) is unchanged, read-only legacy
-  provenance for Sayloom and cross-product history.
-- Never create, update, archive, or delete Sayloom records in Mandrel, and never
-  create or suggest a separate Sayloom Mandrel project.
-- GitHub Issues in `dmclark/sayloom` own actionable work, the private user-owned
-  **Sayloom** Project owns workflow state, and repository documents and ADRs own
-  durable current knowledge and decisions. Do not dual-write.
-
 ## Local worktree workflow
 
 - Worktrees are per independently changing topic, not per Amp thread or Orb. Code changes must occur on an appropriate topic branch rather than the protected primary `main` checkout.
-- Local development uses a Supacode-managed worktree with the runner attached to that exact worktree. An explicitly requested Orb may work in its own isolated checkout and does not require a corresponding local Supacode worktree or runner.
+- Local development uses a Supacode-managed worktree. A connected runner with `any-directory` capability may operate in any worktree that runner lists; its process cwd need not equal the selected worktree. An explicitly requested Orb may work in its own isolated checkout and does not require a corresponding local Supacode worktree or runner.
 - Read-only research, planning, and review may run in an orb when all required inputs are available there; documentation-only changes may also run in an orb when they do not depend on local or uncommitted state.
 - Create or select a named development state only when the task needs isolated application runtime or database data.
 - Keep the primary `main` worktree clean for integration and its configured runtime, not feature editing; local-state diagnosis there is read-only. Preserve manager-owned locks; never force-unlock or manually remove managed worktrees. Integrate to `main` only after review and explicit authorization.
-- Before local code-changing work: (1) create or select the dedicated Supacode worktree; (2) start an Amp runner whose actual process cwd is that exact worktree (or start interactive `amp` there); (3) create or continue the implementation thread on that exact runner; (4) verify its repository, branch, recent commits, and expected status; (5) only then edit files. Create or select a named development state as part of this only when the task needs isolated application runtime or database data.
-- Creating a worktree does not move or reattach the current Amp thread, executor, or Changes panel. Never edit a new worktree from a thread or runner attached to the parent, `main`, or another directory, even when shell commands can pass that worktree as their working directory.
+- Before local code-changing work: (1) create or select the dedicated Supacode worktree; (2) confirm it is registered with Supacode and Git, retains its manager-owned lock, and is listed by the connected runner; (3) verify repository, branch, HEAD, tracking, recent commits, and status; (4) set every filesystem tool's `workdir` to that worktree; (5) keep all reads, edits, commands, and verification there. Create or select a named development state as part of this only when the task needs isolated application runtime or database data.
+- Creating a worktree does not move or reattach the current Amp thread, executor, or Changes panel. Treat the selected worktree as the task boundary and do not mix operations across worktrees.
 
 ## Agent skills
 
