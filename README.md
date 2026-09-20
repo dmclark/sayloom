@@ -110,11 +110,11 @@ is the current Smart evaluation contract. It supersedes the historical fixed
 for prototype acceptance. Neither harness is the cleanup runner, and cleanup
 evidence does not validate Smart correction or authorize a private run.
 
-Set `LOCAL_TEXT_CORRECTION_BENCHMARK_CASES_PATH` to an absolute cases-file path outside both the
-repository and application state to enable **Correct and add example**. Explicit confirmation adds
-the current Original and corrected intended wording as an ineligible practice candidate using the
-benchmark case schema. The private corpus must be curated before run registration; capture does not
-make a case eligible or assign it to the unseen set.
+When the externally administered intended-meaning package is approved and ready, the Workspace can
+arm **Evidence Collection** after a fresh Voiceitt-source attestation. Arming lasts only for that
+browser session and remains independent of correction mode. While armed, Smart first conceals any
+candidate and asks for Intended wording; only after the new observation is immutably written and
+verified does Smart run from the frozen Original and contemporaneous eligible context.
 
 ## Cleanup providers
 
@@ -287,9 +287,9 @@ remain exclusively bound by the selected state manifest.
 
 ## Durable prompt configuration
 
-SQLite in the external profile state directory is authoritative for the seeded prompt, immutable custom prompt versions, exact durable default selection, the cleanup default, target definitions and target-operation errors, seed state, and one-time import status. The Prepared header provides a compact prompt-version selector for the current page session. Selecting a version sends its exact identifier with cleanup requests but does not change the durable default; clearing text preserves the selection, while a full reload restores the configured default. Every selected prompt is wrapped in the fixed source-preserving product contract before it is sent to a provider, so neither a legacy seed nor a custom version can widen accepted output. Expanded prompt management is intentionally outside the Workspace surface.
+SQLite in the external profile state directory is authoritative for the seeded prompt, immutable custom prompt versions, exact durable default selection, the cleanup default, target definitions and target-operation errors, seed state, and one-time import status. Workspace cleanup and Evidence Collection requests omit a page-session prompt override, so the server resolves the durable active prompt and returns its exact ID and content hash with cleanup and evaluation evidence. Every active prompt is wrapped in the fixed source-preserving product contract before it is sent to a provider, so neither a legacy seed nor a custom version can widen accepted output. Expanded prompt management is intentionally outside the Workspace surface.
 
-The **Targets** destination manages durable definitions for Amp, iTerm, Supacode, and VS Code plus bounded user-authored targets. **Save definition** never installs. **Install/Regenerate command** explicitly writes one generated command to the configured Raycast Script Commands directory, and Disable/Remove state their command-removal consequences. Generated commands consume only the current outgoing-state API, never press Return, and leave hotkey assignment to Raycast and the user. Application and macOS permission state remains **Not verified** until it is exercised on the Mac that runs Raycast. The fixed **Dev: Open Sayloom** command and four fixed Gate 1 send commands remain available during managed-command verification.
+The **Settings** destination places the persisted default correction mode before durable target management. The saved correction default is snapshotted when the next Original begins; changing it does not reprocess or change the active draft. Conservative results offer a one-shot **Run Smart correction** action, while a Smart default runs automatically without a redundant action. Settings manages target definitions for Amp, iTerm, Supacode, and VS Code plus bounded user-authored targets. **Save definition** never installs. **Install/Regenerate command** explicitly writes one generated command to the configured Raycast Script Commands directory, and Disable/Remove state their command-removal consequences. Generated commands consume only the current outgoing-state API, never press Return, and leave hotkey assignment to Raycast and the user. Application and macOS permission state remains **Not verified** until it is exercised on the Mac that runs Raycast. The fixed **Dev: Open Sayloom** command and four fixed Gate 1 send commands remain available during managed-command verification.
 
 Original and Prepared default to resizable stacked panes and can switch to a resizable side-by-side layout on wide viewports. Layout, divider positions, and the collapsible navigation rail are local browser preferences; pane maximization is temporary, and narrow viewports enforce stacking without changing the saved desktop preference. Both dividers support pointer and keyboard adjustment, and the editors scroll independently. Original uses the browser's native insertion point; Prepared is read-only. The compact Outgoing status bar explicitly selects Prepared or Original and expands to show route details. Prepared becomes the default after a current successful cleanup; pending, stale, disabled, timed-out, and failed cleanup states fall back to Original, and an explicit per-draft Original selection survives reruns until Clear or reload. Cleanup and publication failures provide persistent, expandable, copyable safe details without including operating text, provider payloads, credentials, stack traces, or private paths.
 

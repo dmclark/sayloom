@@ -31,7 +31,7 @@ def test_health_reports_development_profile(initialized_settings: Settings) -> N
     health = response.json()
     cleanup_configuration = health.pop("cleanup_configuration")
     evaluation_configuration = health.pop("evaluation_configuration")
-    benchmark_configuration = health.pop("correction_benchmark_configuration")
+    evidence_collection = health.pop("evidence_collection")
     assert health == {
         "status": "ok",
         "profile": "development",
@@ -49,9 +49,11 @@ def test_health_reports_development_profile(initialized_settings: Settings) -> N
     assert cleanup_configuration["validation_error"] is None
     assert evaluation_configuration["status"] == "unconfigured"
     assert evaluation_configuration["available"] is False
-    assert benchmark_configuration == {
-        "available": False,
-        "destination": "configured private benchmark corpus",
+    assert evidence_collection == {
+        "ready": False,
+        "reason": "unconfigured",
+        "package_version": None,
+        "contract_version": None,
     }
 
 
@@ -107,7 +109,7 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="cleanup-status"' in response.text
     assert 'class="status-label"' not in response.text
     assert 'id="cancel-cleanup"' not in response.text
-    assert 'id="active-prompt-selector"' in response.text
+    assert 'id="active-prompt-selector"' not in response.text
     assert 'id="prompt-manager"' not in response.text
     assert 'id="save-prompt"' not in response.text
     assert 'id="workspace-resizer"' in response.text
@@ -126,8 +128,13 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="maximize-prepared"' in response.text
     assert 'id="toggle-sidebar"' in response.text
     assert 'id="default-correction-mode"' in response.text
-    assert 'id="current-correction-mode"' in response.text
-    assert 'id="active-correction-mode"' in response.text
+    assert 'id="current-correction-mode"' not in response.text
+    assert 'id="active-correction-mode"' not in response.text
+    assert 'id="run-smart-correction"' in response.text
+    assert 'id="nav-settings"' in response.text
+    assert response.text.index('id="correction-settings-title"') < response.text.index(
+        'id="targets-title"'
+    )
     assert 'id="smart-task-context"' in response.text
     assert "Task context · this request only" in response.text
     assert 'id="smart-repair-review"' in response.text
@@ -255,7 +262,7 @@ def test_config_reports_cleanup_without_exposing_key(initialized_settings: Setti
     configuration = response.json()
     cleanup_configuration = configuration.pop("cleanup_configuration")
     evaluation_configuration = configuration.pop("evaluation_configuration")
-    benchmark_configuration = configuration.pop("correction_benchmark_configuration")
+    evidence_collection = configuration.pop("evidence_collection")
     assert configuration == {
         "display_name": "Sayloom Development",
         "profile": "development",
@@ -272,7 +279,7 @@ def test_config_reports_cleanup_without_exposing_key(initialized_settings: Setti
     ]
     assert cleanup_configuration["paid_data_acknowledgement"] is None
     assert evaluation_configuration["status"] == "unconfigured"
-    assert benchmark_configuration["available"] is False
+    assert evidence_collection["ready"] is False
     assert "not-a-real-key" not in response.text
 
 
@@ -1186,6 +1193,7 @@ def test_outgoing_state_rejects_text_not_present_in_either_editor(
     assert mismatched_source.status_code == 422
 
 
+@pytest.mark.skip(reason="superseded browser benchmark capture removed by Evidence Collection")
 def test_benchmark_example_api_writes_exact_synthetic_pair(
     initialized_settings: Settings, tmp_path: Path
 ) -> None:
@@ -1214,6 +1222,7 @@ def test_benchmark_example_api_writes_exact_synthetic_pair(
     assert saved[0]["intended_text"] == "Synthetic intended wording."
 
 
+@pytest.mark.skip(reason="superseded browser benchmark capture removed by Evidence Collection")
 def test_benchmark_example_api_fails_safely_without_mutating_storage(
     initialized_settings: Settings, tmp_path: Path, monkeypatch
 ) -> None:
@@ -1241,6 +1250,7 @@ def test_benchmark_example_api_fails_safely_without_mutating_storage(
     assert not cases_path.exists()
 
 
+@pytest.mark.skip(reason="superseded browser benchmark capture removed by Evidence Collection")
 def test_benchmark_example_api_requires_configured_external_storage(
     initialized_settings: Settings,
 ) -> None:
@@ -1277,7 +1287,7 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     assert 'elements.workspaceResizer.addEventListener("pointerdown"' in script.text
     assert "promptManager" not in script.text
     assert 'fetch(`/api/prompts/${prompt.id}/activate`' not in script.text
-    assert "prompt_version_id: selectedPromptVersionId" in script.text
+    assert "selectedPromptVersionId" not in script.text
     assert "originalOutgoingOverride = true" in script.text
     assert "originalOutgoingOverride = false" in script.text
     assert "Original fallback · replacement Prepared pending" in script.text
@@ -1296,13 +1306,13 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     assert "toggleMaximizedPane" in script.text
     assert "WORKSPACE_PREFERENCES_KEY" in script.text
     assert 'window.matchMedia("(max-width: 980px)")' in script.text
-    assert "correction_mode: effectiveCorrectionMode()" in script.text
+    assert "correction_mode: correctionMode" in script.text
     assert "task_context: taskContext" in script.text
     assert 'fetch("/api/preferences/correction-mode"' in script.text
-    assert "currentCorrectionModeOverride = null" in script.text
+    assert "draftCorrectionMode = null" in script.text
     assert "renderCorrectionMode();" in script.text
     assert 'elements.prepared.addEventListener("input"' not in script.text
-    run_cleanup = script.text.split("async function runCleanup()", maxsplit=1)[1].split(
+    run_cleanup = script.text.split("async function runCleanup(", maxsplit=1)[1].split(
         "function scheduleCleanup()", maxsplit=1
     )[0]
     scheduled_cleanup = script.text.split("function scheduleCleanup()", maxsplit=1)[1].split(
@@ -1407,6 +1417,7 @@ async function settle() {
   const prepared = elements["#prepared-text"];
   const taskContext = elements["#smart-task-context"];
   original.value = "send teh report";
+  await original.dispatch("input", { isTrusted: true });
   taskContext.value = "First transient context";
   const staleRun = elements["#run-cleanup"].dispatch("click");
   await settle();
@@ -1454,6 +1465,157 @@ async function settle() {
     assert observed["taskContextHidden"] is False
 
 
+def test_browser_snapshots_default_per_original_and_runs_explicit_smart_once(
+    initialized_settings: Settings,
+) -> None:
+    script = TestClient(create_app(initialized_settings)).get("/static/app.js").text
+    harness = r"""
+const vm = require("vm");
+
+class Element {
+  constructor() {
+    this.value = ""; this.checked = true; this.disabled = false; this.hidden = false;
+    this.readOnly = false; this.open = false; this.dataset = {}; this.listeners = {};
+    this.children = []; this.attributes = {}; this.textContent = "";
+    this.selectionStart = 0; this.selectionEnd = 0;
+    this.lastElementChild = { textContent: "" }; this.style = { setProperty() {} };
+    this.classList = { add() {}, remove() {}, toggle() {}, contains() { return false; } };
+  }
+  addEventListener(type, callback) { (this.listeners[type] ||= []).push(callback); }
+  async dispatch(type, event = {}) {
+    event.target ||= this; event.preventDefault ||= () => {};
+    for (const callback of this.listeners[type] || []) await callback(event);
+  }
+  setAttribute(name, value) { this.attributes[name] = String(value); }
+  getAttribute(name) { return this.attributes[name] || (name === "aria-valuenow" ? "55" : null); }
+  removeAttribute(name) { delete this.attributes[name]; }
+  toggleAttribute() {}
+  append(...children) { this.children.push(...children); }
+  setPointerCapture() {}
+  setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
+  getBoundingClientRect() { return { top: 0, left: 0, width: 100, height: 100 }; }
+  focus() { document.activeElement = this; }
+  close() { this.open = false; }
+  showModal() { this.open = true; }
+  reportValidity() { return true; }
+  querySelectorAll() { return []; }
+  querySelector() { return null; }
+}
+const elements = {};
+const document = {
+  activeElement: null,
+  querySelector(selector) { return elements[selector] ||= new Element(); },
+  createElement() { return new Element(); },
+  addEventListener() {},
+};
+const requests = [];
+const response = (body, status = 200) => ({
+  ok: status >= 200 && status < 300, status, json: async () => body,
+});
+const fetch = async (url, options = {}) => {
+  const body = options.body ? JSON.parse(options.body) : null;
+  requests.push({ url, method: options.method || "GET", body });
+  if (url === "/api/config") return response({
+    cleanup_enabled_by_default: true, default_correction_mode: "conservative",
+    cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
+    evidence_collection: { ready: false }, evaluation_configuration: { available: false },
+  });
+  if (url === "/api/preferences/correction-mode") {
+    return response({ default_correction_mode: body.correction_mode });
+  }
+  if (url === "/api/cleanup") return response({
+    prepared_text: body.original_text, status: "unchanged", lexical_repairs: [],
+  });
+  if (url === "/api/outgoing-state") return response({ revision: 1 });
+  throw new Error(`Unexpected request: ${url}`);
+};
+const window = {
+  clearTimeout() {}, setTimeout() { return 1; },
+  requestAnimationFrame(callback) { callback(); }, addEventListener() {},
+  matchMedia() { return { matches: false, addEventListener() {} }; },
+};
+const context = {
+  document, window, fetch, AbortController, Promise, console,
+  navigator: { clipboard: {} },
+};
+const settle = async () => {
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+};
+
+(async () => {
+  vm.runInNewContext(process.argv[1], context); await settle();
+  const original = elements["#original-text"];
+  const defaultMode = elements["#default-correction-mode"];
+  const runCleanup = elements["#run-cleanup"];
+  const runSmart = elements["#run-smart-correction"];
+
+  original.value = "First draft";
+  await original.dispatch("input", { isTrusted: true });
+  await runCleanup.dispatch("click"); await settle();
+
+  defaultMode.value = "smart";
+  await defaultMode.dispatch("change"); await settle();
+  const cleanupCountAfterSave = requests.filter((item) => item.url === "/api/cleanup").length;
+
+  original.value = "First draft edited";
+  await original.dispatch("input", { isTrusted: true });
+  await runCleanup.dispatch("click"); await settle();
+  const actionAfterConservative = { hidden: runSmart.hidden, label: runSmart.textContent };
+
+  await runSmart.dispatch("click"); await settle();
+  const explicitResult = {
+    hidden: runSmart.hidden,
+    status: elements["#smart-correction-state"].textContent,
+  };
+
+  original.value = "First draft edited again";
+  await original.dispatch("input", { isTrusted: true });
+  await runCleanup.dispatch("click"); await settle();
+  const actionAfterEdit = { hidden: runSmart.hidden, label: runSmart.textContent };
+
+  elements["#smart-task-context"].value = "Stale context from the previous Original";
+  original.selectionStart = 0; original.selectionEnd = original.value.length;
+  await original.dispatch("beforeinput", { isTrusted: true });
+  original.value = "Replacement draft";
+  await original.dispatch("input", { isTrusted: true });
+  await runCleanup.dispatch("click"); await settle();
+
+  process.stdout.write(JSON.stringify({
+    cleanupCountAfterSave,
+    modes: requests.filter((item) => item.url === "/api/cleanup")
+      .map((item) => item.body.correction_mode),
+    promptOverrides: requests.filter((item) => item.url === "/api/cleanup")
+      .map((item) => Object.hasOwn(item.body, "prompt_version_id")),
+    promptHistoryRequested: requests.some((item) => item.url === "/api/prompts"),
+    replacementCarriedTaskContext: Object.hasOwn(
+      requests.filter((item) => item.url === "/api/cleanup").at(-1).body,
+      "task_context",
+    ),
+    actionAfterConservative, explicitResult, actionAfterEdit,
+    automaticSmartActionHidden: runSmart.hidden,
+  }));
+})().catch((error) => { process.stderr.write(error.stack); process.exit(1); });
+"""
+
+    result = subprocess.run(
+        ["node", "-e", harness, script], check=True, capture_output=True, text=True
+    )
+    observed = json.loads(result.stdout)
+
+    assert observed == {
+        "cleanupCountAfterSave": 1,
+        "modes": ["conservative", "conservative", "smart", "conservative", "smart"],
+        "promptOverrides": [False, False, False, False, False],
+        "promptHistoryRequested": False,
+        "replacementCarriedTaskContext": False,
+        "actionAfterConservative": {"hidden": False, "label": "Run Smart correction"},
+        "explicitResult": {"hidden": True, "status": "Smart correction unchanged."},
+        "actionAfterEdit": {"hidden": False, "label": "Run Smart correction"},
+        "automaticSmartActionHidden": True,
+    }
+
+
 def test_browser_smart_repair_queue_selects_span_and_does_not_gate_outgoing(
     initialized_settings: Settings,
 ) -> None:
@@ -1463,7 +1625,7 @@ def test_browser_smart_repair_queue_selects_span_and_does_not_gate_outgoing(
     assert "function invalidateSmartRepairReview" in script
     assert "function selectSmartRepair" in script
     assert 'elements.smartTaskContext.addEventListener("input"' in script
-    assert 'elements.activePromptSelector.addEventListener("change"' in script
+    assert 'elements.activePromptSelector.addEventListener("change"' not in script
     assert 'elements.copyOutgoing.addEventListener("click"' in script
     assert "navigator.clipboard.writeText(selectedOutgoingState().outgoing_text)" in script
 
@@ -1642,8 +1804,6 @@ const vm = require("vm");
 
 async function run(originalValue) {
   let focusCalls = 0;
-  let resolvePrompts;
-  const promptResponse = new Promise((resolve) => { resolvePrompts = resolve; });
   class Element {
     constructor(value = "") {
       this.value = value;
@@ -1679,9 +1839,10 @@ async function run(originalValue) {
     "#cleanup-disclosure": new Element(), "#cleanup-disclosure-summary": new Element(),
     "#cleanup-route-list": new Element(), "#cleanup-processing-disclosure": new Element(),
     "#cleanup-fallback-disclosure": new Element(), "#cleanup-corpus-disclosure": new Element(),
-    "#cleanup-validation-detail": new Element(),
+    "#cleanup-validation-detail": new Element(), "#default-correction-mode": new Element(),
+    "#run-smart-correction": new Element(), "#smart-correction-state": new Element(),
     ".workspace": new Element(), "#workspace-resizer": new Element(),
-    "#active-prompt-selector": new Element(), "#error-details-dialog": new Element(),
+    "#error-details-dialog": new Element(),
     "#error-details-ledger": new Element(), "#close-error-details": new Element(),
     "#copy-error-details": new Element(),
   };
@@ -1694,9 +1855,9 @@ async function run(originalValue) {
   const addEventListener = () => {};
   const window = { clearTimeout, setTimeout, requestAnimationFrame, addEventListener };
   const fetch = (url) => {
-    if (url === "/api/prompts") return promptResponse;
     const configBody = {
       cleanup_enabled_by_default: true,
+      default_correction_mode: "conservative",
       cleanup_available: false,
     };
     const body = url === "/api/config" ? configBody : { revision: 1 };
@@ -1707,12 +1868,8 @@ async function run(originalValue) {
   };
   vm.runInNewContext(process.argv[1], context);
   await new Promise((resolve) => setImmediate(resolve));
-  const focusBeforePromptHistory = focusCalls;
-  const promptBody = { versions: [], active_prompt_version_id: null };
-  resolvePrompts({ ok: true, status: 200, json: async () => promptBody });
   await new Promise((resolve) => setImmediate(resolve));
-  await new Promise((resolve) => setImmediate(resolve));
-  return { focusBeforePromptHistory, focusCalls, originalValue: original.value };
+  return { focusCalls, originalValue: original.value };
 }
 
 const runs = [run(""), run("synthetic existing entry")];
@@ -1729,12 +1886,13 @@ Promise.all(runs).then(
     )
 
     assert result.stdout == (
-        '[{"focusBeforePromptHistory":0,"focusCalls":1,"originalValue":""},'
-        '{"focusBeforePromptHistory":0,"focusCalls":0,'
+        '[{"focusCalls":1,"originalValue":""},'
+        '{"focusCalls":0,'
         '"originalValue":"synthetic existing entry"}]'
     )
 
 
+@pytest.mark.skip(reason="superseded browser benchmark capture removed by Evidence Collection")
 def test_browser_benchmark_dialog_cancel_success_selection_and_failure(
     initialized_settings: Settings,
 ) -> None:
@@ -2018,7 +2176,8 @@ def test_configurable_workspace_uses_native_caret_and_accessible_controls(
     assert 'role="separator"' in page.text
     assert 'aria-valuemin="25"' in page.text
     assert 'aria-valuemax="75"' in page.text
-    assert 'class="panel-prompt-control"' in page.text
+    assert 'class="panel-prompt-control"' not in page.text
+    assert 'class="prepared-heading-actions"' in page.text
     assert page.text.count('class="utility-rail-icon"') == 3
     assert 'setLayoutPreference("side-by-side")' in script.text
     assert 'aria-orientation", sideBySide ? "vertical" : "horizontal"' in script.text
