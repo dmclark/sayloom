@@ -17,9 +17,9 @@
     prepared: document.querySelector("#prepared-text"),
     cleanupEnabled: document.querySelector("#cleanup-enabled"),
     defaultCorrectionMode: document.querySelector("#default-correction-mode"),
-    currentCorrectionMode: document.querySelector("#current-correction-mode"),
-    activeCorrectionMode: document.querySelector("#active-correction-mode"),
     modeSaveState: document.querySelector("#mode-save-state"),
+    runSmartCorrection: document.querySelector("#run-smart-correction"),
+    smartCorrectionState: document.querySelector("#smart-correction-state"),
     smartTaskContextField: document.querySelector("#smart-task-context-field"),
     smartTaskContext: document.querySelector("#smart-task-context"),
     smartRepairReview: document.querySelector("#smart-repair-review"),
@@ -60,7 +60,6 @@
     maximizePreparedIcon: document.querySelector("#maximize-prepared span"),
     toggleSidebar: document.querySelector("#toggle-sidebar"),
     toggleSidebarIcon: document.querySelector("#toggle-sidebar span"),
-    activePromptSelector: document.querySelector("#active-prompt-selector"),
     errorDialog: document.querySelector("#error-details-dialog"),
     errorLedger: document.querySelector("#error-details-ledger"),
     closeErrorDialog: document.querySelector("#close-error-details"),
@@ -68,9 +67,9 @@
     workspaceControls: document.querySelector("#workspace-controls"),
     workspaceOutgoing: document.querySelector("#workspace-outgoing"),
     navWorkspace: document.querySelector("#nav-workspace"),
-    navTargets: document.querySelector("#nav-targets"),
+    navSettings: document.querySelector("#nav-settings"),
     navEvaluation: document.querySelector("#nav-evaluation"),
-    targetsManager: document.querySelector("#targets-manager"),
+    settingsManager: document.querySelector("#settings-manager"),
     targetList: document.querySelector("#target-list"),
     targetAddItem: document.querySelector("#target-add-item"),
     newTarget: document.querySelector("#new-target"),
@@ -96,13 +95,21 @@
     checkTarget: document.querySelector("#check-target"),
     toggleTargetEnabled: document.querySelector("#toggle-target-enabled"),
     removeTarget: document.querySelector("#remove-target"),
-    correctAndAddExample: document.querySelector("#correct-and-add-example"),
-    benchmarkCaptureDialog: document.querySelector("#benchmark-capture-dialog"),
-    benchmarkCaptureForm: document.querySelector("#benchmark-capture-form"),
-    benchmarkIntendedText: document.querySelector("#benchmark-intended-text"),
-    benchmarkCaptureStatus: document.querySelector("#benchmark-capture-status"),
-    cancelBenchmarkCapture: document.querySelector("#cancel-benchmark-capture"),
-    cancelBenchmarkCaptureSecondary: document.querySelector("#cancel-benchmark-capture-secondary"),
+    evidenceCollectionControl: document.querySelector(".evidence-collection-control"),
+    evidenceCollectionToggle: document.querySelector("#evidence-collection-toggle"),
+    evidenceCollectionState: document.querySelector("#evidence-collection-state"),
+    evidenceAttestationDialog: document.querySelector("#evidence-attestation-dialog"),
+    evidenceAttestationForm: document.querySelector("#evidence-attestation-form"),
+    evidenceSourceAttestation: document.querySelector("#evidence-source-attestation"),
+    evidenceAttestationStatus: document.querySelector("#evidence-attestation-status"),
+    cancelEvidenceAttestation: document.querySelector("#cancel-evidence-attestation"),
+    cancelEvidenceAttestationSecondary: document.querySelector("#cancel-evidence-attestation-secondary"),
+    evidenceJudgmentDialog: document.querySelector("#evidence-judgment-dialog"),
+    evidenceJudgmentForm: document.querySelector("#evidence-judgment-form"),
+    evidenceIntendedText: document.querySelector("#evidence-intended-text"),
+    evidenceJudgmentStatus: document.querySelector("#evidence-judgment-status"),
+    cancelEvidenceJudgment: document.querySelector("#cancel-evidence-judgment"),
+    cancelEvidenceJudgmentSecondary: document.querySelector("#cancel-evidence-judgment-secondary"),
     saveEvaluationCase: document.querySelector("#save-evaluation-case"),
     evaluationManager: document.querySelector("#evaluation-manager"),
     evaluationStatus: document.querySelector("#evaluation-status"),
@@ -163,8 +170,6 @@
   let syntheticPastePending = false;
   let syntheticPasteTimer = null;
   let returnSelectionPending = false;
-  let promptVersions = [];
-  let selectedPromptVersionId = null;
   let activeResizePointer = null;
   let layoutPreference = "stacked";
   let stackedShare = DEFAULT_STACKED_SHARE;
@@ -173,7 +178,10 @@
   let maximizedPane = null;
   let originalOutgoingOverride = false;
   let defaultCorrectionMode = "conservative";
-  let currentCorrectionModeOverride = null;
+  let draftCorrectionMode = null;
+  let currentOriginalText = elements.original.value;
+  let explicitSmartState = "hidden";
+  let explicitSmartMessage = "";
   let smartRepairs = [];
   let selectedSmartRepair = null;
   let smartRepairResultCurrent = false;
@@ -182,9 +190,9 @@
   let targetDirty = false;
   let targetDraftIsNew = false;
   let targetLocalError = null;
-  let benchmarkAvailable = false;
-  let benchmarkCapturedForCurrentPrepared = false;
-  let benchmarkOriginalText = null;
+  let evidenceReady = false;
+  let evidenceLease = null;
+  let frozenEvidence = null;
   let evaluationAvailable = false;
   let currentEvaluation = null;
   let evaluationCases = [];
@@ -206,7 +214,29 @@
   }
 
   function effectiveCorrectionMode() {
-    return currentCorrectionModeOverride || defaultCorrectionMode;
+    return draftCorrectionMode || defaultCorrectionMode;
+  }
+
+  function renderExplicitSmartAction() {
+    const automaticSmart = draftCorrectionMode === "smart";
+    const buttonVisible = !automaticSmart
+      && ["available", "running", "retry", "waiting"].includes(explicitSmartState);
+    elements.runSmartCorrection.hidden = !buttonVisible;
+    elements.runSmartCorrection.disabled = ["running", "waiting"].includes(explicitSmartState);
+    elements.runSmartCorrection.textContent = {
+      available: "Run Smart correction",
+      running: "Running Smart correction…",
+      retry: "Retry Smart correction",
+      waiting: "Waiting for Intended wording…",
+    }[explicitSmartState] || "Run Smart correction";
+    elements.smartCorrectionState.hidden = !explicitSmartMessage || automaticSmart;
+    elements.smartCorrectionState.textContent = automaticSmart ? "" : explicitSmartMessage;
+  }
+
+  function setExplicitSmartState(nextState, message = "") {
+    explicitSmartState = nextState;
+    explicitSmartMessage = message;
+    renderExplicitSmartAction();
   }
 
   function validateSmartRepairs(repairs, originalText, preparedText) {
@@ -364,25 +394,10 @@
   }
 
   function renderCorrectionMode() {
-    const mode = effectiveCorrectionMode();
-    const source = currentCorrectionModeOverride ? "this Original" : "default";
     elements.defaultCorrectionMode.value = defaultCorrectionMode;
-    elements.currentCorrectionMode.value = currentCorrectionModeOverride || "default";
-    elements.currentCorrectionMode.options[0].textContent = `Use default (${titleCaseState(defaultCorrectionMode)})`;
-    elements.activeCorrectionMode.textContent = `${titleCaseState(mode)} · ${source}`;
-    elements.activeCorrectionMode.dataset.mode = mode;
-    elements.activeCorrectionMode.dataset.source = currentCorrectionModeOverride ? "override" : "default";
-    elements.smartTaskContextField.hidden = mode !== "smart";
-    elements.smartTaskContext.disabled = mode !== "smart";
-  }
-
-  function applyCorrectionModeChange() {
-    invalidateSmartRepairReview();
-    renderCorrectionMode();
-    invalidateEvaluationCapture();
-    setCleanupError(null);
-    if (elements.original.value) scheduleCleanup();
-    else publishNow();
+    elements.smartTaskContextField.hidden = draftCorrectionMode !== "smart";
+    elements.smartTaskContext.disabled = draftCorrectionMode !== "smart";
+    renderExplicitSmartAction();
   }
 
   function readWorkspacePreferences() {
@@ -540,9 +555,6 @@
     elements.selectOriginal.setAttribute("aria-pressed", String(!usePrepared));
     elements.outgoingKind.textContent = fallbackLabel();
     elements.copyOutgoing.disabled = !selectedOutgoingState().outgoing_text;
-    elements.correctAndAddExample.disabled = !benchmarkAvailable
-      || !preparedIsCurrent()
-      || benchmarkCapturedForCurrentPrepared;
   }
 
   function setPublicationState(nextState, label) {
@@ -840,28 +852,37 @@
     elements.original.setSelectionRange(Math.min(selection.start, end), end);
   }
 
-  async function runCleanup() {
+  async function runCleanup(requestedCorrectionMode = null) {
     window.clearTimeout(cleanupTimer);
     cleanupTimer = null;
     abortActiveRequest();
     setCleanupError(null);
     invalidateSmartRepairReview();
     invalidateEvaluationCapture();
-    benchmarkCapturedForCurrentPrepared = false;
 
     const originalText = elements.original.value;
-    const correctionMode = effectiveCorrectionMode();
+    const explicitSmart = requestedCorrectionMode === "smart"
+      && effectiveCorrectionMode() !== "smart";
+    const correctionMode = explicitSmart ? "smart" : effectiveCorrectionMode();
     const taskContext = correctionMode === "smart" ? elements.smartTaskContext.value : "";
+    if (explicitSmart) setExplicitSmartState("running");
     if (!originalText.trim()) {
       elements.prepared.value = originalText;
       setStatus("unchanged");
+      setExplicitSmartState("hidden");
       schedulePublication();
       return;
     }
     if (!elements.cleanupEnabled.checked) {
       elements.prepared.value = originalText;
       setStatus("disabled");
+      if (explicitSmart) setExplicitSmartState("retry", "Smart correction needs cleanup enabled.");
       schedulePublication();
+      return;
+    }
+    if (evidenceLease && correctionMode === "smart") {
+      if (explicitSmart) setExplicitSmartState("waiting", "Waiting for Intended wording.");
+      await requestEvidenceJudgment(originalText, taskContext, explicitSmart);
       return;
     }
 
@@ -884,7 +905,6 @@
           original_text: originalText,
           enabled: true,
           correction_mode: correctionMode,
-          prompt_version_id: selectedPromptVersionId,
           ...(taskContext.trim() ? { task_context: taskContext } : {}),
         }),
         signal: controller.signal,
@@ -894,12 +914,12 @@
         if (
           sequence !== requestSequence
           || originalText !== elements.original.value
-          || correctionMode !== effectiveCorrectionMode()
           || taskContext !== (correctionMode === "smart" ? elements.smartTaskContext.value : "")
         ) return;
         elements.prepared.value = originalText;
         setStatus("error");
         setCleanupError(error);
+        if (explicitSmart) setExplicitSmartState("retry", "Smart correction failed.");
         restoreOriginalSelection(selection);
         return;
       }
@@ -907,7 +927,6 @@
       if (
         sequence !== requestSequence
         || originalText !== elements.original.value
-        || correctionMode !== effectiveCorrectionMode()
         || taskContext !== (correctionMode === "smart" ? elements.smartTaskContext.value : "")
       ) return;
       if (
@@ -920,6 +939,7 @@
         elements.prepared.value = originalText;
         setStatus("error");
         setCleanupError(malformedResponseError("Cleanup", response.status));
+        if (explicitSmart) setExplicitSmartState("retry", "Smart correction failed.");
         restoreOriginalSelection(selection);
         return;
       }
@@ -938,6 +958,16 @@
         correctionMode === "smart"
         && ["prepared", "unchanged"].includes(result.status)
       ) showSmartRepairResult(result.lexical_repairs);
+      if (explicitSmart && ["prepared", "unchanged"].includes(result.status)) {
+        setExplicitSmartState(
+          "success",
+          result.status === "prepared" ? "Smart correction applied." : "Smart correction unchanged.",
+        );
+      } else if (correctionMode === "conservative" && ["prepared", "unchanged"].includes(result.status)) {
+        setExplicitSmartState("available");
+      } else if (explicitSmart) {
+        setExplicitSmartState("retry", "Smart correction failed.");
+      }
       if (result.status === "timeout" || result.status === "provider_error") {
         const safe = result.error;
         setCleanupError(makeError({
@@ -960,6 +990,7 @@
       }
       if (
         evaluationAvailable
+        && !evidenceLease
         && ["prepared", "unchanged"].includes(result.status)
         && result.evaluation
         && typeof result.evaluation.capture_proof === "string"
@@ -986,6 +1017,7 @@
       setStatus("error");
       if (error.name !== "AbortError") {
         setCleanupError(error?.code ? error : networkError("Cleanup"));
+        if (explicitSmart) setExplicitSmartState("retry", "Smart correction failed.");
       }
       restoreOriginalSelection(selection);
     } finally {
@@ -998,6 +1030,8 @@
 
   function scheduleCleanup() {
     window.clearTimeout(cleanupTimer);
+    cancelEvidenceJudgment();
+    setExplicitSmartState("hidden");
     setCleanupError(null);
     invalidateSmartRepairReview();
     invalidateEvaluationCapture();
@@ -1020,8 +1054,20 @@
   }
 
   function handleOriginalInput(event) {
-    if (replaceAllPending) elements.prepared.value = "";
+    cancelEvidenceJudgment();
+    const startsNewOriginal = replaceAllPending
+      || (!currentOriginalText && Boolean(elements.original.value));
+    if (startsNewOriginal) {
+      draftCorrectionMode = defaultCorrectionMode;
+      elements.prepared.value = "";
+      elements.smartTaskContext.value = "";
+    } else if (!elements.original.value) {
+      draftCorrectionMode = null;
+    }
     replaceAllPending = false;
+    currentOriginalText = elements.original.value;
+    setExplicitSmartState("hidden");
+    renderCorrectionMode();
     const followsSyntheticPaste = syntheticPastePending && event.isTrusted;
     if (followsSyntheticPaste) {
       window.clearTimeout(syntheticPasteTimer);
@@ -1083,8 +1129,8 @@
         throw malformedResponseError("Correction mode preference", response.status);
       }
       defaultCorrectionMode = nextMode;
-      elements.modeSaveState.textContent = `${titleCaseState(nextMode)} saved as default.`;
-      applyCorrectionModeChange();
+      elements.modeSaveState.textContent = `${titleCaseState(nextMode)} saved for the next Original.`;
+      renderCorrectionMode();
     } catch (error) {
       defaultCorrectionMode = previousMode;
       elements.modeSaveState.textContent = `${error.message} ${error.retryAction}`;
@@ -1092,16 +1138,6 @@
     } finally {
       elements.defaultCorrectionMode.disabled = false;
     }
-  });
-
-  elements.currentCorrectionMode.addEventListener("change", () => {
-    currentCorrectionModeOverride = elements.currentCorrectionMode.value === "default"
-      ? null
-      : elements.currentCorrectionMode.value;
-    elements.modeSaveState.textContent = currentCorrectionModeOverride
-      ? `${titleCaseState(currentCorrectionModeOverride)} applies only to this Original.`
-      : `${titleCaseState(defaultCorrectionMode)} default applies to this Original.`;
-    applyCorrectionModeChange();
   });
 
   elements.smartTaskContext.addEventListener("input", () => {
@@ -1119,7 +1155,8 @@
     renderSidebar();
     saveWorkspacePreferences();
   });
-  elements.runCleanup.addEventListener("click", runCleanup);
+  elements.runCleanup.addEventListener("click", () => runCleanup());
+  elements.runSmartCorrection.addEventListener("click", () => runCleanup("smart"));
   elements.selectOriginal.addEventListener("click", () => {
     originalOutgoingOverride = true;
     publishNow();
@@ -1136,7 +1173,9 @@
     abortActiveRequest();
     replaceAllPending = false;
     originalOutgoingOverride = false;
-    currentCorrectionModeOverride = null;
+    draftCorrectionMode = null;
+    currentOriginalText = "";
+    setExplicitSmartState("hidden");
     invalidateSmartRepairReview();
     invalidateEvaluationCapture();
     elements.original.value = "";
@@ -1162,63 +1201,207 @@
   });
   elements.copyError.addEventListener("click", copyError);
 
-  function clearBenchmarkCaptureDialog() {
-    benchmarkOriginalText = null;
-    elements.benchmarkIntendedText.value = "";
-    elements.benchmarkCaptureStatus.textContent = "";
+  function renderEvidenceCollection() {
+    const armed = Boolean(evidenceLease);
+    elements.evidenceCollectionControl.classList.toggle("is-armed", armed);
+    elements.evidenceCollectionToggle.disabled = !evidenceReady;
+    elements.evidenceCollectionToggle.textContent = armed
+      ? "Stop Evidence Collection"
+      : evidenceReady ? "Arm Evidence Collection" : "Evidence Collection unavailable";
+    elements.evidenceCollectionState.textContent = armed
+      ? "Armed · Voiceitt source attested for this session"
+      : evidenceReady ? "Approved package ready · attestation required" : "Package not ready";
   }
 
-  function closeBenchmarkCapture() {
-    if (elements.benchmarkCaptureDialog.open) elements.benchmarkCaptureDialog.close();
-    clearBenchmarkCaptureDialog();
+  function closeEvidenceAttestation() {
+    if (elements.evidenceAttestationDialog.open) elements.evidenceAttestationDialog.close();
+    elements.evidenceSourceAttestation.checked = false;
+    elements.evidenceAttestationStatus.textContent = "";
   }
 
-  function openBenchmarkCapture() {
-    if (!benchmarkAvailable || !preparedIsCurrent()) return;
-    benchmarkOriginalText = elements.original.value;
-    elements.benchmarkIntendedText.value = elements.prepared.value;
-    elements.benchmarkCaptureStatus.textContent = "";
-    elements.benchmarkCaptureDialog.showModal();
-    elements.benchmarkIntendedText.focus();
-    elements.benchmarkIntendedText.select();
+  function cancelEvidenceJudgment() {
+    const explicitSmart = frozenEvidence?.explicitSmart === true;
+    frozenEvidence = null;
+    elements.evidenceJudgmentStatus.textContent = "";
+    elements.evidenceIntendedText.value = "";
+    if (elements.evidenceJudgmentDialog.open) elements.evidenceJudgmentDialog.close();
+    if (explicitSmart) setExplicitSmartState("available");
   }
 
-  elements.correctAndAddExample.addEventListener("click", openBenchmarkCapture);
-  elements.cancelBenchmarkCapture.addEventListener("click", closeBenchmarkCapture);
-  elements.cancelBenchmarkCaptureSecondary.addEventListener("click", closeBenchmarkCapture);
-  elements.benchmarkCaptureDialog.addEventListener("close", clearBenchmarkCaptureDialog);
-  elements.benchmarkCaptureForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    if (benchmarkOriginalText === null || !elements.benchmarkCaptureForm.reportValidity()) return;
-    const intendedText = elements.benchmarkIntendedText.value;
-    elements.benchmarkCaptureStatus.textContent = "Adding example…";
-    let response;
+  async function requestEvidenceJudgment(originalText, taskContext, explicitSmart = false) {
+    elements.prepared.value = "";
+    originalOutgoingOverride = true;
+    invalidateSmartRepairReview();
+    invalidateEvaluationCapture();
+    setCleanupError(null);
+    setStatus("waiting");
+    schedulePublication();
     try {
-      response = await fetch("/api/correction-benchmark/examples", {
+      const response = await fetch("/api/evidence-collection/trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          original_text: benchmarkOriginalText,
+          lease_token: evidenceLease,
+          original_text: originalText,
+          task_context: taskContext || null,
+        }),
+      });
+      if (!response.ok) throw await safeHttpError(response, "Evidence trigger");
+      const result = await readJson(response, "Evidence trigger");
+      if (typeof result?.observation_id !== "string") {
+        throw malformedResponseError("Evidence trigger", response.status);
+      }
+      if (originalText !== elements.original.value || taskContext !== elements.smartTaskContext.value) return;
+      frozenEvidence = {
+        observationId: result.observation_id,
+        originalText,
+        taskContext,
+        explicitSmart,
+      };
+      elements.evidenceIntendedText.value = originalText;
+      elements.evidenceIntendedText.readOnly = true;
+      elements.evidenceJudgmentForm.querySelectorAll("input[name=evidence-disposition]")
+        .forEach((radio) => { radio.checked = false; });
+      elements.evidenceJudgmentDialog.showModal();
+    } catch (error) {
+      evidenceLease = null;
+      renderEvidenceCollection();
+      const safe = error?.code ? error : networkError("Evidence trigger");
+      setStatus("error");
+      setCleanupError(safe);
+      if (explicitSmart) setExplicitSmartState("retry", "Smart correction failed.");
+    }
+  }
+
+  elements.evidenceCollectionToggle.addEventListener("click", async () => {
+    if (!evidenceLease) {
+      elements.evidenceAttestationDialog.showModal();
+      return;
+    }
+    await fetch("/api/evidence-collection/arm", { method: "DELETE" });
+    evidenceLease = null;
+    cancelEvidenceJudgment();
+    renderEvidenceCollection();
+  });
+  elements.cancelEvidenceAttestation.addEventListener("click", closeEvidenceAttestation);
+  elements.cancelEvidenceAttestationSecondary.addEventListener("click", closeEvidenceAttestation);
+  elements.evidenceAttestationForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!elements.evidenceAttestationForm.reportValidity()) return;
+    elements.evidenceAttestationStatus.textContent = "Arming…";
+    try {
+      const response = await fetch("/api/evidence-collection/arm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_attestation_confirmed: true }),
+      });
+      if (!response.ok) throw await safeHttpError(response, "Evidence arming");
+      const result = await readJson(response, "Evidence arming");
+      if (typeof result?.lease_token !== "string") {
+        throw malformedResponseError("Evidence arming", response.status);
+      }
+      evidenceLease = result.lease_token;
+      closeEvidenceAttestation();
+      invalidateEvaluationCapture();
+      renderEvidenceCollection();
+    } catch (error) {
+      const safe = error?.code ? error : networkError("Evidence arming");
+      elements.evidenceAttestationStatus.textContent = `${safe.message} ${safe.retryAction}`;
+    }
+  });
+  elements.cancelEvidenceJudgment.addEventListener("click", cancelEvidenceJudgment);
+  elements.cancelEvidenceJudgmentSecondary.addEventListener("click", cancelEvidenceJudgment);
+  elements.evidenceJudgmentForm.addEventListener("change", (event) => {
+    if (event.target.name !== "evidence-disposition" || !frozenEvidence) return;
+    const editable = event.target.value === "edit_intended";
+    elements.evidenceIntendedText.readOnly = !editable;
+    elements.evidenceIntendedText.value = frozenEvidence.originalText;
+    if (editable) {
+      elements.evidenceIntendedText.focus();
+      elements.evidenceIntendedText.select();
+    }
+  });
+  elements.evidenceJudgmentForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!frozenEvidence || !elements.evidenceJudgmentForm.reportValidity()) return;
+    const disposition = elements.evidenceJudgmentForm
+      .querySelector("input[name=evidence-disposition]:checked")?.value;
+    if (!disposition) return;
+    const snapshot = frozenEvidence;
+    const intendedText = disposition === "edit_intended"
+      ? elements.evidenceIntendedText.value
+      : snapshot.originalText;
+    elements.evidenceJudgmentStatus.textContent = "Writing and verifying observation…";
+    try {
+      const response = await fetch("/api/evidence-collection/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lease_token: evidenceLease,
+          observation_id: snapshot.observationId,
+          disposition,
           intended_text: intendedText,
         }),
       });
-      if (!response.ok) throw await safeHttpError(response, "Benchmark example save");
-      const result = await readJson(response, "Benchmark example save");
-      if (result?.status !== "saved" || typeof result.destination !== "string") {
-        throw malformedResponseError("Benchmark example save", response.status);
+      if (!response.ok) throw await safeHttpError(response, "Evidence confirmation");
+      const result = await readJson(response, "Evidence confirmation");
+      if (
+        elements.original.value !== snapshot.originalText
+        || elements.smartTaskContext.value !== snapshot.taskContext
+      ) return;
+      const successful = ["prepared", "unchanged"].includes(result?.status);
+      const failed = ["timeout", "provider_error"].includes(result?.status);
+      if (
+        typeof result?.prepared_text !== "string"
+        || (!successful && !failed)
+        || (successful && !validateSmartRepairs(
+          result.lexical_repairs, snapshot.originalText, result.prepared_text,
+        ))
+      ) throw malformedResponseError("Evidence confirmation", response.status);
+      cancelEvidenceJudgment();
+      originalOutgoingOverride = false;
+      if (failed) {
+        elements.prepared.value = snapshot.originalText;
+        setStatus(result.status === "timeout" ? "timeout" : "error");
+        const safe = result.error;
+        setCleanupError(makeError({
+          operation: "Smart correction",
+          summary: result.status === "timeout"
+            ? "Smart correction timed out after the observation was saved; Outgoing is using Original."
+            : "Smart correction failed after the observation was saved; Outgoing is using Original.",
+          model: typeof result.model === "string" ? result.model : null,
+          httpStatus: Number.isInteger(safe?.http_status) ? safe.http_status : null,
+          code: typeof safe?.code === "string" ? safe.code : "cleanup_unavailable",
+          message: typeof safe?.message === "string"
+            ? safe.message
+            : "No additional safe detail is available.",
+          retryAction: typeof safe?.retry_action === "string"
+            ? safe.retry_action
+            : "Retry Smart correction or continue with Original.",
+        }));
+        if (snapshot.explicitSmart) setExplicitSmartState("retry", "Smart correction failed.");
+        schedulePublication();
+        return;
       }
-      benchmarkCapturedForCurrentPrepared = true;
-      elements.prepared.value = intendedText;
-      setStatus(intendedText === elements.original.value ? "unchanged" : "prepared");
-      closeBenchmarkCapture();
-      renderCountsAndSelection();
-      await publishNow();
-      elements.benchmarkCaptureStatus.textContent = "";
-      elements.correctAndAddExample.title = `Example added to ${result.destination}.`;
-      elements.outgoingKind.textContent = `${fallbackLabel()} · Example added to private corpus`;
+      elements.prepared.value = result.prepared_text;
+      setStatus(result.status);
+      setCleanupError(null);
+      showSmartRepairResult(result.lexical_repairs);
+      if (snapshot.explicitSmart) {
+        setExplicitSmartState(
+          "success",
+          result.status === "prepared" ? "Smart correction applied." : "Smart correction unchanged.",
+        );
+      }
+      schedulePublication();
     } catch (error) {
-      const safe = error?.code ? error : networkError("Benchmark example save");
-      elements.benchmarkCaptureStatus.textContent = `${safe.message} ${safe.retryAction}`;
+      const safe = error?.code ? error : networkError("Evidence confirmation");
+      elements.evidenceJudgmentStatus.textContent = `${safe.message} ${safe.retryAction}`;
+      if (snapshot.explicitSmart) setExplicitSmartState("retry", "Smart correction failed.");
+      if (safe.code === "evidence_collection_unavailable") {
+        evidenceLease = null;
+        renderEvidenceCollection();
+      }
     }
   });
 
@@ -1262,36 +1445,6 @@
   });
 
   narrowWorkspace.addEventListener("change", renderWorkspaceLayout);
-
-  async function loadPromptHistory() {
-    const response = await fetch("/api/prompts");
-    if (!response.ok) throw await safeHttpError(response, "Prompt version loading");
-    const result = await readJson(response, "Prompt version loading");
-    if (!result || !Array.isArray(result.versions)) {
-      throw malformedResponseError("Prompt version loading", response.status);
-    }
-    promptVersions = result.versions;
-    selectedPromptVersionId = result.active_prompt_version_id;
-    elements.activePromptSelector.textContent = "";
-    promptVersions.forEach((prompt) => {
-      const option = document.createElement("option");
-      option.value = String(prompt.id);
-      option.textContent = `v${prompt.version} · ${prompt.title}`;
-      elements.activePromptSelector.append(option);
-    });
-    elements.activePromptSelector.value = String(selectedPromptVersionId ?? "");
-  }
-
-  elements.activePromptSelector.addEventListener("change", () => {
-    const prompt = promptVersions.find(
-      (candidate) => candidate.id === Number(elements.activePromptSelector.value),
-    );
-    if (!prompt) return;
-    selectedPromptVersionId = prompt.id;
-    invalidateEvaluationCapture();
-    setCleanupError(null);
-    if (elements.original.value) scheduleCleanup();
-  });
 
   async function evaluationRequest(operation, url, options = {}) {
     let response;
@@ -1789,22 +1942,22 @@
   }
 
   function showDestination(destination) {
-    const targetsVisible = destination === "targets";
+    const settingsVisible = destination === "settings";
     const evaluationVisible = destination === "evaluation";
-    const workspaceVisible = !targetsVisible && !evaluationVisible;
+    const workspaceVisible = !settingsVisible && !evaluationVisible;
     elements.workspace.hidden = !workspaceVisible;
     elements.workspaceControls.hidden = !workspaceVisible;
     elements.workspaceOutgoing.hidden = !workspaceVisible;
-    elements.targetsManager.hidden = !targetsVisible;
+    elements.settingsManager.hidden = !settingsVisible;
     elements.evaluationManager.hidden = !evaluationVisible;
     elements.navWorkspace.classList.toggle("is-active", workspaceVisible);
-    elements.navTargets.classList.toggle("is-active", targetsVisible);
+    elements.navSettings.classList.toggle("is-active", settingsVisible);
     elements.navEvaluation.classList.toggle("is-active", evaluationVisible);
     elements.navWorkspace.toggleAttribute("aria-current", workspaceVisible);
-    elements.navTargets.toggleAttribute("aria-current", targetsVisible);
+    elements.navSettings.toggleAttribute("aria-current", settingsVisible);
     elements.navEvaluation.toggleAttribute("aria-current", evaluationVisible);
-    if (!targetsVisible && elements.targetDialog.open) elements.targetDialog.close();
-    if (targetsVisible && targetRecords.length === 0) {
+    if (!settingsVisible && elements.targetDialog.open) elements.targetDialog.close();
+    if (settingsVisible && targetRecords.length === 0) {
       loadTargets().catch((error) => {
         targetLocalError = {
           operation: "target loading",
@@ -1823,7 +1976,7 @@
     targetDirty = false;
     showDestination("workspace");
   });
-  elements.navTargets.addEventListener("click", () => showDestination("targets"));
+  elements.navSettings.addEventListener("click", () => showDestination("settings"));
   elements.navEvaluation.addEventListener("click", () => {
     if (!confirmDiscardTargetDraft()) return;
     targetDirty = false;
@@ -1972,13 +2125,14 @@
       defaultCorrectionMode = ["conservative", "smart"].includes(config.default_correction_mode)
         ? config.default_correction_mode
         : "conservative";
-      currentCorrectionModeOverride = null;
+      currentOriginalText = elements.original.value;
+      draftCorrectionMode = currentOriginalText ? defaultCorrectionMode : null;
+      elements.modeSaveState.textContent = `${titleCaseState(defaultCorrectionMode)} is the saved default.`;
       renderCorrectionMode();
       renderCleanupConfiguration(config.cleanup_configuration);
-      benchmarkAvailable = config.correction_benchmark_configuration?.available === true;
-      elements.correctAndAddExample.title = benchmarkAvailable
-        ? "Correct Prepared wording and add the pair to the private benchmark corpus"
-        : "Private benchmark storage is not configured";
+      evidenceReady = config.evidence_collection?.ready === true;
+      evidenceLease = null;
+      renderEvidenceCollection();
       evaluationAvailable = config.evaluation_configuration?.available === true;
       elements.evaluationStatus.textContent = evaluationAvailable
         ? "Evaluation storage is configured and current."
@@ -1990,7 +2144,6 @@
       originalOutgoingOverride = false;
       setStatus(elements.cleanupEnabled.checked ? "unchanged" : "disabled");
       renderCountsAndSelection();
-      await loadPromptHistory();
       if (!elements.original.value) elements.original.focus({ preventScroll: true });
     } catch (error) {
       const safe = error?.code ? error : networkError("Workspace configuration");

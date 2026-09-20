@@ -28,7 +28,6 @@ class Settings:
     database_path: Path | None = None
     raycast_directory: Path | None = None
     evaluation_data_directory: Path | None = None
-    correction_benchmark_cases_path: Path | None = None
 
     @property
     def display_name(self) -> str:
@@ -90,11 +89,6 @@ def load_settings() -> Settings:
         evaluation_data_directory=(
             Path(value)
             if (value := os.getenv("LOCAL_TEXT_EVALUATION_DATA_DIRECTORY"))
-            else None
-        ),
-        correction_benchmark_cases_path=(
-            Path(value)
-            if (value := os.getenv("LOCAL_TEXT_CORRECTION_BENCHMARK_CASES_PATH"))
             else None
         ),
     )

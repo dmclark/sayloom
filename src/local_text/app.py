@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from html import escape
 from pathlib import Path
+from typing import Annotated
 from uuid import UUID
 
 import httpx
@@ -32,7 +33,6 @@ from local_text.cleanup import (
     SequentialCleanupProvider,
 )
 from local_text.config import Profile, Settings, load_settings
-from local_text.correction_benchmark import BenchmarkError, capture_example
 from local_text.database import ApplicationDatabase
 from local_text.evaluation import (
     CLEANUP_SCHEMA_VERSION,
@@ -50,6 +50,7 @@ from local_text.evaluation import (
     RetentionRequest,
 )
 from local_text.evaluation_database import evaluation_configuration
+from local_text.evidence_collection import EvidenceCollection, EvidenceCollectionError
 from local_text.prompt_store import PromptNotFoundError, PromptRecord, PromptStore, SeedStateError
 from local_text.state import OutgoingStateStore, OutgoingStateUpdate
 from local_text.target_adapter import TargetAdapter, TargetArtifactError
@@ -209,11 +210,35 @@ class CorrectionModePreferenceRequest(BaseModel):
     correction_mode: CorrectionMode
 
 
-class BenchmarkExampleRequest(BaseModel):
+class EvidenceArmRequest(BaseModel):
+    source_attestation_confirmed: bool
+
+
+class EvidenceTriggerRequest(BaseModel):
+    lease_token: UUID
     original_text: str = Field(min_length=1, max_length=100_000)
+    task_context: str | None = Field(default=None, max_length=4_000)
+    curated_knowledge_enabled: bool = False
+    relevant_curated_knowledge: tuple[Annotated[str, Field(min_length=1, max_length=500)], ...] = (
+        Field(default=(), max_length=50)
+    )
+    prompt_version_id: int | None = Field(default=None, ge=1)
+
+    @field_validator("relevant_curated_knowledge")
+    @classmethod
+    def profile_is_explicitly_enabled(cls, value: tuple[str, ...], info) -> tuple[str, ...]:
+        if value and not info.data.get("curated_knowledge_enabled", False):
+            raise ValueError("curated knowledge must be explicitly enabled")
+        return value
+
+
+class EvidenceConfirmRequest(BaseModel):
+    lease_token: UUID
+    observation_id: UUID
+    disposition: str
     intended_text: str = Field(min_length=1, max_length=100_000)
 
-    @field_validator("original_text", "intended_text")
+    @field_validator("intended_text")
     @classmethod
     def not_blank(cls, value: str) -> str:
         if not value.strip():
@@ -245,6 +270,11 @@ def create_app(
         application_database_path=runtime.resolved_database_path,
     )
     evaluation_store = EvaluationStore(evaluation.database) if evaluation.available else None
+    evidence = EvidenceCollection(
+        runtime.evaluation_data_directory / "intended-meaning-evidence"
+        if runtime.evaluation_data_directory is not None
+        else None
+    )
     capture_proofs = CaptureProofs()
     export_tokens = ExportTokens()
     prompts = PromptStore(database)
@@ -335,20 +365,20 @@ def create_app(
     async def privacy_safe_validation_error(
         request: Request, exc: RequestValidationError
     ) -> Response:
-        if request.url.path.startswith(("/api/evaluation/", "/api/correction-benchmark/")):
-            benchmark_request = request.url.path.startswith("/api/correction-benchmark/")
+        if request.url.path.startswith(("/api/evaluation/", "/api/evidence-collection/")):
+            evidence_request = request.url.path.startswith("/api/evidence-collection/")
             return JSONResponse(
                 status_code=422,
                 content={
                     "detail": {
                         "code": (
-                            "invalid_private_corpus_request"
-                            if benchmark_request
+                            "invalid_evidence_collection_request"
+                            if evidence_request
                             else "invalid_evaluation_request"
                         ),
                         "message": (
-                            "The request did not match the private corpus contract."
-                            if benchmark_request
+                            "The request did not match the evidence collection contract."
+                            if evidence_request
                             else "The evaluation request did not match the private corpus contract."
                         ),
                         "retry_action": "Review the current form values and retry.",
@@ -374,10 +404,7 @@ def create_app(
             "configuration_error": configuration_error,
             "cleanup_configuration": cleanup_configuration.public(),
             "evaluation_configuration": evaluation.public(),
-            "correction_benchmark_configuration": {
-                "available": runtime.correction_benchmark_cases_path is not None,
-                "destination": "configured private benchmark corpus",
-            },
+            "evidence_collection": evidence.readiness(),
         }
 
     def require_configuration() -> None:
@@ -425,11 +452,88 @@ def create_app(
             else runtime.gemini_model,
             "cleanup_configuration": cleanup_configuration.public(),
             "evaluation_configuration": evaluation.public(),
-            "correction_benchmark_configuration": {
-                "available": runtime.correction_benchmark_cases_path is not None,
-                "destination": "configured private benchmark corpus",
-            },
+            "evidence_collection": evidence.readiness(),
         }
+
+    def evidence_failure(exc: EvidenceCollectionError) -> None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "evidence_collection_unavailable",
+                "message": str(exc),
+                "retry_action": "Stop collection, verify readiness, then attest and arm again.",
+            },
+        ) from None
+
+    @application.post("/api/evidence-collection/arm")
+    def arm_evidence_collection(request: EvidenceArmRequest) -> dict[str, object]:
+        require_configuration()
+        try:
+            lease = evidence.arm(attested=request.source_attestation_confirmed)
+        except EvidenceCollectionError as exc:
+            evidence_failure(exc)
+        return {
+            "lease_token": lease.token,
+            "expires_at": lease.expires_at.isoformat().replace("+00:00", "Z"),
+            "source_attestation_version": lease.source_attestation_version,
+            "package_version": lease.package_version,
+            "package_contract_version": lease.package_contract_version,
+        }
+
+    @application.delete("/api/evidence-collection/arm", status_code=status.HTTP_204_NO_CONTENT)
+    def disarm_evidence_collection() -> Response:
+        evidence.disarm()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @application.post("/api/evidence-collection/trigger")
+    def trigger_evidence_collection(request: EvidenceTriggerRequest) -> dict[str, object]:
+        require_configuration()
+        try:
+            prompt = (
+                prompts.get(request.prompt_version_id)
+                if request.prompt_version_id is not None
+                else prompts.active()
+            )
+            observation = evidence.trigger(
+                lease_token=request.lease_token,
+                original=request.original_text,
+                task_context=request.task_context,
+                profile_enabled=request.curated_knowledge_enabled,
+                relevant_profile_evidence=request.relevant_curated_knowledge,
+                prompt_version_id=prompt.id,
+                prompt_content_sha256=prompt.content_sha256,
+            )
+        except PromptNotFoundError as exc:
+            raise HTTPException(
+                status_code=409, detail="the selected prompt is unavailable"
+            ) from exc
+        except EvidenceCollectionError as exc:
+            evidence_failure(exc)
+        return {"observation_id": observation.observation_id}
+
+    @application.post("/api/evidence-collection/confirm", response_model=CleanupResult)
+    async def confirm_evidence_collection(request: EvidenceConfirmRequest) -> CleanupResult:
+        require_configuration()
+        try:
+            observation = evidence.confirm(
+                lease_token=request.lease_token,
+                observation_id=request.observation_id,
+                disposition=request.disposition,
+                intended=request.intended_text,
+            )
+        except EvidenceCollectionError as exc:
+            evidence_failure(exc)
+        prompt = prompts.get(observation.prompt_version_id)
+        cleanup_request = CleanupRequest(
+            original_text=observation.original,
+            enabled=True,
+            correction_mode=CorrectionMode.SMART,
+            prompt_version_id=observation.prompt_version_id,
+            task_context=observation.task_context,
+            curated_knowledge_enabled=observation.profile_enabled,
+            relevant_curated_knowledge=observation.relevant_profile_evidence,
+        )
+        return await application.state.cleanup_service.clean(cleanup_request, prompt.system_text)
 
     @application.put("/api/preferences/correction-mode")
     def update_correction_mode_preference(
@@ -537,41 +641,6 @@ def create_app(
     def clear_outgoing_state() -> dict[str, object]:
         require_configuration()
         return state.clear(correction_mode=prompts.default_correction_mode()).public()
-
-    @application.post("/api/correction-benchmark/examples", status_code=status.HTTP_201_CREATED)
-    def capture_correction_benchmark_example(
-        request: BenchmarkExampleRequest,
-    ) -> dict[str, str]:
-        require_configuration()
-        if runtime.correction_benchmark_cases_path is None:
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "code": "benchmark_storage_unavailable",
-                    "message": "Private benchmark storage is not configured.",
-                    "retry_action": "Configure the private benchmark corpus and retry.",
-                },
-            )
-        try:
-            capture_example(
-                cases_path=runtime.correction_benchmark_cases_path,
-                application_database_path=runtime.resolved_database_path,
-                source_text=request.original_text,
-                intended_text=request.intended_text,
-            )
-        except BenchmarkError:
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "code": "benchmark_write_failed",
-                    "message": "The example was not added to the private benchmark corpus.",
-                    "retry_action": "Check the configured private destination and retry.",
-                },
-            ) from None
-        return {
-            "status": "saved",
-            "destination": "configured private benchmark corpus",
-        }
 
     def require_evaluation() -> EvaluationStore:
         require_configuration()

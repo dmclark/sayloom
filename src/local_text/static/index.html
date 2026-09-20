@@ -26,28 +26,12 @@
           <span class="switch-track" aria-hidden="true"><span></span></span>
           <span>Clean automatically</span>
         </label>
-        <fieldset class="correction-mode-controls">
-          <legend>Correction mode</legend>
-          <label for="default-correction-mode">
-            Default
-            <select id="default-correction-mode">
-              <option value="conservative">Conservative</option>
-              <option value="smart">Smart</option>
-            </select>
-          </label>
-          <label for="current-correction-mode">
-            This Original
-            <select id="current-correction-mode">
-              <option value="default">Use default</option>
-              <option value="conservative">Conservative</option>
-              <option value="smart">Smart</option>
-            </select>
-          </label>
-          <span id="active-correction-mode" class="mode-state" role="status" aria-live="polite">
-            Conservative · default
-          </span>
-          <span id="mode-save-state" class="visually-hidden" role="status" aria-live="polite"></span>
-        </fieldset>
+        <div class="evidence-collection-control">
+          <button id="evidence-collection-toggle" class="button button-quiet" type="button" disabled>
+            Evidence Collection unavailable
+          </button>
+          <span id="evidence-collection-state" role="status" aria-live="polite">Package not ready</span>
+        </div>
         <div class="layout-controls" role="group" aria-label="Editor layout">
           <button id="layout-stacked" type="button" aria-pressed="true">Stacked</button>
           <button id="layout-side-by-side" type="button" aria-pressed="false">Side by side</button>
@@ -80,10 +64,10 @@
             <span class="utility-rail-icon" aria-hidden="true">▣</span>
             <span class="utility-rail-label">Workspace</span>
           </button>
-          <button id="nav-targets" class="utility-rail-item" type="button">
+          <button id="nav-settings" class="utility-rail-item" type="button">
             <span class="utility-rail-index" aria-hidden="true">02</span>
             <span class="utility-rail-icon" aria-hidden="true">◎</span>
-            <span class="utility-rail-label">Targets</span>
+            <span class="utility-rail-label">Settings</span>
           </button>
           <button id="nav-evaluation" class="utility-rail-item" type="button">
             <span class="utility-rail-index" aria-hidden="true">03</span>
@@ -158,20 +142,19 @@
                 <span class="panel-number">02</span>
                 <h2>Prepared</h2>
               </div>
-              <div class="panel-prompt-control">
-                <label for="active-prompt-selector">Prompt</label>
-                <select
-                  id="active-prompt-selector"
-                  aria-label="Cleanup prompt version for this page session"
-                ></select>
+              <div class="prepared-heading-actions">
+                <span id="smart-correction-state" class="smart-correction-state" role="status" aria-live="polite" hidden></span>
+                <button id="run-smart-correction" class="button button-quiet" type="button" hidden>
+                  Run Smart correction
+                </button>
+                <button
+                  id="maximize-prepared"
+                  class="panel-maximize"
+                  type="button"
+                  aria-label="Maximize Prepared pane"
+                  aria-pressed="false"
+                ><span aria-hidden="true">Maximize</span></button>
               </div>
-              <button
-                id="maximize-prepared"
-                class="panel-maximize"
-                type="button"
-                aria-label="Maximize Prepared pane"
-                aria-pressed="false"
-              ><span aria-hidden="true">Maximize</span></button>
             </header>
             <div class="prepared-body">
               <div class="editor-wrap">
@@ -212,12 +195,6 @@
               <div class="panel-footer-actions">
                 <span id="model-label">Gemini</span>
                 <button
-                  id="correct-and-add-example"
-                  class="button button-quiet"
-                  type="button"
-                  disabled
-                >Correct and add example</button>
-                <button
                   id="save-evaluation-case"
                   class="button button-quiet"
                   type="button"
@@ -228,24 +205,48 @@
           </article>
         </section>
 
-        <section id="targets-manager" class="targets-manager" aria-labelledby="targets-title" hidden>
-          <div class="target-grid-sheet">
+        <section id="settings-manager" class="settings-manager" aria-labelledby="settings-title" hidden>
+          <div class="settings-sheet">
             <header class="setup-heading">
               <div>
-                <span class="eyebrow">Local delivery</span>
-                <h2 id="targets-title">Targets</h2>
+                <h2 id="settings-title">Settings</h2>
               </div>
             </header>
-            <p class="setup-intro">Each target has one Raycast command. Raycast and you own its hotkey.</p>
-            <div id="target-list" class="target-grid" role="list" aria-label="Saved targets">
-              <div id="target-add-item" class="target-grid-item" role="listitem">
-                <button id="new-target" class="target-add-tile" type="button">
-                  <span aria-hidden="true">+</span>
-                  <strong>Add target</strong>
-                  <small>Choose a common preset or configure one manually.</small>
-                </button>
+            <section class="settings-section correction-settings" aria-labelledby="correction-settings-title">
+              <div class="settings-section-heading">
+                <div>
+                  <h3 id="correction-settings-title">Correction</h3>
+                  <p>The saved default applies when the next Original begins. It does not change the active draft.</p>
+                </div>
+                <label for="default-correction-mode">
+                  Default
+                  <select id="default-correction-mode">
+                    <option value="conservative">Conservative</option>
+                    <option value="smart">Smart</option>
+                  </select>
+                </label>
               </div>
-            </div>
+              <p id="mode-save-state" class="settings-save-state" role="status" aria-live="polite">
+                Loading saved default…
+              </p>
+            </section>
+            <section class="settings-section target-settings" aria-labelledby="targets-title">
+              <div class="settings-section-heading">
+                <div>
+                  <h3 id="targets-title">Targets</h3>
+                  <p>Each target has one Raycast command. Raycast and you own its hotkey.</p>
+                </div>
+              </div>
+              <div id="target-list" class="target-grid" role="list" aria-label="Saved targets">
+                <div id="target-add-item" class="target-grid-item" role="listitem">
+                  <button id="new-target" class="target-add-tile" type="button">
+                    <span aria-hidden="true">+</span>
+                    <strong>Add target</strong>
+                    <small>Choose a common preset or configure one manually.</small>
+                  </button>
+                </div>
+              </div>
+            </section>
           </div>
 
           <dialog id="target-dialog" class="target-dialog" aria-labelledby="target-detail-title">
@@ -411,22 +412,49 @@
       </div>
     </dialog>
 
-    <dialog id="benchmark-capture-dialog" class="evaluation-dialog" aria-labelledby="benchmark-capture-title">
-      <form id="benchmark-capture-form" class="evaluation-dialog-sheet">
+    <dialog id="evidence-attestation-dialog" class="evaluation-dialog" aria-labelledby="evidence-attestation-title">
+      <form id="evidence-attestation-form" class="evaluation-dialog-sheet">
         <header class="error-sheet-header">
           <div>
-            <span class="eyebrow">Explicit confirmation</span>
-            <h2 id="benchmark-capture-title">Correct and add example</h2>
+            <span class="eyebrow">Fresh session attestation</span>
+            <h2 id="evidence-attestation-title">Arm Evidence Collection</h2>
           </div>
-          <button id="cancel-benchmark-capture" class="dialog-close" type="button" aria-label="Cancel adding benchmark example">×</button>
+          <button id="cancel-evidence-attestation" class="dialog-close" type="button" aria-label="Cancel arming Evidence Collection">×</button>
         </header>
-        <p>The current Original and your intended wording will be added to the configured private benchmark corpus. Nothing is saved until you confirm.</p>
-        <label for="benchmark-intended-text">Intended wording</label>
-        <textarea id="benchmark-intended-text" required maxlength="100000"></textarea>
-        <p id="benchmark-capture-status" class="evaluation-status" role="status" aria-live="polite"></p>
+        <label class="evidence-attestation" for="evidence-source-attestation">
+          <input id="evidence-source-attestation" type="checkbox" required>
+          <span>I attest that cases collected in this browser session are actual primary-user Voiceitt-generated English.</span>
+        </label>
+        <p id="evidence-attestation-status" class="evaluation-status" role="status" aria-live="polite"></p>
         <div class="evaluation-dialog-actions">
-          <button class="button button-primary" type="submit">Add example and use correction</button>
-          <button id="cancel-benchmark-capture-secondary" class="button button-quiet" type="button">Cancel</button>
+          <button class="button button-primary" type="submit">Attest and arm</button>
+          <button id="cancel-evidence-attestation-secondary" class="button button-quiet" type="button">Cancel</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="evidence-judgment-dialog" class="evaluation-dialog" aria-labelledby="evidence-judgment-title">
+      <form id="evidence-judgment-form" class="evaluation-dialog-sheet">
+        <header class="error-sheet-header">
+          <div>
+            <span class="eyebrow">Before Smart preparation</span>
+            <h2 id="evidence-judgment-title">Confirm Intended wording</h2>
+          </div>
+          <button id="cancel-evidence-judgment" class="dialog-close" type="button" aria-label="Cancel Intended confirmation">×</button>
+        </header>
+        <p>Prepared wording remains concealed until this new observation is written and verified.</p>
+        <fieldset class="evidence-dispositions">
+          <legend>Producer judgment</legend>
+          <label><input type="radio" name="evidence-disposition" value="ready_as_is" required> Ready as-is</label>
+          <label><input type="radio" name="evidence-disposition" value="presentation_cleanup_needed"> Meaning right; presentation cleanup needed</label>
+          <label><input type="radio" name="evidence-disposition" value="edit_intended"> Edit Intended</label>
+        </fieldset>
+        <label for="evidence-intended-text">Intended wording</label>
+        <textarea id="evidence-intended-text" required maxlength="100000" readonly></textarea>
+        <p id="evidence-judgment-status" class="evaluation-status" role="status" aria-live="polite"></p>
+        <div class="evaluation-dialog-actions">
+          <button class="button button-primary" type="submit">Confirm observation and run Smart</button>
+          <button id="cancel-evidence-judgment-secondary" class="button button-quiet" type="button">Cancel</button>
         </div>
       </form>
     </dialog>

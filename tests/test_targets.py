@@ -212,7 +212,8 @@ def test_targets_surface_has_accessible_grid_and_modal_editor(
     script = client.get("/static/app.js").text
     stylesheet = client.get("/static/app.css").text
 
-    assert '<button id="nav-targets"' in page
+    assert '<button id="nav-settings"' in page
+    assert page.index('id="correction-settings-title"') < page.index('id="targets-title"')
     assert 'role="list" aria-label="Saved targets"' in page
     assert '<button id="new-target" class="target-add-tile"' in page
     assert '<dialog id="target-dialog"' in page
