@@ -20,13 +20,18 @@ selected, integrated, and verified an **Automatic correction strategy** that
 chooses among multiple **Correction methods** to produce reviewable Prepared
 text and passes the frozen acceptance contract on approved held-out evidence. A
 separately authorized limited pilot may then demonstrate the result to a small
-audience without making a broad efficacy claim.
+audience without making a broad efficacy claim. The prototype claim remains one
+primary user across representative unseen cases; multi-user efficacy, automatic
+learning, and durable personalization are deferred, separate research and
+product decisions.
 
 The prototype is a possible implementation of the product's existing **Smart
 correction** mode. It does not add a correction mode. The separately authorized
-**Evidence Collection** interaction is optional research instrumentation layered
-across Conservative and Smart; it does not change either mode's behavior or
-become a durable product default.
+**Evidence Collection** interaction is optional, temporary single-primary-user
+research instrumentation layered across Conservative and Smart; it does not
+change either mode's behavior or become a durable product default. It creates
+prospective private test cases only; it does not train Smart, create correction
+memory, or establish multi-user efficacy.
 
 The following are not prototype outcomes:
 
@@ -110,15 +115,21 @@ finalists are frozen.
 ## Private evidence requirements
 
 Acceptance evidence is actual Voiceitt-generated English text from one primary
-user. Intended text is wording confirmed or rewritten by that user before any
+user. Intended text is the message the producer meant Voiceitt to produce: it
+corrects meaning-bearing recognition or grammatical errors, does not
+stylistically polish the wording, and does not claim an exact transcription of
+the spoken words. It is wording confirmed or rewritten by that user before any
 candidate output is shown; one canonical wording may have additional
 user-confirmed acceptable variants.
 
 Prospective collection follows the
 [intended-meaning evidence collection contract](intended-meaning-evidence-collection-contract.md).
-An armed browser session freezes Original and only contemporaneously available
-context and explicitly enabled profile evidence before the producer judges
-Intended text. Correction may begin only after the resulting observation or
+While collection is deliberately armed, every qualifying Voiceitt interaction is
+captured or explicitly excluded. Collection triggers on the first Smart, Copy,
+or target send attempt for the current Original, before candidate output or
+outgoing use, and freezes Original and only contemporaneously available context
+and explicitly enabled profile evidence before the producer judges Intended
+text. Correction may begin only after the resulting observation or
 content-free exclusion is immutably written, reread, and hash-verified. Intended
 text never enters candidate input. Copy and local delivery remain blocked until
 the current revision has a verified observation or exclusion receipt.
@@ -127,6 +138,25 @@ Collection produces distinct observations and may suggest only exact-repeat
 relationships. Private review owns final eligibility and exclusions, additional
 Intended variants, classifications, exact-repeat confirmation,
 near-duplicate/related-version grouping, observed-use weights, and partitioning.
+Unreviewed observations remain stored but do not count as eligible, cannot be
+partitioned, and cannot be used in development or evaluation.
+
+Before acceptance-grade evidence, an explicitly exploratory milestone applies:
+at least 50 eligible cases across the package, with meaningful coverage of
+important Voiceitt outcomes, including correct text, cleanup-only text, meaning
+errors, context- or profile-dependent cases, and ambiguity or abstention where
+applicable. The milestone is directional exploration only; it cannot support
+efficacy claims and does not replace the acceptance protocol. After that corpus
+is privately reviewed, private review groups related cases and freezes the
+development, validation, and held-out partitions before any candidate work.
+Only development evidence opens for candidate exploration; validation and
+held-out evidence stay sealed so those cases remain eligible for later formal
+evaluation. Candidate exploration starts only after this milestone. Review,
+classification, coverage, grouping, and partition progress belong to a separate
+local private-review workflow, not the collector page. Real collection may
+start once the collector itself passes complete acceptance even while
+private-review tooling is still being built, but evidence cannot open for
+development until that review and partition tooling exists.
 
 The private package must freeze eligibility, exclusions, related-case groups,
 near-duplicates, 60/20/20 development-validation-held-out partitions,
@@ -144,7 +174,10 @@ records may be shared in issues.
 
 ## Evaluation protocol and acceptance gates
 
-Development evidence shapes methods and routing. Validation evidence selects
+Development evidence shapes methods and routing. The exploratory milestone is
+additive and does not weaken the acceptance protocol: decision-grade evidence
+still requires at least 200 eligible held-out cases, every required stratum,
+observed-use weights, and the frozen protocol gates. Validation evidence selects
 and freezes no more than three complete strategies and any preregistered
 ablations. Held-out evidence is opened once after preregistration; a strategy
 changed after opening requires fresh or formally versioned held-out evidence.
@@ -191,7 +224,9 @@ losing candidates into production.
 Integration must preserve Conservative behavior, fail-open Original, exact
 Outgoing selection, server-derived repair metadata, request-scoped context,
 explicit profile enablement, stale-result invalidation, content-free routine
-logging, and normal startup without migrations. It requires synthetic and
+logging, and normal startup without migrations. Development cases may inform
+methods, prompts, retrieval, and routing, but case text must not silently enter
+the shipped runtime or correction memory. It requires synthetic and
 automated checks before any separately authorized private or operational use.
 
 ## Limited shareable-pilot boundary
@@ -213,7 +248,7 @@ pilot starts.
 | Stage | Observable exit criteria |
 | --- | --- |
 | 1. Reconcile planning | This specification and the two coordinating plans agree; the issue graph and existing Project show one executable path. |
-| 2. Accumulate and audit evidence | The armed browser interaction prospectively collects verified observations into the approved external package. Separate private review then freezes eligibility, grouping, classifications, observed-use weights, and 60/20/20 partitions. A new content-free audit proves all required strata and at least 200 eligible held-out cases; until then the outcome remains insufficient evidence. |
+| 2. Accumulate and audit evidence | The armed browser interaction prospectively collects verified observations into the approved external package. Separate private review then freezes eligibility, related-case grouping, classifications, observed-use weights, and 60/20/20 partitions before candidate work. An explicitly exploratory milestone of at least 50 eligible cases with meaningful outcome coverage precedes candidate work and cannot by itself support efficacy claims. A new content-free audit proves all required strata and at least 200 eligible held-out cases; until then the outcome remains insufficient evidence. |
 | 3. Build experimental adapters | Required method families implement the common harness contract, remain outside runtime, and pass synthetic privacy, determinism, repair-trace, fail-open, timeout, and budget tests without provider traffic. |
 | 4. Compare on development evidence | The staged search and one allowed targeted expansion finish; surviving complete strategies, routers, manifests, budgets, and planned ablations are frozen before held-out results open. |
 | 5. Evaluate held out and select | An approved run produces the write-once private evidence package and content-free report; a winner passes every gate, or the recorded outcome is no qualifying strategy. |

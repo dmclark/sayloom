@@ -17,15 +17,21 @@ execution, deployment, or pilot operation.
 
 ## Scope
 
-Evidence Collection is optional research instrumentation for one person who is
-simultaneously the producer, operator, owner, and external-package owner. It is
-a visibly armed browser-session state independent of Conservative and Smart
-correction, not a third correction mode.
+Evidence Collection is optional, temporary research instrumentation for one
+person who is simultaneously the producer, operator, owner, and
+external-package owner. It is a visibly armed browser-session state independent
+of Conservative and Smart correction, not a third correction mode. It creates
+prospective private test cases only; it does not train Smart, create correction
+memory, or establish multi-user efficacy.
 
 The interaction collects actual Voiceitt-generated English text from the
 primary user and the producer's Intended-text judgment before any candidate
-Prepared text is exposed. Typed, pasted, synthetic, practice, provider-generated,
-or retrospectively reconstructed text cannot become acceptance evidence.
+Prepared text is exposed. Intended means the message the producer meant
+Voiceitt to produce: it corrects meaning-bearing recognition and grammatical
+errors, does not stylistically polish the text, and does not claim an exact
+transcription of the spoken words. Typed, pasted, synthetic, practice,
+provider-generated, or retrospectively reconstructed text cannot become
+acceptance evidence.
 
 Accounts, roles, producer selection, multi-user isolation, live persistent
 collection state, candidate testing during collection, external-data
@@ -52,12 +58,26 @@ or an orb.
 
 Arming requires a fresh session attestation that collected cases are actual
 primary-user Voiceitt-generated English. The armed state is visually persistent
-while active and never becomes a durable default.
+while active and never becomes a durable default. Observations accumulate in
+the same approved package across multiple armed sessions; every armed session
+requires fresh attestation and a fresh package readiness result.
 
-A process-local, single-browser-session collection lease binds the armed browser
-to the package readiness result. Evidence Collection disarms on explicit stop,
-page reload, browser loss or lease expiry, application restart, package
-unavailability, write failure, or hash-verification failure.
+A query parameter may request Evidence Collection mode, but it never authorizes
+or arms collection by itself. Arming requires a bounded same-browser-session
+collection lease bound to the package readiness result. A page refresh may
+reconnect to a still-valid lease; without a valid lease, the user must attest
+and arm again. Evidence Collection disarms on explicit stop, browser-session
+loss or lease expiry, application restart, package unavailability, write
+failure, or hash-verification failure. The exact query parameter name, lease
+token format, timeout, and reconnection mechanics are deferred implementation
+details.
+
+While armed, the page shows clearly labelled content-free counts: verified
+observations and exclusions for the current lease-session, and cumulative
+active verified observations in the approved package. Cumulative counts persist
+across multiple armed sessions and exclude withdrawn observations. Raw counts
+are distinct from reviewed eligible cases and must not imply progress toward
+eligibility.
 
 Cleanup evaluation capture remains available during ordinary use but is
 disabled while Evidence Collection is armed.
@@ -65,8 +85,10 @@ disabled while Evidence Collection is armed.
 ## Consequential actions and pre-exposure state
 
 Automatic Smart, explicit Smart, Copy, and target send are consequential while
-Evidence Collection is armed. Before one of those actions can expose or consume
-a candidate for the current Original revision, Sayloom must:
+Evidence Collection is armed. Collection triggers on the first Smart, Copy, or
+target send attempt for the current Original, before any candidate output or
+outgoing use. Before one of those actions can expose or consume a candidate for
+the current Original revision, Sayloom must:
 
 1. conceal current and stale Prepared text, repair details, candidate errors,
    and Prepared selection;
@@ -99,8 +121,12 @@ The first two dispositions deliberately retain identical Intended text as
 distinct producer judgments. Additional acceptable variants and evidence
 classifications belong to downstream private review.
 
-Cancel saves nothing and exposes no candidate. Failure recovery always offers
-an explicit choice among retry, ordinary uncollected use, and cancel.
+Cancel saves nothing and exposes no candidate. Capture failure always offers an
+explicit choice among Retry, Continue without collecting, and Cancel.
+Continuing without collecting disarms Evidence Collection; the fallback is
+never silent. Intended confirmation happens during capture, before any
+exposure. Separate private corpus review may happen asynchronously in later
+sessions.
 
 ## Frozen observation boundary
 
@@ -127,7 +153,11 @@ a new immutable record, even when it exactly repeats prior evidence.
 ## Candidate isolation and release
 
 Correction may run only after the new observation or exclusion record has been
-written append-only, reread, and hash-verified. Candidate input consists of the
+written append-only, reread, and hash-verified. After a verified capture or
+exclusion, current-product behavior resumes for the interaction; experimental
+correction candidates run later, offline, against the collected package. If the
+capture session ends before confirmation plus write, reread, and hash
+verification, no case was collected. Candidate input consists of the
 frozen Original plus only the context and profile evidence legitimately
 available at the trigger. Intended text, disposition details, and later evidence
 must never enter candidate input.
@@ -203,6 +233,18 @@ The downstream review task owns:
 - the content-free sufficiency audit, including every required stratum and the
   200-case held-out minimum.
 
+An explicitly exploratory milestone precedes acceptance-grade evidence: at
+least 50 eligible cases across the package with meaningful coverage of
+important Voiceitt outcomes. The milestone is directional exploration only and
+cannot support efficacy claims. After that corpus is privately reviewed,
+review groups related cases and freezes the development, validation, and
+held-out partitions before any candidate work; only development evidence opens,
+and validation and held-out evidence stay sealed. Unreviewed observations
+remain stored but do not count as eligible, cannot be partitioned, and cannot
+be used in development or evaluation. Review, classification, coverage,
+grouping, and partition progress belong to a separate local private-review
+workflow, not the collector page.
+
 The superseded Smart **Correct and add example** browser, API, configuration,
 documentation, and test path is removed during collection implementation. The
 separate Cleanup evaluation system remains; its **Save evaluation case** action
@@ -213,7 +255,8 @@ scaffolding is not part of this removal.
 
 Automated verification uses synthetic fixtures only and makes no provider calls.
 It must exercise package readiness, restrictive permissions, append-only writes,
-reread and hash verification, every producer disposition, cancellation and
+reread and hash verification, lease arming, reconnection, and expiry,
+content-free armed-page counts, every producer disposition, cancellation and
 staleness, failure disarming, withdrawal, exact-repeat normalization, Smart
 pre-exposure behavior, Copy and target-send receipts, explicit second
 invocation, and absence of Intended leakage or text-bearing routine logs.
