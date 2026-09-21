@@ -52,7 +52,7 @@ from local_text.evaluation import (
 from local_text.evaluation_database import evaluation_configuration
 from local_text.evidence_collection import EvidenceCollection, EvidenceCollectionError
 from local_text.prompt_store import PromptNotFoundError, PromptRecord, PromptStore, SeedStateError
-from local_text.state import OutgoingStateStore, OutgoingStateUpdate
+from local_text.state import DeliveryRequestStore, OutgoingStateStore, OutgoingStateUpdate
 from local_text.target_adapter import TargetAdapter, TargetArtifactError
 from local_text.target_store import TargetNotFoundError, TargetRecord, TargetStore
 from local_text.targets import TargetDefinition, generate_command
@@ -211,6 +211,7 @@ class CorrectionModePreferenceRequest(BaseModel):
 
 
 class EvidenceArmRequest(BaseModel):
+    browser_session_id: UUID
     source_attestation_confirmed: bool
 
 
@@ -223,6 +224,7 @@ class EvidenceTriggerRequest(BaseModel):
         Field(default=(), max_length=50)
     )
     prompt_version_id: int | None = Field(default=None, ge=1)
+    correction_mode: CorrectionMode = CorrectionMode.SMART
 
     @field_validator("relevant_curated_knowledge")
     @classmethod
@@ -236,11 +238,27 @@ class EvidenceConfirmRequest(BaseModel):
     lease_token: UUID
     observation_id: UUID
     disposition: str
-    intended_text: str = Field(min_length=1, max_length=100_000)
+    intended_text: str | None = Field(default=None, max_length=100_000)
 
     @field_validator("intended_text")
     @classmethod
-    def not_blank(cls, value: str) -> str:
+    def not_blank(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("must not be blank")
+        return value
+
+
+class EvidenceCancelRequest(BaseModel):
+    lease_token: UUID
+
+
+class DeliveryCompleteRequest(BaseModel):
+    lease_token: UUID
+    outgoing_text: str = Field(min_length=1, max_length=100_000)
+
+    @field_validator("outgoing_text")
+    @classmethod
+    def outgoing_not_blank(cls, value: str) -> str:
         if not value.strip():
             raise ValueError("must not be blank")
         return value
@@ -294,6 +312,7 @@ def create_app(
         cleanup_enabled=cleanup_enabled,
         correction_mode=default_correction_mode,
     )
+    delivery_requests = DeliveryRequestStore()
     cleanup_configuration = _cleanup_runtime_configuration(runtime)
     disabled_cleanup = CleanupService(
         provider=None,
@@ -438,8 +457,21 @@ def create_app(
         )
 
     @application.get("/api/config")
-    def browser_config() -> dict[str, object]:
+    def browser_config(request: Request) -> dict[str, object]:
         require_configuration()
+        browser_session_id = request.headers.get("X-Evidence-Browser-Session")
+        if browser_session_id is not None:
+            try:
+                previous_lease = request.headers.get("X-Evidence-Previous-Lease")
+                evidence.begin_browser_session(
+                    UUID(browser_session_id),
+                    previous_lease_token=UUID(previous_lease) if previous_lease else None,
+                )
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail="invalid browser session or prior lease",
+                ) from exc
         return {
             "display_name": runtime.display_name,
             "profile": runtime.profile,
@@ -469,7 +501,10 @@ def create_app(
     def arm_evidence_collection(request: EvidenceArmRequest) -> dict[str, object]:
         require_configuration()
         try:
-            lease = evidence.arm(attested=request.source_attestation_confirmed)
+            lease = evidence.arm(
+                browser_session_id=request.browser_session_id,
+                attested=request.source_attestation_confirmed,
+            )
         except EvidenceCollectionError as exc:
             evidence_failure(exc)
         return {
@@ -481,8 +516,19 @@ def create_app(
         }
 
     @application.delete("/api/evidence-collection/arm", status_code=status.HTTP_204_NO_CONTENT)
-    def disarm_evidence_collection() -> Response:
-        evidence.disarm()
+    def disarm_evidence_collection(lease_token: UUID) -> Response:
+        try:
+            evidence.stop(lease_token=lease_token)
+        except EvidenceCollectionError as exc:
+            evidence_failure(exc)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @application.post("/api/evidence-collection/cancel", status_code=status.HTTP_204_NO_CONTENT)
+    def cancel_evidence_collection(request: EvidenceCancelRequest) -> Response:
+        try:
+            evidence.cancel(lease_token=request.lease_token)
+        except EvidenceCollectionError as exc:
+            evidence_failure(exc)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @application.post("/api/evidence-collection/trigger")
@@ -502,8 +548,10 @@ def create_app(
                 relevant_profile_evidence=request.relevant_curated_knowledge,
                 prompt_version_id=prompt.id,
                 prompt_content_sha256=prompt.content_sha256,
+                correction_mode=request.correction_mode,
             )
         except PromptNotFoundError as exc:
+            evidence.disarm()
             raise HTTPException(
                 status_code=409, detail="the selected prompt is unavailable"
             ) from exc
@@ -511,11 +559,11 @@ def create_app(
             evidence_failure(exc)
         return {"observation_id": observation.observation_id}
 
-    @application.post("/api/evidence-collection/confirm", response_model=CleanupResult)
-    async def confirm_evidence_collection(request: EvidenceConfirmRequest) -> CleanupResult:
+    @application.post("/api/evidence-collection/confirm")
+    async def confirm_evidence_collection(request: EvidenceConfirmRequest) -> dict[str, object]:
         require_configuration()
         try:
-            observation = evidence.confirm(
+            confirmation = evidence.confirm(
                 lease_token=request.lease_token,
                 observation_id=request.observation_id,
                 disposition=request.disposition,
@@ -523,17 +571,38 @@ def create_app(
             )
         except EvidenceCollectionError as exc:
             evidence_failure(exc)
+        observation = confirmation.observation
         prompt = prompts.get(observation.prompt_version_id)
         cleanup_request = CleanupRequest(
             original_text=observation.original,
             enabled=True,
-            correction_mode=CorrectionMode.SMART,
+            correction_mode=CorrectionMode(observation.correction_mode),
             prompt_version_id=observation.prompt_version_id,
             task_context=observation.task_context,
             curated_knowledge_enabled=observation.profile_enabled,
             relevant_curated_knowledge=observation.relevant_profile_evidence,
         )
-        return await application.state.cleanup_service.clean(cleanup_request, prompt.system_text)
+        result = await application.state.cleanup_service.clean(cleanup_request, prompt.system_text)
+        return {
+            **result.model_dump(mode="json"),
+            "evidence_receipt": str(confirmation.receipt.token),
+            "observation_id": str(observation.observation_id),
+            "artifact_type": confirmation.receipt.artifact_type,
+            "exact_repeat_suggestions": [
+                str(item) for item in confirmation.exact_repeat_suggestions
+            ],
+        }
+
+    @application.delete(
+        "/api/evidence-collection/observations/{observation_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    def withdraw_evidence_observation(observation_id: UUID) -> Response:
+        try:
+            evidence.withdraw(observation_id=observation_id)
+        except EvidenceCollectionError as exc:
+            evidence_failure(exc)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @application.put("/api/preferences/correction-mode")
     def update_correction_mode_preference(
@@ -628,7 +697,83 @@ def create_app(
     @application.get("/api/outgoing-state")
     def outgoing_state() -> dict[str, object]:
         require_configuration()
-        return state.read().public()
+        published = state.read()
+        delivery_allowed = evidence.outgoing_allowed(
+            original=published.original_text,
+            lease_token=published.evidence_lease_token,
+            receipt_token=published.evidence_receipt,
+        )
+        return {
+            **published.public(),
+            "delivery_allowed": delivery_allowed,
+            "delivery_error": (
+                None
+                if delivery_allowed
+                else "Complete intended-meaning confirmation in Sayloom, then retry."
+            ),
+        }
+
+    @application.post("/api/outgoing-delivery", response_model=None)
+    def request_outgoing_delivery() -> Response | dict[str, object]:
+        require_configuration()
+        published = state.read()
+        if evidence.outgoing_allowed(
+            original=published.original_text,
+            lease_token=published.evidence_lease_token,
+            receipt_token=published.evidence_receipt,
+        ):
+            if not published.outgoing_text.strip():
+                raise HTTPException(status_code=409, detail="there is no outgoing text")
+            return {"status": "ready", "outgoing_text": published.outgoing_text}
+        if published.evidence_lease_token is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Evidence Collection must be completed in Sayloom.",
+            )
+        delivery = delivery_requests.create(lease_token=published.evidence_lease_token)
+        return JSONResponse(
+            status_code=status.HTTP_202_ACCEPTED,
+            content={"status": delivery.status, "request_id": str(delivery.id)},
+        )
+
+    @application.get("/api/outgoing-delivery/pending", response_model=None)
+    def pending_outgoing_delivery(lease_token: UUID) -> Response | dict[str, object]:
+        delivery = delivery_requests.pending(lease_token=lease_token)
+        if delivery is None:
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        return {"status": delivery.status, "request_id": str(delivery.id)}
+
+    @application.get("/api/outgoing-delivery/{request_id}")
+    def outgoing_delivery_result(request_id: UUID) -> dict[str, object]:
+        try:
+            delivery = delivery_requests.read(request_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="delivery request expired") from exc
+        result: dict[str, object] = {
+            "status": delivery.status,
+            "request_id": str(delivery.id),
+        }
+        if delivery.outgoing_text is not None:
+            result["outgoing_text"] = delivery.outgoing_text
+        return result
+
+    @application.post("/api/outgoing-delivery/{request_id}/complete")
+    def complete_outgoing_delivery(
+        request_id: UUID, request: DeliveryCompleteRequest
+    ) -> dict[str, object]:
+        try:
+            delivery = delivery_requests.complete(
+                request_id=request_id,
+                lease_token=request.lease_token,
+                outgoing_text=request.outgoing_text,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="delivery request expired") from exc
+        return {
+            "status": delivery.status,
+            "request_id": str(delivery.id),
+            "outgoing_text": delivery.outgoing_text,
+        }
 
     @application.put("/api/outgoing-state")
     def publish_outgoing_state(update: OutgoingStateUpdate) -> dict[str, object]:

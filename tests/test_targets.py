@@ -1,7 +1,10 @@
+import json
 import re
 import sqlite3
 import subprocess
+import threading
 from dataclasses import replace
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -46,10 +49,13 @@ def test_generation_is_deterministic_outgoing_only_and_never_submits() -> None:
 
     assert first == second
     assert first.sha256
-    assert first.content.count("/api/outgoing-state") == 1
+    assert "/api/outgoing-state" not in first.content
+    assert first.content.count("/api/outgoing-delivery") == 2
     assert "raw_text" not in first.content
     assert "cleaned_text" not in first.content
     assert "outgoing_text" in first.content
+    assert "waiting_for_evidence" in first.content
+    assert "timed out waiting for Evidence Collection" in first.content
     assert "kp:return" not in first.content
     assert "key code 36" not in first.content
     assert "LC_ALL=en_US.UTF-8 /usr/bin/pbcopy" in first.content
@@ -61,6 +67,71 @@ def test_generation_is_deterministic_outgoing_only_and_never_submits() -> None:
     assert "write text outgoingText newline NO" in iterm.content
     assert 'pbcopy < "$outgoing_file"' not in iterm.content
     subprocess.run(["/bin/sh", "-n"], input=iterm.content, text=True, check=True)
+
+
+def test_generated_target_waits_for_evidence_then_continues_same_invocation(
+    tmp_path: Path,
+) -> None:
+    requests: list[tuple[str, str]] = []
+
+    class StateHandler(BaseHTTPRequestHandler):
+        def write_json(self, body: dict[str, object]) -> None:
+            encoded = json.dumps(body).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def do_POST(self) -> None:
+            requests.append(("POST", self.path))
+            if self.path != "/api/outgoing-delivery":
+                self.send_error(404)
+                return
+            self.write_json({"status": "waiting_for_evidence", "request_id": "request-1"})
+
+        def do_GET(self) -> None:
+            requests.append(("GET", self.path))
+            if self.path != "/api/outgoing-delivery/request-1":
+                self.send_error(404)
+                return
+            self.write_json(
+                {"status": "ready", "outgoing_text": "Synthetic outgoing text"}
+            )
+
+        def log_message(self, _format: str, *_args: object) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), StateHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    command_path = tmp_path / "target.sh"
+    command_path.write_text(generate_command("synthetic", definition()).content)
+    environment = {
+        "HOME": str(tmp_path),
+        "LOCAL_TEXT_BASE_URL": f"http://127.0.0.1:{server.server_port}",
+        "CLICLICK_PATH": str(tmp_path / "missing-cliclick"),
+        "PATH": "/usr/bin:/bin",
+        "TMPDIR": str(tmp_path),
+    }
+    try:
+        result = subprocess.run(
+            ["/bin/sh", str(command_path)],
+            text=True,
+            capture_output=True,
+            env=environment,
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+    assert result.returncode == 1
+    assert "cliclick is not installed" in result.stderr
+    assert requests == [
+        ("POST", "/api/outgoing-delivery"),
+        ("GET", "/api/outgoing-delivery/request-1"),
+    ]
 
 
 def test_adapter_installs_exact_preview_idempotently_and_refuses_collisions(
@@ -138,6 +209,10 @@ def test_api_save_install_regenerate_disable_remove_and_outgoing_separation(
         "status": "prepared",
     }
     assert client.put("/api/outgoing-state", json=outgoing).status_code == 200
+    assert client.post("/api/outgoing-delivery").json() == {
+        "status": "ready",
+        "outgoing_text": "synthetic prepared",
+    }
 
     created = client.post("/api/targets", json=definition().model_dump(mode="json"))
     assert created.status_code == 201

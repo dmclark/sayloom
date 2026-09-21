@@ -141,6 +141,23 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="smart-repair-list"' in response.text
     assert 'id="copy-outgoing"' in response.text
     assert (
+        "Editing Intended records the correct meaning; it does not replace Original or directly "
+        "determine Prepared."
+        in response.text
+    )
+    for disposition in (
+        "ready_as_is",
+        "presentation_cleanup_needed",
+        "edit_intended",
+        "not_voiceitt",
+        "cannot_reliably_reconstruct",
+        "exclude",
+    ):
+        option = response.text.split(f'<option value="{disposition}">', maxsplit=1)[1].split(
+            "</option>", maxsplit=1
+        )[0]
+        assert " — " in option
+    assert (
         "Select a repair to inspect its corresponding wording and sentence context."
         in response.text
     )
@@ -1100,7 +1117,11 @@ def test_outgoing_state_is_published_and_cleared_in_memory(
         "revision": 1,
     }
     assert published.json() == expanded
-    assert client.get("/api/outgoing-state").json() == expanded
+    assert client.get("/api/outgoing-state").json() == {
+        **expanded,
+        "delivery_allowed": True,
+        "delivery_error": None,
+    }
 
     cleared = client.delete("/api/outgoing-state")
     assert cleared.status_code == 200
@@ -1627,7 +1648,7 @@ def test_browser_smart_repair_queue_selects_span_and_does_not_gate_outgoing(
     assert 'elements.smartTaskContext.addEventListener("input"' in script
     assert 'elements.activePromptSelector.addEventListener("change"' not in script
     assert 'elements.copyOutgoing.addEventListener("click"' in script
-    assert "navigator.clipboard.writeText(selectedOutgoingState().outgoing_text)" in script
+    assert "navigator.clipboard.writeText(outgoing.outgoing_text)" in script
 
     selected_state = script.split("function selectedOutgoingState()", maxsplit=1)[1].split(
         "function renderCountsAndSelection()", maxsplit=1

@@ -3,6 +3,7 @@
 import json
 import os
 import stat
+import unicodedata
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -339,6 +340,64 @@ def write_observation(
     return ObservationReceipt(observation_id=observation_id, sha256=digest)
 
 
+def write_exclusion(
+    root: Path,
+    observation_id: UUID,
+    disposition: str,
+    *,
+    excluded_at: datetime | None = None,
+) -> ObservationReceipt:
+    """Write and verify an immutable exclusion containing no private content."""
+    _require_ready(root)
+    content = _canonical_json(
+        {
+            "artifact_type": "exclusion",
+            "disposition": disposition,
+            "excluded_at": _timestamp(excluded_at or datetime.now(UTC)),
+            "observation_id": str(observation_id),
+            "package_version": PACKAGE_VERSION,
+        }
+    )
+    digest = sha256(content).hexdigest()
+    path = root / "observations" / f"{observation_id}.json"
+    _write_exclusive(path, content)
+    _verify_bytes(path, content, digest)
+    return ObservationReceipt(observation_id=observation_id, sha256=digest)
+
+
+def find_exact_repeats(root: Path, original: str, intended: str) -> tuple[UUID, ...]:
+    """Return provisional matches without persisting grouping information."""
+    _require_ready(root)
+    expected = (_repeat_normalize(original), _repeat_normalize(intended))
+    matches: list[UUID] = []
+    try:
+        paths = sorted((root / "observations").glob("*.json"))
+    except OSError as exc:
+        raise EvidencePackageError("artifact reread failed") from exc
+    for path in paths:
+        artifact = _read_json(path)
+        if artifact.get("artifact_type") != "eligible_observation":
+            continue
+        record = artifact.get("record")
+        if not isinstance(record, dict):
+            raise EvidencePackageError("package metadata is invalid")
+        stored_original = record.get("original")
+        stored_intended = record.get("intended")
+        if not isinstance(stored_original, str) or not isinstance(stored_intended, str):
+            raise EvidencePackageError("package metadata is invalid")
+        if (_repeat_normalize(stored_original), _repeat_normalize(stored_intended)) != expected:
+            continue
+        try:
+            matches.append(UUID(str(artifact["observation_id"])))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise EvidencePackageError("package metadata is invalid") from exc
+    return tuple(matches)
+
+
+def _repeat_normalize(value: str) -> str:
+    return unicodedata.normalize("NFC", value.replace("\r\n", "\n").replace("\r", "\n"))
+
+
 def verify_observation(root: Path, receipt: ObservationReceipt) -> bool:
     """Reread an observation and verify the hash in its receipt."""
     _require_ready(root)
@@ -358,15 +417,13 @@ def withdraw_observation(
     _require_ready(root)
     observation = root / "observations" / f"{observation_id}.json"
     tombstone = root / "tombstones" / f"{observation_id}.json"
-    if tombstone.exists():
-        raise EvidencePackageError("withdrawal tombstone already exists")
-    try:
-        observation.unlink()
-        _fsync_directory(observation.parent)
-    except FileNotFoundError as exc:
-        raise EvidencePackageError("observation does not exist") from exc
-    except OSError as exc:
-        raise EvidencePackageError("private content removal failed") from exc
+    if not observation.is_file() and not tombstone.is_file():
+        raise EvidencePackageError("observation does not exist")
+    if (
+        observation.is_file()
+        and _read_json(observation).get("artifact_type") != "eligible_observation"
+    ):
+        raise EvidencePackageError("observation is not withdrawable")
     content = _canonical_json(
         {
             "artifact_type": "withdrawal_tombstone",
@@ -375,6 +432,31 @@ def withdraw_observation(
             "withdrawn_at": _timestamp(withdrawn_at or datetime.now(UTC)),
         }
     )
-    _write_exclusive(tombstone, content)
-    _verify_bytes(tombstone, content, sha256(content).hexdigest())
+    if tombstone.exists():
+        existing = _read(tombstone)
+        try:
+            retained = json.loads(existing)
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise EvidencePackageError("package metadata is invalid") from exc
+        if (
+            not isinstance(retained, dict)
+            or set(retained)
+            != {"artifact_type", "observation_id", "package_version", "withdrawn_at"}
+            or retained.get("artifact_type") != "withdrawal_tombstone"
+            or retained.get("observation_id") != str(observation_id)
+            or retained.get("package_version") != PACKAGE_VERSION
+            or not isinstance(retained.get("withdrawn_at"), str)
+        ):
+            raise EvidencePackageError("package metadata is invalid")
+    else:
+        _write_exclusive(tombstone, content)
+        _verify_bytes(tombstone, content, sha256(content).hexdigest())
+    try:
+        observation.unlink()
+        _fsync_directory(observation.parent)
+    except FileNotFoundError:
+        if not tombstone.exists():
+            raise EvidencePackageError("observation does not exist") from None
+    except OSError as exc:
+        raise EvidencePackageError("private content removal failed") from exc
     return WithdrawalReceipt(observation_id=observation_id)

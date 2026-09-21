@@ -94,7 +94,7 @@ the current Original revision, Sayloom must:
    and Prepared selection;
 2. make no candidate request;
 3. keep Original editable;
-4. block Copy and target send; and
+4. block Copy and hold an invoked target send in the same request; and
 5. request the producer's Intended-text judgment.
 
 Changing Original by any character makes an earlier judgment or receipt stale.
@@ -164,8 +164,9 @@ must never enter candidate input.
 
 Prepared text, repair details, and provider execution metadata are runtime
 results, not collection artifacts. After verified capture and correction, the
-user may inspect Prepared. Copy and target send require a second explicit
-invocation; no blocked action is queued or replayed.
+user may inspect Prepared. Copy requires a second explicit invocation. An
+already-invoked target send resumes within that same invocation after verified
+capture and correction; no other blocked action is queued or replayed.
 
 ## Exclusion, withdrawal, and exact repeats
 
@@ -186,12 +187,13 @@ near-duplicate and related-version grouping.
 
 ## Copy and target-send gate
 
-The collection lease gates server-side Outgoing consumption. Copy and target
-send are permitted only when the current Original revision has a verified
-eligible-observation or exclusion receipt. A target request without that receipt
-fails with:
-
-> Complete intended-meaning confirmation in Sayloom, then retry.
+The collection lease gates server-side Outgoing consumption. Copy is permitted
+only when the current Original revision has a verified eligible-observation or
+exclusion receipt. A target request without that receipt freezes the current
+Original, opens the producer judgment, and waits in the same invocation. After
+verified capture and correction it delivers Prepared; correction failure
+delivers Original. Cancel or close writes no evidence, delivers Original, and
+leaves Evidence Collection armed for the next item.
 
 The browser must surface the conflict without including private text. Routine
 logs remain content-free.
@@ -258,5 +260,6 @@ It must exercise package readiness, restrictive permissions, append-only writes,
 reread and hash verification, lease arming, reconnection, and expiry,
 content-free armed-page counts, every producer disposition, cancellation and
 staleness, failure disarming, withdrawal, exact-repeat normalization, Smart
-pre-exposure behavior, Copy and target-send receipts, explicit second
-invocation, and absence of Intended leakage or text-bearing routine logs.
+pre-exposure behavior, Copy's explicit second invocation, single-invocation
+target success, correction failure, and cancellation, and absence of Intended
+leakage or text-bearing routine logs.

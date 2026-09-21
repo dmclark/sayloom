@@ -3,11 +3,17 @@
 
   const CLEANUP_DEBOUNCE_MS = 700;
   const PUBLICATION_DEBOUNCE_MS = 150;
+  const DELIVERY_POLL_MS = 250;
   const WORKSPACE_PREFERENCES_KEY = "local-text.workspace-preferences.v1";
   const DEFAULT_STACKED_SHARE = 55;
   const DEFAULT_SIDE_BY_SIDE_SHARE = 50;
   const MINIMUM_ORIGINAL_SHARE = 25;
   const MAXIMUM_ORIGINAL_SHARE = 75;
+  const EVIDENCE_EXCLUSION_DISPOSITIONS = new Set([
+    "not_voiceitt",
+    "cannot_reliably_reconstruct",
+    "exclude",
+  ]);
   const narrowWorkspace = window.matchMedia
     ? window.matchMedia("(max-width: 980px)")
     : { matches: false, addEventListener() {} };
@@ -98,6 +104,7 @@
     evidenceCollectionControl: document.querySelector(".evidence-collection-control"),
     evidenceCollectionToggle: document.querySelector("#evidence-collection-toggle"),
     evidenceCollectionState: document.querySelector("#evidence-collection-state"),
+    withdrawEvidence: document.querySelector("#withdraw-evidence"),
     evidenceAttestationDialog: document.querySelector("#evidence-attestation-dialog"),
     evidenceAttestationForm: document.querySelector("#evidence-attestation-form"),
     evidenceSourceAttestation: document.querySelector("#evidence-source-attestation"),
@@ -105,11 +112,19 @@
     cancelEvidenceAttestation: document.querySelector("#cancel-evidence-attestation"),
     cancelEvidenceAttestationSecondary: document.querySelector("#cancel-evidence-attestation-secondary"),
     evidenceJudgmentDialog: document.querySelector("#evidence-judgment-dialog"),
+    evidenceJudgmentTitle: document.querySelector("#evidence-judgment-title"),
     evidenceJudgmentForm: document.querySelector("#evidence-judgment-form"),
+    evidenceDisposition: document.querySelector("#evidence-disposition"),
+    evidenceIntendedField: document.querySelector("#evidence-intended-field"),
     evidenceIntendedText: document.querySelector("#evidence-intended-text"),
     evidenceJudgmentStatus: document.querySelector("#evidence-judgment-status"),
     cancelEvidenceJudgment: document.querySelector("#cancel-evidence-judgment"),
     cancelEvidenceJudgmentSecondary: document.querySelector("#cancel-evidence-judgment-secondary"),
+    evidenceFailureDialog: document.querySelector("#evidence-failure-dialog"),
+    evidenceFailureMessage: document.querySelector("#evidence-failure-message"),
+    retryEvidenceCollection: document.querySelector("#retry-evidence-collection"),
+    continueWithoutEvidence: document.querySelector("#continue-without-evidence"),
+    cancelEvidenceRecovery: document.querySelector("#cancel-evidence-recovery"),
     saveEvaluationCase: document.querySelector("#save-evaluation-case"),
     evaluationManager: document.querySelector("#evaluation-manager"),
     evaluationStatus: document.querySelector("#evaluation-status"),
@@ -192,13 +207,37 @@
   let targetLocalError = null;
   let evidenceReady = false;
   let evidenceLease = null;
+  let evidenceLeaseTimer = null;
+  let blockedEvidenceLease = null;
+  let evidenceReceipt = null;
   let frozenEvidence = null;
+  let evidenceRecovery = null;
+  let evidenceCancellation = Promise.resolve();
+  let deliveryPollTimer = null;
   let evaluationAvailable = false;
   let currentEvaluation = null;
   let evaluationCases = [];
   let reviewedEvaluationCase = null;
   let evaluationExportPreview = null;
   const errors = { cleanup: null, publication: null };
+  const browserSessionId = globalThis.crypto?.randomUUID?.()
+    || `00000000-0000-4000-8000-${String(Math.random()).slice(2).padEnd(12, "0").slice(0, 12)}`;
+  const evidenceLeaseStorageKey = "local-text.evidence-lease.v1";
+
+  function storedEvidenceLease() {
+    try {
+      return globalThis.sessionStorage?.getItem(evidenceLeaseStorageKey) || null;
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function storeEvidenceLease(leaseToken) {
+    try {
+      if (leaseToken) globalThis.sessionStorage?.setItem(evidenceLeaseStorageKey, leaseToken);
+      else globalThis.sessionStorage?.removeItem(evidenceLeaseStorageKey);
+    } catch (_error) { /* Reload disarming still has the pagehide fallback. */ }
+  }
 
   const targetPresets = {
     amp: ["Amp", "Amp", "com.google.Chrome.app.bpgpkfmeagdpdcenbogglipmfkalmple", "synthetic_paste"],
@@ -215,6 +254,10 @@
 
   function effectiveCorrectionMode() {
     return draftCorrectionMode || defaultCorrectionMode;
+  }
+
+  function isEvidenceExclusion(disposition) {
+    return EVIDENCE_EXCLUSION_DISPOSITIONS.has(disposition);
   }
 
   function renderExplicitSmartAction() {
@@ -543,6 +586,10 @@
       outgoing_kind: outgoingKind,
       status,
       correction_mode: effectiveCorrectionMode(),
+      evidence_lease_token: evidenceLease || blockedEvidenceLease,
+      evidence_receipt: evidenceReceipt?.originalText === originalText
+        ? evidenceReceipt.token
+        : null,
     };
   }
 
@@ -685,13 +732,43 @@
 
   async function copyOutgoing() {
     if (!selectedOutgoingState().outgoing_text) return;
+    if (evidenceLease && evidenceReceipt?.originalText !== elements.original.value) {
+      await requestEvidenceJudgment(
+        elements.original.value,
+        effectiveCorrectionMode() === "smart" ? elements.smartTaskContext.value : "",
+        false,
+        effectiveCorrectionMode(),
+        "copy",
+      );
+      return;
+    }
     try {
-      await navigator.clipboard.writeText(selectedOutgoingState().outgoing_text);
+      if (!evidenceLease && !blockedEvidenceLease) {
+        await navigator.clipboard.writeText(selectedOutgoingState().outgoing_text);
+        elements.copyOutgoing.textContent = "Copied";
+        elements.copyOutgoingState.textContent = "Outgoing copied.";
+        window.setTimeout(() => { elements.copyOutgoing.textContent = "Copy outgoing"; }, 1_500);
+        return;
+      }
+      await publishNow();
+      const response = await fetch("/api/outgoing-state");
+      if (!response.ok) throw await safeHttpError(response, "Outgoing copy");
+      const outgoing = await readJson(response, "Outgoing copy");
+      if (outgoing?.delivery_allowed !== true || typeof outgoing.outgoing_text !== "string") {
+        throw makeError({
+          operation: "Outgoing copy",
+          summary: "Outgoing copy is waiting for intended-meaning confirmation.",
+          code: "evidence_confirmation_required",
+          message: outgoing?.delivery_error || "Complete intended-meaning confirmation.",
+          retryAction: "Complete confirmation in Sayloom, then retry Copy outgoing.",
+        });
+      }
+      await navigator.clipboard.writeText(outgoing.outgoing_text);
       elements.copyOutgoing.textContent = "Copied";
       elements.copyOutgoingState.textContent = "Outgoing copied.";
-    } catch (_error) {
+    } catch (error) {
       elements.copyOutgoing.textContent = "Copy unavailable";
-      elements.copyOutgoingState.textContent = "Outgoing could not be copied.";
+      elements.copyOutgoingState.textContent = error?.message || "Outgoing could not be copied.";
     }
     window.setTimeout(() => { elements.copyOutgoing.textContent = "Copy outgoing"; }, 1_500);
   }
@@ -852,7 +929,7 @@
     elements.original.setSelectionRange(Math.min(selection.start, end), end);
   }
 
-  async function runCleanup(requestedCorrectionMode = null) {
+  async function runCleanup(requestedCorrectionMode = null, bypassEvidence = false) {
     window.clearTimeout(cleanupTimer);
     cleanupTimer = null;
     abortActiveRequest();
@@ -880,9 +957,18 @@
       schedulePublication();
       return;
     }
-    if (evidenceLease && correctionMode === "smart") {
+    if (
+      evidenceLease
+      && !bypassEvidence
+      && evidenceReceipt?.originalText !== originalText
+    ) {
       if (explicitSmart) setExplicitSmartState("waiting", "Waiting for Intended wording.");
-      await requestEvidenceJudgment(originalText, taskContext, explicitSmart);
+      await requestEvidenceJudgment(
+        originalText,
+        taskContext,
+        explicitSmart,
+        correctionMode,
+      );
       return;
     }
 
@@ -1028,13 +1114,78 @@
     }
   }
 
+  function deliveryRequestId(action) {
+    return typeof action === "string" && action.startsWith("delivery:")
+      ? action.slice("delivery:".length)
+      : null;
+  }
+
+  async function completeDelivery(action, outgoingText) {
+    const requestId = deliveryRequestId(action);
+    if (!requestId) return;
+    const response = await fetch(`/api/outgoing-delivery/${requestId}/complete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lease_token: evidenceLease, outgoing_text: outgoingText }),
+    });
+    if (!response.ok) throw await safeHttpError(response, "Target delivery");
+  }
+
+  function scheduleDeliveryPoll() {
+    window.clearTimeout(deliveryPollTimer);
+    deliveryPollTimer = null;
+    if (!evidenceLease || !elements.original.value.trim() || frozenEvidence) return;
+    deliveryPollTimer = window.setTimeout(pollForDeliveryRequest, DELIVERY_POLL_MS);
+  }
+
+  async function pollForDeliveryRequest() {
+    deliveryPollTimer = null;
+    const leaseToken = evidenceLease;
+    const originalText = elements.original.value;
+    if (!leaseToken || !originalText.trim() || frozenEvidence) return;
+    try {
+      const response = await fetch(
+        `/api/outgoing-delivery/pending?lease_token=${encodeURIComponent(leaseToken)}`,
+      );
+      if (
+        leaseToken !== evidenceLease
+        || originalText !== elements.original.value
+        || frozenEvidence
+      ) return;
+      if (response.status === 204) {
+        scheduleDeliveryPoll();
+        return;
+      }
+      if (!response.ok) throw await safeHttpError(response, "Target delivery");
+      const result = await readJson(response, "Target delivery");
+      if (typeof result?.request_id !== "string") {
+        throw malformedResponseError("Target delivery", response.status);
+      }
+      await requestEvidenceJudgment(
+        originalText,
+        effectiveCorrectionMode() === "smart" ? elements.smartTaskContext.value : "",
+        false,
+        effectiveCorrectionMode(),
+        `delivery:${result.request_id}`,
+      );
+    } catch (_error) {
+      scheduleDeliveryPoll();
+    }
+  }
+
   function scheduleCleanup() {
     window.clearTimeout(cleanupTimer);
-    cancelEvidenceJudgment();
     setExplicitSmartState("hidden");
     setCleanupError(null);
     invalidateSmartRepairReview();
     invalidateEvaluationCapture();
+    if (evidenceLease && evidenceReceipt?.originalText !== elements.original.value) {
+      abortActiveRequest();
+      setStatus("waiting");
+      schedulePublication();
+      scheduleDeliveryPoll();
+      return;
+    }
     if (!elements.cleanupEnabled.checked) {
       elements.prepared.value = elements.original.value;
       setStatus("disabled");
@@ -1172,6 +1323,7 @@
     window.clearTimeout(publicationTimer);
     abortActiveRequest();
     replaceAllPending = false;
+    cancelEvidenceJudgment();
     originalOutgoingOverride = false;
     draftCorrectionMode = null;
     currentOriginalText = "";
@@ -1211,6 +1363,9 @@
     elements.evidenceCollectionState.textContent = armed
       ? "Armed · Voiceitt source attested for this session"
       : evidenceReady ? "Approved package ready · attestation required" : "Package not ready";
+    elements.withdrawEvidence.hidden = !(
+      armed && evidenceReceipt?.artifactType === "eligible_observation"
+    );
   }
 
   function closeEvidenceAttestation() {
@@ -1219,16 +1374,87 @@
     elements.evidenceAttestationStatus.textContent = "";
   }
 
-  function cancelEvidenceJudgment() {
+  function closeEvidenceJudgment() {
     const explicitSmart = frozenEvidence?.explicitSmart === true;
     frozenEvidence = null;
     elements.evidenceJudgmentStatus.textContent = "";
+    elements.evidenceJudgmentTitle.textContent = "Confirm Intended wording";
     elements.evidenceIntendedText.value = "";
+    elements.evidenceIntendedField.hidden = false;
     if (elements.evidenceJudgmentDialog.open) elements.evidenceJudgmentDialog.close();
     if (explicitSmart) setExplicitSmartState("available");
   }
 
-  async function requestEvidenceJudgment(originalText, taskContext, explicitSmart = false) {
+  async function cancelEvidenceJudgment(deliverOriginal = false) {
+    const snapshot = frozenEvidence;
+    const leaseToken = evidenceLease;
+    closeEvidenceJudgment();
+    evidenceReceipt = null;
+    renderEvidenceCollection();
+    schedulePublication();
+    if (!leaseToken) return;
+    evidenceCancellation = evidenceCancellation.then(async () => {
+      try {
+        await fetch("/api/evidence-collection/cancel", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lease_token: leaseToken }),
+        });
+      } catch (_error) { /* The stale receipt remains blocked by the published lease token. */ }
+    });
+    await evidenceCancellation;
+    if (deliverOriginal && snapshot) {
+      try {
+        await completeDelivery(snapshot.action, snapshot.originalText);
+      } catch (error) {
+        setCleanupError(error?.code ? error : networkError("Target delivery"));
+      }
+    }
+    scheduleDeliveryPoll();
+  }
+
+  function showEvidenceFailure(error, recovery) {
+    blockedEvidenceLease = evidenceLease || blockedEvidenceLease;
+    evidenceLease = null;
+    evidenceReceipt = null;
+    window.clearTimeout(evidenceLeaseTimer);
+    closeEvidenceJudgment();
+    evidenceRecovery = recovery;
+    elements.evidenceFailureMessage.textContent = `${error.message} ${error.retryAction}`;
+    if (!elements.evidenceFailureDialog.open) elements.evidenceFailureDialog.showModal();
+    setStatus("error");
+    setCleanupError(error);
+    renderEvidenceCollection();
+    publishNow();
+  }
+
+  function startEvidenceLeaseTimer(expiresAt) {
+    window.clearTimeout(evidenceLeaseTimer);
+    const expiry = Date.parse(expiresAt);
+    if (!Number.isFinite(expiry)) return;
+    const delay = Math.max(0, expiry - Date.now());
+    evidenceLeaseTimer = window.setTimeout(() => {
+      if (!evidenceLease) return;
+      showEvidenceFailure(makeError({
+        operation: "Evidence Collection",
+        summary: "The collection lease expired.",
+        code: "evidence_lease_expired",
+        message: "The Evidence Collection session expired.",
+        retryAction: "Retry collection, use ordinary uncollected preparation, or cancel.",
+      }), null);
+    }, delay);
+    evidenceLeaseTimer?.unref?.();
+  }
+
+  async function requestEvidenceJudgment(
+    originalText,
+    taskContext,
+    explicitSmart = false,
+    correctionMode = "smart",
+    action = "cleanup",
+  ) {
+    if (!originalText.trim()) return;
+    const recovery = { originalText, taskContext, explicitSmart, correctionMode, action };
     elements.prepared.value = "";
     originalOutgoingOverride = true;
     invalidateSmartRepairReview();
@@ -1237,6 +1463,7 @@
     setStatus("waiting");
     schedulePublication();
     try {
+      await evidenceCancellation;
       const response = await fetch("/api/evidence-collection/trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1244,6 +1471,7 @@
           lease_token: evidenceLease,
           original_text: originalText,
           task_context: taskContext || null,
+          correction_mode: correctionMode,
         }),
       });
       if (!response.ok) throw await safeHttpError(response, "Evidence trigger");
@@ -1251,26 +1479,37 @@
       if (typeof result?.observation_id !== "string") {
         throw malformedResponseError("Evidence trigger", response.status);
       }
-      if (originalText !== elements.original.value || taskContext !== elements.smartTaskContext.value) return;
+      if (
+        originalText !== elements.original.value
+        || taskContext !== (correctionMode === "smart" ? elements.smartTaskContext.value : "")
+      ) return;
       frozenEvidence = {
         observationId: result.observation_id,
         originalText,
         taskContext,
         explicitSmart,
+        correctionMode,
+        action,
       };
       elements.evidenceIntendedText.value = originalText;
       elements.evidenceIntendedText.readOnly = true;
-      elements.evidenceJudgmentForm.querySelectorAll("input[name=evidence-disposition]")
-        .forEach((radio) => { radio.checked = false; });
+      elements.evidenceIntendedText.required = true;
+      elements.evidenceIntendedField.hidden = false;
+      elements.evidenceDisposition.value = "";
       elements.evidenceJudgmentDialog.showModal();
     } catch (error) {
-      evidenceLease = null;
-      renderEvidenceCollection();
       const safe = error?.code ? error : networkError("Evidence trigger");
-      setStatus("error");
-      setCleanupError(safe);
       if (explicitSmart) setExplicitSmartState("retry", "Smart correction failed.");
+      showEvidenceFailure(safe, recovery);
     }
+  }
+
+  async function stopEvidenceLease(leaseToken) {
+    const response = await fetch(
+      `/api/evidence-collection/arm?lease_token=${encodeURIComponent(leaseToken)}`,
+      { method: "DELETE" },
+    );
+    if (!response.ok) throw await safeHttpError(response, "Evidence stop");
   }
 
   elements.evidenceCollectionToggle.addEventListener("click", async () => {
@@ -1278,10 +1517,21 @@
       elements.evidenceAttestationDialog.showModal();
       return;
     }
-    await fetch("/api/evidence-collection/arm", { method: "DELETE" });
+    try {
+      await stopEvidenceLease(evidenceLease);
+    } catch (error) {
+      showEvidenceFailure(error?.code ? error : networkError("Evidence stop"), null);
+      return;
+    }
+    window.clearTimeout(evidenceLeaseTimer);
+    window.clearTimeout(deliveryPollTimer);
     evidenceLease = null;
-    cancelEvidenceJudgment();
+    blockedEvidenceLease = null;
+    evidenceReceipt = null;
+    storeEvidenceLease(null);
+    closeEvidenceJudgment();
     renderEvidenceCollection();
+    schedulePublication();
   });
   elements.cancelEvidenceAttestation.addEventListener("click", closeEvidenceAttestation);
   elements.cancelEvidenceAttestationSecondary.addEventListener("click", closeEvidenceAttestation);
@@ -1293,7 +1543,10 @@
       const response = await fetch("/api/evidence-collection/arm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source_attestation_confirmed: true }),
+        body: JSON.stringify({
+          browser_session_id: browserSessionId,
+          source_attestation_confirmed: true,
+        }),
       });
       if (!response.ok) throw await safeHttpError(response, "Evidence arming");
       const result = await readJson(response, "Evidence arming");
@@ -1301,19 +1554,50 @@
         throw malformedResponseError("Evidence arming", response.status);
       }
       evidenceLease = result.lease_token;
+      storeEvidenceLease(evidenceLease);
+      blockedEvidenceLease = null;
+      evidenceReceipt = null;
+      startEvidenceLeaseTimer(result.expires_at);
+      elements.prepared.value = "";
+      originalOutgoingOverride = true;
+      invalidateSmartRepairReview();
+      if (elements.original.value) setStatus("waiting");
       closeEvidenceAttestation();
       invalidateEvaluationCapture();
       renderEvidenceCollection();
+      schedulePublication();
+      scheduleDeliveryPoll();
+      const retry = evidenceRecovery;
+      evidenceRecovery = null;
+      if (retry && retry.originalText === elements.original.value) {
+        await requestEvidenceJudgment(
+          retry.originalText,
+          retry.taskContext,
+          retry.explicitSmart,
+          retry.correctionMode,
+          retry.action,
+        );
+      }
     } catch (error) {
       const safe = error?.code ? error : networkError("Evidence arming");
       elements.evidenceAttestationStatus.textContent = `${safe.message} ${safe.retryAction}`;
     }
   });
-  elements.cancelEvidenceJudgment.addEventListener("click", cancelEvidenceJudgment);
-  elements.cancelEvidenceJudgmentSecondary.addEventListener("click", cancelEvidenceJudgment);
+  elements.cancelEvidenceJudgment.addEventListener("click", () => cancelEvidenceJudgment(true));
+  elements.cancelEvidenceJudgmentSecondary.addEventListener("click", () => cancelEvidenceJudgment(true));
+  elements.evidenceJudgmentDialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    cancelEvidenceJudgment(true);
+  });
   elements.evidenceJudgmentForm.addEventListener("change", (event) => {
     if (event.target.name !== "evidence-disposition" || !frozenEvidence) return;
     const editable = event.target.value === "edit_intended";
+    const excluded = isEvidenceExclusion(event.target.value);
+    elements.evidenceJudgmentTitle.textContent = excluded
+      ? "Confirm exclusion"
+      : "Confirm Intended wording";
+    elements.evidenceIntendedField.hidden = excluded;
+    elements.evidenceIntendedText.required = !excluded;
     elements.evidenceIntendedText.readOnly = !editable;
     elements.evidenceIntendedText.value = frozenEvidence.originalText;
     if (editable) {
@@ -1324,13 +1608,13 @@
   elements.evidenceJudgmentForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!frozenEvidence || !elements.evidenceJudgmentForm.reportValidity()) return;
-    const disposition = elements.evidenceJudgmentForm
-      .querySelector("input[name=evidence-disposition]:checked")?.value;
+    const disposition = elements.evidenceDisposition.value;
     if (!disposition) return;
     const snapshot = frozenEvidence;
-    const intendedText = disposition === "edit_intended"
-      ? elements.evidenceIntendedText.value
-      : snapshot.originalText;
+    const excluded = isEvidenceExclusion(disposition);
+    const intendedText = excluded
+      ? null
+      : disposition === "edit_intended" ? elements.evidenceIntendedText.value : snapshot.originalText;
     elements.evidenceJudgmentStatus.textContent = "Writing and verifying observation…";
     try {
       const response = await fetch("/api/evidence-collection/confirm", {
@@ -1347,28 +1631,43 @@
       const result = await readJson(response, "Evidence confirmation");
       if (
         elements.original.value !== snapshot.originalText
-        || elements.smartTaskContext.value !== snapshot.taskContext
+        || (snapshot.correctionMode === "smart" ? elements.smartTaskContext.value : "")
+          !== snapshot.taskContext
       ) return;
       const successful = ["prepared", "unchanged"].includes(result?.status);
       const failed = ["timeout", "provider_error"].includes(result?.status);
       if (
         typeof result?.prepared_text !== "string"
+        || typeof result?.evidence_receipt !== "string"
+        || result?.observation_id !== snapshot.observationId
+        || !["eligible_observation", "exclusion"].includes(result?.artifact_type)
+        || !Array.isArray(result?.exact_repeat_suggestions)
         || (!successful && !failed)
-        || (successful && !validateSmartRepairs(
+        || (snapshot.correctionMode === "smart" && successful && !validateSmartRepairs(
           result.lexical_repairs, snapshot.originalText, result.prepared_text,
         ))
       ) throw malformedResponseError("Evidence confirmation", response.status);
-      cancelEvidenceJudgment();
+      evidenceReceipt = {
+        token: result.evidence_receipt,
+        observationId: result.observation_id,
+        originalText: snapshot.originalText,
+        artifactType: result.artifact_type,
+      };
+      closeEvidenceJudgment();
+      renderEvidenceCollection();
       originalOutgoingOverride = false;
       if (failed) {
         elements.prepared.value = snapshot.originalText;
         setStatus(result.status === "timeout" ? "timeout" : "error");
         const safe = result.error;
+        const correctionLabel = snapshot.correctionMode === "smart"
+          ? "Smart correction"
+          : "Conservative preparation";
         setCleanupError(makeError({
-          operation: "Smart correction",
+          operation: correctionLabel,
           summary: result.status === "timeout"
-            ? "Smart correction timed out after the observation was saved; Outgoing is using Original."
-            : "Smart correction failed after the observation was saved; Outgoing is using Original.",
+            ? `${correctionLabel} timed out after the observation was saved; Outgoing is using Original.`
+            : `${correctionLabel} failed after the observation was saved; Outgoing is using Original.`,
           model: typeof result.model === "string" ? result.model : null,
           httpStatus: Number.isInteger(safe?.http_status) ? safe.http_status : null,
           code: typeof safe?.code === "string" ? safe.code : "cleanup_unavailable",
@@ -1380,28 +1679,92 @@
             : "Retry Smart correction or continue with Original.",
         }));
         if (snapshot.explicitSmart) setExplicitSmartState("retry", "Smart correction failed.");
-        schedulePublication();
+        else if (snapshot.correctionMode === "conservative") setExplicitSmartState("available");
+        await publishNow();
+        await completeDelivery(snapshot.action, snapshot.originalText);
+        scheduleDeliveryPoll();
         return;
       }
       elements.prepared.value = result.prepared_text;
       setStatus(result.status);
       setCleanupError(null);
-      showSmartRepairResult(result.lexical_repairs);
+      if (snapshot.correctionMode === "smart") {
+        showSmartRepairResult(result.lexical_repairs);
+      } else {
+        invalidateSmartRepairReview();
+      }
+      if (result.exact_repeat_suggestions.length) {
+        elements.evidenceCollectionState.textContent =
+          `Armed · ${result.exact_repeat_suggestions.length} provisional exact repeat suggestion`;
+      }
       if (snapshot.explicitSmart) {
         setExplicitSmartState(
           "success",
           result.status === "prepared" ? "Smart correction applied." : "Smart correction unchanged.",
         );
+      } else if (snapshot.correctionMode === "conservative") {
+        setExplicitSmartState("available");
       }
-      schedulePublication();
+      await publishNow();
+      await completeDelivery(snapshot.action, selectedOutgoingState().outgoing_text);
+      scheduleDeliveryPoll();
     } catch (error) {
       const safe = error?.code ? error : networkError("Evidence confirmation");
-      elements.evidenceJudgmentStatus.textContent = `${safe.message} ${safe.retryAction}`;
       if (snapshot.explicitSmart) setExplicitSmartState("retry", "Smart correction failed.");
-      if (safe.code === "evidence_collection_unavailable") {
-        evidenceLease = null;
-        renderEvidenceCollection();
+      showEvidenceFailure(safe, snapshot);
+    }
+  });
+
+  elements.retryEvidenceCollection.addEventListener("click", () => {
+    elements.evidenceFailureDialog.close();
+    elements.evidenceAttestationDialog.showModal();
+  });
+  elements.continueWithoutEvidence.addEventListener("click", async () => {
+    const recovery = evidenceRecovery;
+    const leaseToken = blockedEvidenceLease;
+    if (leaseToken) {
+      try {
+        await stopEvidenceLease(leaseToken);
+      } catch (error) {
+        elements.evidenceFailureMessage.textContent = `${
+          error?.message || "Evidence Collection could not be stopped."
+        } Retry collection, use ordinary uncollected preparation, or cancel.`;
+        return;
       }
+    }
+    evidenceRecovery = null;
+    blockedEvidenceLease = null;
+    storeEvidenceLease(null);
+    elements.evidenceFailureDialog.close();
+    renderEvidenceCollection();
+    schedulePublication();
+    if (recovery?.action === "cleanup") {
+      runCleanup(recovery.explicitSmart ? "smart" : null, true);
+    }
+  });
+  elements.cancelEvidenceRecovery.addEventListener("click", () => {
+    evidenceRecovery = null;
+    elements.evidenceFailureDialog.close();
+  });
+  elements.withdrawEvidence.addEventListener("click", async () => {
+    if (!evidenceLease || evidenceReceipt?.artifactType !== "eligible_observation") return;
+    try {
+      const response = await fetch(
+        `/api/evidence-collection/observations/${evidenceReceipt.observationId}`,
+        { method: "DELETE" },
+      );
+      if (!response.ok) throw await safeHttpError(response, "Evidence withdrawal");
+      evidenceReceipt = null;
+      elements.prepared.value = "";
+      originalOutgoingOverride = true;
+      setStatus("waiting");
+      renderEvidenceCollection();
+      schedulePublication();
+    } catch (error) {
+      showEvidenceFailure(
+        error?.code ? error : networkError("Evidence withdrawal"),
+        null,
+      );
     }
   });
 
@@ -2099,6 +2462,14 @@
     event.preventDefault();
     event.returnValue = "";
   });
+  window.addEventListener("pagehide", () => {
+    if (!evidenceLease) return;
+    fetch(
+      `/api/evidence-collection/arm?lease_token=${encodeURIComponent(evidenceLease)}`,
+      { method: "DELETE", keepalive: true },
+    )
+      .catch(() => {});
+  });
   window.addEventListener("focus", () => {
     if (!returnSelectionPending || !elements.original.value) return;
     returnSelectionPending = false;
@@ -2114,12 +2485,20 @@
       renderSidebar();
       renderMaximizedPane();
       renderWorkspaceLayout();
+      const evidenceHeaders = { "X-Evidence-Browser-Session": browserSessionId };
+      const previousEvidenceLease = storedEvidenceLease();
+      if (previousEvidenceLease) {
+        evidenceHeaders["X-Evidence-Previous-Lease"] = previousEvidenceLease;
+      }
       const [configResponse] = await Promise.all([
-        fetch("/api/config"),
+        fetch("/api/config", {
+          headers: evidenceHeaders,
+        }),
         clearPublishedState(),
       ]);
       if (!configResponse.ok) throw await safeHttpError(configResponse, "Workspace configuration");
       const config = await readJson(configResponse, "Workspace configuration");
+      storeEvidenceLease(null);
 
       elements.cleanupEnabled.checked = config.cleanup_enabled_by_default ?? true;
       defaultCorrectionMode = ["conservative", "smart"].includes(config.default_correction_mode)
@@ -2132,6 +2511,8 @@
       renderCleanupConfiguration(config.cleanup_configuration);
       evidenceReady = config.evidence_collection?.ready === true;
       evidenceLease = null;
+      blockedEvidenceLease = null;
+      evidenceReceipt = null;
       renderEvidenceCollection();
       evaluationAvailable = config.evaluation_configuration?.available === true;
       elements.evaluationStatus.textContent = evaluationAvailable
