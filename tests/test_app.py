@@ -212,6 +212,8 @@ def test_status_errors_use_one_accessible_privacy_safe_dialog(
     assert 'elements.publication.addEventListener("click"' in script
     assert "elements.errorDialog.showModal()" in script
     assert "navigator.clipboard.writeText" in script
+    assert 'id="copy-outgoing-state" class="copy-outgoing-state"' in page
+    assert ".copy-outgoing-state:empty { display: none; }" in stylesheet
 
     error_fields = script.split("function errorFields", maxsplit=1)[1].split(
         "function errorTrigger", maxsplit=1
@@ -1117,11 +1119,7 @@ def test_outgoing_state_is_published_and_cleared_in_memory(
         "revision": 1,
     }
     assert published.json() == expanded
-    assert client.get("/api/outgoing-state").json() == {
-        **expanded,
-        "delivery_allowed": True,
-        "delivery_error": None,
-    }
+    assert client.get("/api/outgoing-state").json() == expanded
 
     cleared = client.delete("/api/outgoing-state")
     assert cleared.status_code == 200

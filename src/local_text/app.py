@@ -52,7 +52,7 @@ from local_text.evaluation import (
 from local_text.evaluation_database import evaluation_configuration
 from local_text.evidence_collection import EvidenceCollection, EvidenceCollectionError
 from local_text.prompt_store import PromptNotFoundError, PromptRecord, PromptStore, SeedStateError
-from local_text.state import DeliveryRequestStore, OutgoingStateStore, OutgoingStateUpdate
+from local_text.state import OutgoingStateStore, OutgoingStateUpdate
 from local_text.target_adapter import TargetAdapter, TargetArtifactError
 from local_text.target_store import TargetNotFoundError, TargetRecord, TargetStore
 from local_text.targets import TargetDefinition, generate_command
@@ -252,18 +252,6 @@ class EvidenceCancelRequest(BaseModel):
     lease_token: UUID
 
 
-class DeliveryCompleteRequest(BaseModel):
-    lease_token: UUID
-    outgoing_text: str = Field(min_length=1, max_length=100_000)
-
-    @field_validator("outgoing_text")
-    @classmethod
-    def outgoing_not_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("must not be blank")
-        return value
-
-
 def _prompt_response(prompt: PromptRecord, *, active: bool) -> dict[str, object]:
     created_at = prompt.created_at
     if created_at.tzinfo is None:
@@ -312,7 +300,6 @@ def create_app(
         cleanup_enabled=cleanup_enabled,
         correction_mode=default_correction_mode,
     )
-    delivery_requests = DeliveryRequestStore()
     cleanup_configuration = _cleanup_runtime_configuration(runtime)
     disabled_cleanup = CleanupService(
         provider=None,
@@ -698,82 +685,16 @@ def create_app(
     def outgoing_state() -> dict[str, object]:
         require_configuration()
         published = state.read()
-        delivery_allowed = evidence.outgoing_allowed(
-            original=published.original_text,
-            lease_token=published.evidence_lease_token,
-            receipt_token=published.evidence_receipt,
-        )
-        return {
-            **published.public(),
-            "delivery_allowed": delivery_allowed,
-            "delivery_error": (
-                None
-                if delivery_allowed
-                else "Complete intended-meaning confirmation in Sayloom, then retry."
-            ),
-        }
-
-    @application.post("/api/outgoing-delivery", response_model=None)
-    def request_outgoing_delivery() -> Response | dict[str, object]:
-        require_configuration()
-        published = state.read()
-        if evidence.outgoing_allowed(
+        if not evidence.outgoing_allowed(
             original=published.original_text,
             lease_token=published.evidence_lease_token,
             receipt_token=published.evidence_receipt,
         ):
-            if not published.outgoing_text.strip():
-                raise HTTPException(status_code=409, detail="there is no outgoing text")
-            return {"status": "ready", "outgoing_text": published.outgoing_text}
-        if published.evidence_lease_token is None:
             raise HTTPException(
                 status_code=409,
-                detail="Evidence Collection must be completed in Sayloom.",
+                detail="Complete intended-meaning confirmation in Sayloom, then retry.",
             )
-        delivery = delivery_requests.create(lease_token=published.evidence_lease_token)
-        return JSONResponse(
-            status_code=status.HTTP_202_ACCEPTED,
-            content={"status": delivery.status, "request_id": str(delivery.id)},
-        )
-
-    @application.get("/api/outgoing-delivery/pending", response_model=None)
-    def pending_outgoing_delivery(lease_token: UUID) -> Response | dict[str, object]:
-        delivery = delivery_requests.pending(lease_token=lease_token)
-        if delivery is None:
-            return Response(status_code=status.HTTP_204_NO_CONTENT)
-        return {"status": delivery.status, "request_id": str(delivery.id)}
-
-    @application.get("/api/outgoing-delivery/{request_id}")
-    def outgoing_delivery_result(request_id: UUID) -> dict[str, object]:
-        try:
-            delivery = delivery_requests.read(request_id)
-        except KeyError as exc:
-            raise HTTPException(status_code=404, detail="delivery request expired") from exc
-        result: dict[str, object] = {
-            "status": delivery.status,
-            "request_id": str(delivery.id),
-        }
-        if delivery.outgoing_text is not None:
-            result["outgoing_text"] = delivery.outgoing_text
-        return result
-
-    @application.post("/api/outgoing-delivery/{request_id}/complete")
-    def complete_outgoing_delivery(
-        request_id: UUID, request: DeliveryCompleteRequest
-    ) -> dict[str, object]:
-        try:
-            delivery = delivery_requests.complete(
-                request_id=request_id,
-                lease_token=request.lease_token,
-                outgoing_text=request.outgoing_text,
-            )
-        except KeyError as exc:
-            raise HTTPException(status_code=404, detail="delivery request expired") from exc
-        return {
-            "status": delivery.status,
-            "request_id": str(delivery.id),
-            "outgoing_text": delivery.outgoing_text,
-        }
+        return published.public()
 
     @application.put("/api/outgoing-state")
     def publish_outgoing_state(update: OutgoingStateUpdate) -> dict[str, object]:

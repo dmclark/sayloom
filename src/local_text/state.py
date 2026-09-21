@@ -1,10 +1,9 @@
 """Process-local publication of the text selected for outgoing commands."""
 
 from dataclasses import asdict, dataclass, replace
-from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from threading import Lock
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -114,76 +113,3 @@ class OutgoingStateStore:
                 revision=self._state.revision + 1,
             )
             return self._state
-
-
-@dataclass(frozen=True)
-class DeliveryRequest:
-    id: UUID
-    lease_token: UUID
-    created_at: datetime
-    outgoing_text: str | None = None
-
-    @property
-    def status(self) -> str:
-        return "ready" if self.outgoing_text is not None else "waiting_for_evidence"
-
-
-class DeliveryRequestStore:
-    def __init__(self) -> None:
-        self._requests: dict[UUID, DeliveryRequest] = {}
-        self._lock = Lock()
-
-    def create(self, *, lease_token: UUID) -> DeliveryRequest:
-        with self._lock:
-            self._expire()
-            request = DeliveryRequest(
-                id=uuid4(),
-                lease_token=lease_token,
-                created_at=datetime.now(UTC),
-            )
-            self._requests[request.id] = request
-            return request
-
-    def pending(self, *, lease_token: UUID) -> DeliveryRequest | None:
-        with self._lock:
-            self._expire()
-            return next(
-                (
-                    request
-                    for request in self._requests.values()
-                    if request.lease_token == lease_token and request.outgoing_text is None
-                ),
-                None,
-            )
-
-    def complete(
-        self,
-        *,
-        request_id: UUID,
-        lease_token: UUID,
-        outgoing_text: str,
-    ) -> DeliveryRequest:
-        with self._lock:
-            self._expire()
-            request = self._requests.get(request_id)
-            if request is None or request.lease_token != lease_token:
-                raise KeyError(request_id)
-            completed = replace(request, outgoing_text=outgoing_text)
-            self._requests[request_id] = completed
-            return completed
-
-    def read(self, request_id: UUID) -> DeliveryRequest:
-        with self._lock:
-            self._expire()
-            request = self._requests.get(request_id)
-            if request is None:
-                raise KeyError(request_id)
-            return request
-
-    def _expire(self) -> None:
-        cutoff = datetime.now(UTC) - timedelta(minutes=30)
-        self._requests = {
-            request_id: request
-            for request_id, request in self._requests.items()
-            if request.created_at >= cutoff
-        }

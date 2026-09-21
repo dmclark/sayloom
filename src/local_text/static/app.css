@@ -1006,6 +1006,8 @@ textarea::placeholder { color: #9a988f; font-style: italic; }
 .outgoing-summary { flex: 0 1 auto; flex-wrap: wrap; align-items: center; gap: 10px; }
 .outgoing-statuses { justify-content: flex-start; gap: 18px; }
 #outgoing-kind { font-family: "Iowan Old Style", Palatino, serif; font-size: 0.9rem; font-weight: 500; }
+.copy-outgoing-state { color: var(--muted); font-size: 0.72rem; font-weight: 650; }
+.copy-outgoing-state:empty { display: none; }
 
 .outgoing-selector { display: inline-flex; }
 .outgoing-selector button {
