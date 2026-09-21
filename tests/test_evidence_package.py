@@ -19,8 +19,10 @@ from local_text.evidence_package import (
     approve_package,
     check_readiness,
     create_package,
+    find_exact_repeats,
     verify_observation,
     withdraw_observation,
+    write_exclusion,
     write_observation,
 )
 
@@ -136,6 +138,59 @@ def test_verification_fails_after_artifact_tampering(tmp_path: Path) -> None:
         verify_observation(package, receipt)
 
 
+def test_exclusion_retains_only_content_free_audit_metadata(tmp_path: Path) -> None:
+    package = approved_package(tmp_path)
+    observation_id = uuid4()
+
+    receipt = write_exclusion(
+        package,
+        observation_id,
+        "cannot_reliably_reconstruct",
+        excluded_at=datetime(2026, 9, 18, 12, 15, tzinfo=UTC),
+    )
+    artifact = package / "observations" / f"{observation_id}.json"
+    retained = json.loads(artifact.read_text())
+
+    assert receipt.observation_id == observation_id
+    assert retained == {
+        "artifact_type": "exclusion",
+        "disposition": "cannot_reliably_reconstruct",
+        "excluded_at": "2026-09-18T12:15:00Z",
+        "observation_id": str(observation_id),
+        "package_version": PACKAGE_VERSION,
+    }
+    assert not ({"record", "original", "intended", "context", "profile", "length"} & set(retained))
+    assert verify_observation(package, receipt) is True
+
+
+def test_exact_repeat_suggestions_use_only_nfc_and_newline_normalization(
+    tmp_path: Path,
+) -> None:
+    package = approved_package(tmp_path)
+    normalized_repeat = uuid4()
+    different_case = uuid4()
+    different_space = uuid4()
+    write_observation(
+        package,
+        normalized_repeat,
+        {"original": "Cafe\u0301\r\nline", "intended": "Résumé\rline"},
+    )
+    write_observation(
+        package,
+        different_case,
+        {"original": "CAFÉ\nline", "intended": "Résumé\nline"},
+    )
+    write_observation(
+        package,
+        different_space,
+        {"original": "Café\nline ", "intended": "Résumé\nline"},
+    )
+
+    suggestions = find_exact_repeats(package, "Café\nline", "Re\u0301sume\u0301\nline")
+
+    assert suggestions == (normalized_repeat,)
+
+
 def test_withdrawal_removes_private_content_and_leaves_only_a_content_free_tombstone(
     tmp_path: Path,
 ) -> None:
@@ -164,6 +219,37 @@ def test_withdrawal_removes_private_content_and_leaves_only_a_content_free_tombs
     serialized = tombstone_path.read_text()
     assert all(value not in serialized for value in private_values)
     assert not ({"hash", "sha256", "length", "group", "repeat"} & set(retained))
+    assert withdraw_observation(package, observation_id).observation_id == observation_id
+
+
+def test_withdrawal_writes_tombstone_before_removing_content_and_can_resume(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    package = approved_package(tmp_path)
+    observation_id = uuid4()
+    observation = package / "observations" / f"{observation_id}.json"
+    tombstone = package / "tombstones" / f"{observation_id}.json"
+    write_observation(
+        package,
+        observation_id,
+        {"original": "Synthetic source", "intended": "Synthetic intent"},
+    )
+    original_unlink = Path.unlink
+
+    def fail_content_removal(path: Path, *args, **kwargs) -> None:
+        if path == observation:
+            raise OSError("synthetic removal failure")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", fail_content_removal)
+    with pytest.raises(EvidencePackageError, match="private content removal failed"):
+        withdraw_observation(package, observation_id)
+    assert observation.exists()
+    assert tombstone.exists()
+
+    monkeypatch.setattr(Path, "unlink", original_unlink)
+    assert withdraw_observation(package, observation_id).observation_id == observation_id
+    assert not observation.exists()
 
 
 def test_evidence_never_writes_to_application_state_logs_or_git(

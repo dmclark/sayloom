@@ -729,9 +729,10 @@ main { padding-top: 8px; }
 .evaluation-dialog-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .evidence-attestation { display: flex !important; grid-template-columns: auto 1fr; align-items: start; }
 .evidence-attestation input { min-height: 0; margin-top: 2px; }
-.evidence-dispositions { display: grid; gap: 9px; margin: 0; padding: 14px 16px; border: 1px solid var(--line); }
-.evidence-dispositions legend { padding: 0 5px; color: var(--muted); font-size: 0.7rem; font-weight: 700; }
-.evidence-dispositions label { display: flex; gap: 8px; align-items: start; font-size: 0.78rem; }
+.evidence-disposition { display: grid; gap: 6px; }
+.evidence-disposition select { width: 100%; }
+#evidence-intended-field { display: grid; gap: 6px; }
+.evidence-intended-note { margin: 0; color: var(--muted); font-size: 0.72rem; line-height: 1.45; }
 .evaluation-retention { padding: 16px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .evaluation-retention h3 { margin: 0 0 12px; font-family: "Iowan Old Style", Palatino, serif; }
 .evaluation-retention form { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; margin-top: 12px; }

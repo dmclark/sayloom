@@ -36,7 +36,7 @@ prepare_command() {
 
 fetch_outgoing_text() {
   destination=$1
-  state_file="$command_temp_directory/outgoing-state.json"
+  state_file="$command_temp_directory/outgoing-delivery.json"
 
   /usr/bin/curl \
     --fail \
@@ -44,9 +44,38 @@ fetch_outgoing_text() {
     --show-error \
     --connect-timeout 1 \
     --max-time 3 \
-    "$LOCAL_TEXT_BASE_URL/api/outgoing-state" \
+    --request POST \
+    "$LOCAL_TEXT_BASE_URL/api/outgoing-delivery" \
     --output "$state_file" \
     || fail_command "outgoing state is unavailable"
+
+  status_type=$(/usr/bin/plutil -type status "$state_file" 2>/dev/null) \
+    || fail_command "outgoing state is malformed"
+  [ "$status_type" = "string" ] || fail_command "outgoing state is malformed"
+  delivery_status=$(/usr/bin/plutil -extract status raw -o - "$state_file" 2>/dev/null) \
+    || fail_command "outgoing state is malformed"
+  if [ "$delivery_status" = "waiting_for_evidence" ]; then
+    request_id=$(/usr/bin/plutil -extract request_id raw -o - "$state_file" 2>/dev/null) \
+      || fail_command "outgoing state is malformed"
+    attempts=0
+    while [ "$delivery_status" = "waiting_for_evidence" ] && [ "$attempts" -lt 7200 ]; do
+      /bin/sleep 0.25
+      attempts=$((attempts + 1))
+      /usr/bin/curl \
+        --fail \
+        --silent \
+        --show-error \
+        --connect-timeout 1 \
+        --max-time 3 \
+        "$LOCAL_TEXT_BASE_URL/api/outgoing-delivery/$request_id" \
+        --output "$state_file" \
+        || fail_command "outgoing state is unavailable"
+      delivery_status=$(/usr/bin/plutil -extract status raw -o - "$state_file" 2>/dev/null) \
+        || fail_command "outgoing state is malformed"
+    done
+  fi
+  [ "$delivery_status" = "ready" ] \
+    || fail_command "timed out waiting for Evidence Collection"
 
   value_type=$(/usr/bin/plutil -type outgoing_text "$state_file" 2>/dev/null) \
     || fail_command "outgoing state is malformed"

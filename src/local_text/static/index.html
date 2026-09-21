@@ -30,6 +30,9 @@
           <button id="evidence-collection-toggle" class="button button-quiet" type="button" disabled>
             Evidence Collection unavailable
           </button>
+          <button id="withdraw-evidence" class="button button-quiet" type="button" hidden>
+            Withdraw current observation
+          </button>
           <span id="evidence-collection-state" role="status" aria-live="polite">Package not ready</span>
         </div>
         <div class="layout-controls" role="group" aria-label="Editor layout">
@@ -437,26 +440,53 @@
       <form id="evidence-judgment-form" class="evaluation-dialog-sheet">
         <header class="error-sheet-header">
           <div>
-            <span class="eyebrow">Before Smart preparation</span>
+            <span class="eyebrow">Before candidate preparation</span>
             <h2 id="evidence-judgment-title">Confirm Intended wording</h2>
           </div>
           <button id="cancel-evidence-judgment" class="dialog-close" type="button" aria-label="Cancel Intended confirmation">×</button>
         </header>
         <p>Prepared wording remains concealed until this new observation is written and verified.</p>
-        <fieldset class="evidence-dispositions">
-          <legend>Producer judgment</legend>
-          <label><input type="radio" name="evidence-disposition" value="ready_as_is" required> Ready as-is</label>
-          <label><input type="radio" name="evidence-disposition" value="presentation_cleanup_needed"> Meaning right; presentation cleanup needed</label>
-          <label><input type="radio" name="evidence-disposition" value="edit_intended"> Edit Intended</label>
-        </fieldset>
-        <label for="evidence-intended-text">Intended wording</label>
-        <textarea id="evidence-intended-text" required maxlength="100000" readonly></textarea>
+        <label class="evidence-disposition" for="evidence-disposition">
+          <span>Producer judgment</span>
+          <select id="evidence-disposition" name="evidence-disposition" required>
+            <option value="" selected disabled>Select a judgment</option>
+            <option value="ready_as_is">Ready as-is — Original already says exactly what you intended and needs no cleanup</option>
+            <option value="presentation_cleanup_needed">Meaning right; cleanup needed — meaning is correct, but presentation needs cleanup</option>
+            <option value="edit_intended">Edit Intended — Original misses or changes your intended meaning</option>
+            <option value="not_voiceitt">Not Voiceitt — this text did not come from Voiceitt</option>
+            <option value="cannot_reliably_reconstruct">Cannot reliably reconstruct — you cannot confidently determine the intended wording</option>
+            <option value="exclude">Exclude — this example should not be collected for another reason</option>
+          </select>
+        </label>
+        <div id="evidence-intended-field">
+          <label for="evidence-intended-text">Intended wording</label>
+          <textarea id="evidence-intended-text" required maxlength="100000" readonly></textarea>
+          <p class="evidence-intended-note">Editing Intended records the correct meaning; it does not replace Original or directly determine Prepared.</p>
+        </div>
         <p id="evidence-judgment-status" class="evaluation-status" role="status" aria-live="polite"></p>
         <div class="evaluation-dialog-actions">
-          <button class="button button-primary" type="submit">Confirm observation and run Smart</button>
+          <button class="button button-primary" type="submit">Confirm observation and prepare</button>
           <button id="cancel-evidence-judgment-secondary" class="button button-quiet" type="button">Cancel</button>
         </div>
       </form>
+    </dialog>
+
+    <dialog id="evidence-failure-dialog" class="evaluation-dialog" aria-labelledby="evidence-failure-title">
+      <div class="evaluation-dialog-sheet">
+        <header class="error-sheet-header">
+          <div>
+            <span class="eyebrow">Collection disarmed</span>
+            <h2 id="evidence-failure-title">Evidence Collection could not continue</h2>
+          </div>
+        </header>
+        <p id="evidence-failure-message" role="alert"></p>
+        <p>No candidate was exposed. Choose how to continue.</p>
+        <div class="evaluation-dialog-actions">
+          <button id="retry-evidence-collection" class="button button-primary" type="button">Retry collection</button>
+          <button id="continue-without-evidence" class="button" type="button">Use without collecting</button>
+          <button id="cancel-evidence-recovery" class="button button-quiet" type="button">Cancel</button>
+        </div>
+      </div>
     </dialog>
 
     <dialog id="evaluation-capture-dialog" class="evaluation-dialog" aria-labelledby="evaluation-capture-title">

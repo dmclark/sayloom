@@ -188,11 +188,11 @@ def test_raycast_uses_the_fixed_development_port_without_a_generic_service() -> 
 
 
 class OutgoingStateServer:
-    def __init__(self, state: object) -> None:
-        body = json.dumps(state, ensure_ascii=False).encode()
+    def __init__(self, state: dict[str, object]) -> None:
+        body = json.dumps({"status": "ready", **state}, ensure_ascii=False).encode()
 
         class Handler(BaseHTTPRequestHandler):
-            def do_GET(self) -> None:  # noqa: N802
+            def do_POST(self) -> None:  # noqa: N802
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
