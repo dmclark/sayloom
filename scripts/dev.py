@@ -267,6 +267,17 @@ def prepare_service_files(state: State) -> None:
         os.chmod(log_path, 0o600)
 
 
+def print_log_entries(label: str, entries: list[str]) -> None:
+    print(f"==> {label} <==")
+    for entry in entries:
+        try:
+            parsed = json.loads(entry)
+        except json.JSONDecodeError:
+            print(entry, end="" if entry.endswith("\n") else "\n")
+        else:
+            print(json.dumps(parsed, indent=2, ensure_ascii=False))
+
+
 def show_logs(state: State, *, lines: int, follow: bool) -> None:
     log_directory = Path(state.state_directory) / "logs"
     streams = (
@@ -286,18 +297,14 @@ def show_logs(state: State, *, lines: int, follow: bool) -> None:
             ]
             output = [(label, list(deque(stream, maxlen=lines))) for label, stream in opened]
             for label, entries in output:
-                print(f"==> {label} <==")
-                for entry in entries:
-                    print(entry, end="" if entry.endswith("\n") else "\n")
+                print_log_entries(label, entries)
             sys.stdout.flush()
             while follow:
                 for label, stream in opened:
                     entries = stream.readlines()
                     if not entries:
                         continue
-                    print(f"==> {label} <==")
-                    for entry in entries:
-                        print(entry, end="" if entry.endswith("\n") else "\n")
+                    print_log_entries(label, entries)
                     sys.stdout.flush()
                 time.sleep(0.1)
     except KeyboardInterrupt:
@@ -838,7 +845,8 @@ status and prune are read-only unless prune receives --apply.
         "logs",
         help="show this checkout's service logs",
         description="Show only the current checkout's registered development-state logs. "
-        "Stream labels do not reveal private filesystem paths.",
+        "Valid JSON entries are indented for readability. Stream labels do not reveal "
+        "private filesystem paths.",
     )
     logs_parser.add_argument(
         "-n",

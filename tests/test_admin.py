@@ -291,6 +291,32 @@ def test_logs_line_count_short_option_bounds_each_stream(tmp_path: Path) -> None
     ]
 
 
+def test_logs_format_json_entries_for_human_reading(tmp_path: Path) -> None:
+    state_root = tmp_path / "states"
+    assert run_dev(state_root, "create", "selected").returncode == 0
+    logs = state_root / "selected/logs"
+    logs.mkdir()
+    (logs / "service.log").write_text('{"level":"info","event":"ready"}\nplain output\n')
+    (logs / "service-error.log").write_text('{"level":"error","status":503}\n')
+
+    result = run_dev(state_root, "logs")
+
+    assert result.returncode == 0
+    assert result.stdout.splitlines() == [
+        "==> service output <==",
+        "{",
+        '  "level": "info",',
+        '  "event": "ready"',
+        "}",
+        "plain output",
+        "==> service errors <==",
+        "{",
+        '  "level": "error",',
+        '  "status": 503',
+        "}",
+    ]
+
+
 def test_logs_default_output_is_bounded_per_stream(tmp_path: Path) -> None:
     state_root = tmp_path / "states"
     assert run_dev(state_root, "create", "selected").returncode == 0
@@ -833,7 +859,9 @@ def test_help_lists_checkout_service_database_and_cleanup_commands() -> None:
     assert "-n LINES, --lines LINES" in logs_help.stdout
     assert "-f, --follow" in logs_help.stdout
     assert "default: 100" in logs_help.stdout
-    assert "private filesystem paths" in logs_help.stdout
+    normalized_help = " ".join(logs_help.stdout.split())
+    assert "Valid JSON entries are indented" in normalized_help
+    assert "private filesystem paths" in normalized_help
 
 
 def test_supacode_lifecycle_initializes_runs_and_deletes_without_archiving() -> None:
