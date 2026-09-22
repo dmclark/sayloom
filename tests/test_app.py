@@ -106,7 +106,7 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="prepared-text"' in response.text
     assert f'href="/static/app.css?v={STATIC_VERSION}"' in response.text
     assert f'src="/static/app.js?v={STATIC_VERSION}"' in response.text
-    assert 'id="cleanup-status"' not in response.text
+    assert 'id="cleanup-status"' in response.text
     assert 'class="status-label"' not in response.text
     assert 'id="cancel-cleanup"' not in response.text
     assert 'id="active-prompt-selector"' not in response.text
@@ -202,15 +202,27 @@ def test_status_errors_use_one_accessible_privacy_safe_dialog(
     script = client.get("/static/app.js").text
     stylesheet = client.get("/static/app.css").text
 
-    assert '<button id="cleanup-status"' not in page
-    assert '<button id="outgoing-kind"' in page
+    prepared_header = page.split(
+        'class="text-panel prepared-panel"', maxsplit=1
+    )[1].split("</header>", maxsplit=1)[0]
+    outgoing = page.split('class="outgoing-strip"', maxsplit=1)[1].split(
+        "</section>", maxsplit=1
+    )[0]
+
+    assert 'id="cleanup-status"' in prepared_header
+    assert "Cleanup unavailable</button>" in prepared_header
+    assert '<button id="retry-cleanup"' in prepared_header
+    assert "Retry cleanup\n" in prepared_header
+    assert 'id="cleanup-status"' not in outgoing
+    assert 'id="retry-cleanup"' not in outgoing
+    assert '<span id="outgoing-kind"' in page
     assert '<button id="publication-state"' in page
     assert page.count('<dialog id="error-details-dialog"') == 1
     assert page.count('aria-controls="error-details-dialog"') == 2
     assert 'id="cleanup-error"' not in page
     assert 'id="publication-error"' not in page
     assert "Copy details" in page
-    assert 'elements.outgoingKind.addEventListener("click"' in script
+    assert 'elements.cleanupStatus.addEventListener("click"' in script
     assert 'elements.publication.addEventListener("click"' in script
     assert "elements.errorDialog.showModal()" in script
     assert "navigator.clipboard.writeText" in script
@@ -219,6 +231,14 @@ def test_status_errors_use_one_accessible_privacy_safe_dialog(
     assert "Copy outgoing" not in page
     assert 'id="publication-state"' in page and "disabled hidden" in page
     assert 'elements.publication.hidden = nextState !== "error"' in script
+
+    retry_handler = script.split(
+        'elements.retryCleanup.addEventListener("click"', maxsplit=1
+    )[1].split(";", maxsplit=1)[0]
+    assert "runCleanup()" in retry_handler
+    assert "copyOutgoing" not in retry_handler
+    assert "requestEvidenceJudgment" not in retry_handler
+    assert "publishNow" not in retry_handler
 
     feedback = script.split("function showCopyFeedback", maxsplit=1)[1].split(
         "async function copyOutgoing", maxsplit=1
@@ -1718,6 +1738,7 @@ const document = {
 const publications = [];
 const copied = [];
 let malformed = false;
+let cleanupRequests = 0;
 const response = (body) => ({ ok: true, status: 200, json: async () => body });
 const fetch = async (url, options = {}) => {
   if (url === "/api/config") return response({
@@ -1731,21 +1752,24 @@ const fetch = async (url, options = {}) => {
     if (options.body) publications.push(JSON.parse(options.body));
     return response({ revision: publications.length + 1 });
   }
-  if (url === "/api/cleanup" && malformed) return response({
-    prepared_text: "unlisted lexical change", status: "prepared", provider: "test",
-    model: "model-b", lexical_repairs: [], attempts: [],
-  });
-  if (url === "/api/cleanup") return response({
-    prepared_text: "send the report now", status: "prepared", provider: "test", model: "model-a",
-    lexical_repairs: [
-      { operation: "replacement", original_span: { start: 5, end: 8, text: "teh" },
-        prepared_span: { start: 5, end: 8, text: "the" }, context: "send the report now",
-        queue_position: 1, inspection_reason: "Prepared replaces wording; verify meaning." },
-      { operation: "addition", original_span: { start: 15, end: 15, text: "" },
-        prepared_span: { start: 16, end: 19, text: "now" }, context: "send the report now",
-        queue_position: 2, inspection_reason: "Prepared adds wording; verify meaning." },
-    ], attempts: [],
-  });
+  if (url === "/api/cleanup") {
+    cleanupRequests += 1;
+    if (malformed) return response({
+      prepared_text: "unlisted lexical change", status: "prepared", provider: "test",
+      model: "model-b", lexical_repairs: [], attempts: [],
+    });
+    return response({
+      prepared_text: "send the report now", status: "prepared", provider: "test", model: "model-a",
+      lexical_repairs: [
+        { operation: "replacement", original_span: { start: 5, end: 8, text: "teh" },
+          prepared_span: { start: 5, end: 8, text: "the" }, context: "send the report now",
+          queue_position: 1, inspection_reason: "Prepared replaces wording; verify meaning." },
+        { operation: "addition", original_span: { start: 15, end: 15, text: "" },
+          prepared_span: { start: 16, end: 19, text: "now" }, context: "send the report now",
+          queue_position: 2, inspection_reason: "Prepared adds wording; verify meaning." },
+      ], attempts: [],
+    });
+  }
   throw new Error(`Unexpected request: ${url}`);
 };
 const window = {
@@ -1791,17 +1815,32 @@ async function settle() { await new Promise((resolve) => setImmediate(resolve));
   await elements["#smart-task-context"].dispatch("input");
   malformed = true;
   await elements["#run-cleanup"].dispatch("click");
-  const cleanupTrigger = elements["#outgoing-kind"];
+  const cleanupTrigger = elements["#cleanup-status"];
   await cleanupTrigger.dispatch("click");
+  const malformedResult = {
+    prepared: elements["#prepared-text"].value,
+    status: elements["#outgoing-kind"].dataset.state,
+    outgoing: elements["#outgoing-kind"].textContent,
+    trigger: cleanupTrigger.textContent,
+    recoveryHidden: elements["#cleanup-recovery"].hidden,
+    dialogOpen: elements["#error-details-dialog"].open,
+    dialogKind: elements["#error-details-dialog"].dataset.kind,
+  };
+  const invalidatedBeforeRetry = elements["#smart-repair-review"].hidden;
+  malformed = false;
+  const cleanupRequestsBeforeRetry = cleanupRequests;
+  const copiedBeforeRetry = copied.length;
+  await elements["#retry-cleanup"].dispatch("click"); await settle();
   process.stdout.write(JSON.stringify({
-    before, inspected, copied, invalidated: elements["#smart-repair-review"].hidden,
-    malformed: {
+    before, inspected, copied, invalidated: invalidatedBeforeRetry,
+    malformed: malformedResult,
+    retry: {
       prepared: elements["#prepared-text"].value,
-      status: elements["#outgoing-kind"].dataset.state,
-      trigger: cleanupTrigger.textContent,
-      triggerDisabled: cleanupTrigger.disabled,
+      outgoing: elements["#outgoing-kind"].textContent,
+      cleanupRequestDelta: cleanupRequests - cleanupRequestsBeforeRetry,
+      copiedDelta: copied.length - copiedBeforeRetry,
+      recoveryHidden: elements["#cleanup-recovery"].hidden,
       dialogOpen: elements["#error-details-dialog"].open,
-      dialogKind: elements["#error-details-dialog"].dataset.kind,
     },
   }));
 })().catch((error) => { process.stderr.write(error.stack); process.exit(1); });
@@ -1832,10 +1871,19 @@ async function settle() { await new Promise((resolve) => setImmediate(resolve));
         "malformed": {
             "prepared": "send teh report",
             "status": "error",
-            "trigger": "Using Original — Cleanup unavailable",
-            "triggerDisabled": False,
+            "outgoing": "Using Original",
+            "trigger": "Cleanup unavailable",
+            "recoveryHidden": False,
             "dialogOpen": True,
             "dialogKind": "cleanup",
+        },
+        "retry": {
+            "prepared": "send the report now",
+            "outgoing": "Using Prepared",
+            "cleanupRequestDelta": 1,
+            "copiedDelta": 0,
+            "recoveryHidden": True,
+            "dialogOpen": False,
         },
     }
 

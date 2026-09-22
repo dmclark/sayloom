@@ -87,6 +87,7 @@ main {
 .panel-heading,
 .panel-title,
 .prepared-heading-actions,
+.cleanup-recovery,
 .outgoing-strip,
 .outgoing-summary,
 .outgoing-statuses,
@@ -763,6 +764,22 @@ main { padding-top: 8px; }
 .panel-number { color: var(--blue); }
 .prepared-panel .panel-number { color: var(--blue-dark); }
 .prepared-heading-actions { gap: 8px; min-width: 0; }
+.cleanup-recovery { gap: 4px; }
+.cleanup-status {
+  appearance: none;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 0;
+  color: var(--blue-dark);
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 750;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.cleanup-recovery .button { min-height: 28px; height: 28px; padding: 4px 8px; }
 .smart-correction-state { color: var(--blue-dark); font-size: 0.68rem; font-weight: 700; white-space: nowrap; }
 #run-smart-correction { min-height: 30px; padding: 5px 9px; color: var(--blue-dark); }
 
@@ -1008,25 +1025,13 @@ textarea::placeholder { color: #9a988f; font-style: italic; }
 .outgoing-summary { flex: 0 1 auto; flex-wrap: wrap; align-items: center; gap: 10px; }
 .outgoing-statuses { justify-content: flex-start; gap: 18px; }
 .current-outgoing {
-  appearance: none;
   min-height: 28px;
-  padding: 0;
-  border: 0;
   color: var(--ink);
-  background: transparent;
-  cursor: default;
   font-family: "Iowan Old Style", Palatino, serif;
   font-size: 0.9rem;
   font-weight: 500;
+  line-height: 28px;
 }
-.current-outgoing.has-error-details {
-  color: var(--blue-dark);
-  cursor: pointer;
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 3px;
-}
-.current-outgoing:disabled { opacity: 1; }
 
 .outgoing-selector { display: inline-flex; }
 .outgoing-selector button {

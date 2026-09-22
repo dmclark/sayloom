@@ -44,6 +44,9 @@
     copyOutgoing: document.querySelector("#copy-outgoing"),
     copyOutgoingState: document.querySelector("#copy-outgoing-state"),
     publication: document.querySelector("#publication-state"),
+    cleanupRecovery: document.querySelector("#cleanup-recovery"),
+    cleanupStatus: document.querySelector("#cleanup-status"),
+    retryCleanup: document.querySelector("#retry-cleanup"),
     modelLabel: document.querySelector("#model-label"),
     cleanupDisclosure: document.querySelector("#cleanup-disclosure"),
     cleanupDisclosureSummary: document.querySelector("#cleanup-disclosure-summary"),
@@ -553,8 +556,8 @@
       waiting: "Using Original — Replacement Prepared pending",
       cleaning: "Using Original — Cleanup in progress",
       disabled: "Using Original — Cleanup disabled",
-      timeout: "Using Original — Cleanup timed out",
-      error: "Using Original — Cleanup unavailable",
+      timeout: "Using Original",
+      error: "Using Original",
     }[status] || "Using Original — Prepared unavailable";
   }
 
@@ -649,7 +652,7 @@
   }
 
   function errorTrigger(kind) {
-    return kind === "cleanup" ? elements.outgoingKind : elements.publication;
+    return kind === "cleanup" ? elements.cleanupStatus : elements.publication;
   }
 
   function makeError({ operation, summary, model = null, httpStatus = null, code, message, retryAction }) {
@@ -668,7 +671,8 @@
   function setError(kind, error) {
     errors[kind] = error;
     const trigger = errorTrigger(kind);
-    trigger.disabled = error === null;
+    if (kind === "cleanup") elements.cleanupRecovery.hidden = error === null;
+    else trigger.disabled = error === null;
     trigger.classList.toggle("has-error-details", error !== null);
     if (error === null) {
       trigger.removeAttribute("aria-label");
@@ -677,7 +681,8 @@
       }
       return;
     }
-    const statusText = trigger.textContent.trim();
+    const statusText = kind === "cleanup" ? "Cleanup unavailable" : trigger.textContent.trim();
+    if (kind === "cleanup") trigger.textContent = statusText;
     trigger.setAttribute("aria-label", `${statusText}. View ${kind} error details`);
   }
 
@@ -1254,6 +1259,7 @@
     saveWorkspacePreferences();
   });
   elements.runCleanup.addEventListener("click", () => runCleanup());
+  elements.retryCleanup.addEventListener("click", () => runCleanup());
   elements.runSmartCorrection.addEventListener("click", () => runCleanup("smart"));
   elements.selectOriginal.addEventListener("click", () => {
     originalOutgoingOverride = true;
@@ -1289,7 +1295,7 @@
     elements.original.focus();
   });
 
-  elements.outgoingKind.addEventListener("click", () => openErrorDetails("cleanup"));
+  elements.cleanupStatus.addEventListener("click", () => openErrorDetails("cleanup"));
   elements.publication.addEventListener("click", () => openErrorDetails("publication"));
   elements.closeErrorDialog.addEventListener("click", () => elements.errorDialog.close());
   elements.errorDialog.addEventListener("click", (event) => {

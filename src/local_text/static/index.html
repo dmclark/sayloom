@@ -146,6 +146,18 @@
                 <h2>Prepared</h2>
               </div>
               <div class="prepared-heading-actions">
+                <div id="cleanup-recovery" class="cleanup-recovery" hidden>
+                  <button
+                    id="cleanup-status"
+                    class="cleanup-status"
+                    type="button"
+                    aria-haspopup="dialog"
+                    aria-controls="error-details-dialog"
+                  >Cleanup unavailable</button>
+                  <button id="retry-cleanup" class="button button-quiet" type="button">
+                    Retry cleanup
+                  </button>
+                </div>
                 <span id="smart-correction-state" class="smart-correction-state" role="status" aria-live="polite" hidden></span>
                 <button id="run-smart-correction" class="button button-quiet" type="button" hidden>
                   Run Smart correction
@@ -386,7 +398,7 @@
               <button id="select-prepared" type="button" aria-pressed="false">Prepared</button>
               <button id="select-original" type="button" aria-pressed="true">Original</button>
             </div>
-            <button id="outgoing-kind" class="current-outgoing" type="button" aria-haspopup="dialog" aria-controls="error-details-dialog" disabled>Nothing yet</button>
+            <span id="outgoing-kind" class="current-outgoing">Nothing yet</span>
             <button id="copy-outgoing" class="button button-quiet" type="button" disabled>Copy</button>
             <span id="copy-outgoing-state" class="visually-hidden" role="status" aria-live="polite"></span>
           </div>
