@@ -401,6 +401,23 @@ def test_logs_fail_without_a_state_or_complete_readable_log_set(tmp_path: Path) 
     assert str(state_root) not in unreadable_file.stdout + unreadable_file.stderr
 
 
+def test_logs_reject_a_log_directory_outside_the_registered_state(tmp_path: Path) -> None:
+    state_root = tmp_path / "states"
+    assert run_dev(state_root, "create", "selected").returncode == 0
+    external_logs = tmp_path / "unregistered-logs"
+    external_logs.mkdir()
+    (external_logs / "service.log").write_text("private external output\n")
+    (external_logs / "service-error.log").write_text("private external error\n")
+    (state_root / "selected/logs").symlink_to(external_logs, target_is_directory=True)
+
+    result = run_dev(state_root, "logs")
+
+    assert result.returncode != 0
+    assert "selected development state logs are missing or unreadable" in result.stderr
+    assert "private external" not in result.stdout + result.stderr
+    assert str(external_logs) not in result.stdout + result.stderr
+
+
 def test_init_creates_branch_named_state_then_migrates_and_seeds(tmp_path: Path) -> None:
     state_root = tmp_path / "states"
     branch = subprocess.run(

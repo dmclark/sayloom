@@ -274,7 +274,11 @@ def show_logs(state: State, *, lines: int, follow: bool) -> None:
         ("service errors", log_directory / "service-error.log"),
     )
     try:
-        if any(path.is_symlink() or not path.is_file() for _, path in streams):
+        if (
+            log_directory.is_symlink()
+            or not log_directory.is_dir()
+            or any(path.is_symlink() or not path.is_file() for _, path in streams)
+        ):
             fail("selected development state logs are missing or unreadable")
         with ExitStack() as stack:
             opened = [
