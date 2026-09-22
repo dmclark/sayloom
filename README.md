@@ -132,10 +132,10 @@ verified does Smart run from the frozen Original and contemporaneous eligible co
 Cleanup is enabled by default for every Original update, regardless of whether it came from typing, ordinary paste, or compatible dictation. Replacing a fully selected Original clears the previous Prepared result for the new session; incremental input keeps the last result visible while cleanup is waiting or running. During either kind of reprocessing, outgoing state immediately fails open to the current Original text. Reloading the page clears both editors and the process-local outgoing state without changing durable prompt or cleanup settings. Dictation tools that signal a write with an untrusted synthetic paste followed by a trusted input event receive compatible caret and focus handling, but that event sequence is not a required input API.
 
 The fixed cleanup contract permits capitalization, punctuation, apostrophe, and
-whitespace normalization plus removal of one or more leading `erm`, `hmm`,
-`uh`, or `um` fillers. Every other lexical word must remain in source order.
-Instruction-following, added wording, substitutions, reordering, and other word
-removal are rejected locally and fail open to Original. Configured prompt
+whitespace normalization while preserving every lexical word in source order,
+including fillers such as `erm`, `hmm`, `uh`, and `um`. Instruction-following,
+added wording, substitutions, duplication, reordering, and word removal are
+rejected locally and fail open to Original. Configured prompt
 versions provide guidance only within this fixed boundary; broader grammar,
 tone, or wording rewriting is not a current cleanup mode.
 

@@ -18,7 +18,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
-from local_text.cleanup import LEXICAL_WORD, REMOVABLE_LEADING_FILLERS
+from local_text.cleanup import LEXICAL_WORD
 from local_text.cleanup_contract import build_cleanup_contract_snapshot, canonical_json
 from local_text.evaluation import CONSENT_VERSION, CONTRACT_VERSION, PURPOSE
 
@@ -35,9 +35,10 @@ PRIMARY_QUOTAS = {
     "punctuation_only": 8,
     "apostrophe_only": 8,
     "whitespace_or_paragraph_only": 8,
-    "leading_filler_only": 8,
+    "filler_presentation_only": 8,
     "mixed_permitted_transformations": 10,
 }
+LEXICAL_FILLERS = frozenset({"erm", "hmm", "uh", "um"})
 CHALLENGE_MINIMA = {
     "names_or_technical_terms": 12,
     "numbers_or_dates": 12,
@@ -90,7 +91,7 @@ class FrozenAnnotations(_StrictModel):
         "punctuation_only",
         "apostrophe_only",
         "whitespace_or_paragraph_only",
-        "leading_filler_only",
+        "filler_presentation_only",
         "mixed_permitted_transformations",
     ]
     challenge_tags: list[
@@ -329,20 +330,9 @@ def _strip_kind(value: str, prefix: str) -> str:
 def _transformation_categories(original: str, expected: str) -> set[str] | None:
     original_words, original_gaps = _word_parts(original)
     expected_words, expected_gaps = _word_parts(expected)
-    removed_fillers = 0
-    while (
-        removed_fillers < len(original_words)
-        and _word_base(original_words[removed_fillers]) in REMOVABLE_LEADING_FILLERS
-        and len(original_words) - removed_fillers > len(expected_words)
-    ):
-        removed_fillers += 1
-    if len(original_words) - removed_fillers != len(expected_words):
+    if len(original_words) != len(expected_words):
         return None
     categories: set[str] = set()
-    if removed_fillers:
-        categories.add("leading_filler")
-        original_words = original_words[removed_fillers:]
-        original_gaps = [original_gaps[0], *original_gaps[removed_fillers + 1 :]]
     for source, target in zip(original_words, expected_words, strict=True):
         if _word_base(source) != _word_base(target):
             return None
@@ -409,19 +399,22 @@ def _eligible(
     categories = _transformation_categories(case.source_text, case.expected_cleanup)
     if categories is None:
         return False, "impermissible_word_or_symbol_operation"
-    expected_stratum = (
-        "unchanged"
-        if not categories
-        else {
-            "capitalization": "capitalization_only",
-            "punctuation": "punctuation_only",
-            "apostrophe": "apostrophe_only",
-            "whitespace_or_paragraph": "whitespace_or_paragraph_only",
-            "leading_filler": "leading_filler_only",
-        }.get(next(iter(categories)))
-        if len(categories) == 1
-        else "mixed_permitted_transformations"
-    )
+    source_words, _source_gaps = _word_parts(case.source_text)
+    if any(_word_base(word) in LEXICAL_FILLERS for word in source_words):
+        expected_stratum = "filler_presentation_only"
+    else:
+        expected_stratum = (
+            "unchanged"
+            if not categories
+            else {
+                "capitalization": "capitalization_only",
+                "punctuation": "punctuation_only",
+                "apostrophe": "apostrophe_only",
+                "whitespace_or_paragraph": "whitespace_or_paragraph_only",
+            }.get(next(iter(categories)))
+            if len(categories) == 1
+            else "mixed_permitted_transformations"
+        )
     if case.annotations.primary_stratum != expected_stratum:
         return False, "primary_stratum_mismatch"
     return True, "eligible"

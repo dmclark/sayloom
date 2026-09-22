@@ -72,7 +72,11 @@ SYNTHETIC_FIXTURES = (
         "Synthetic first line Synthetic second line",
         "Synthetic first line\n\nSynthetic second line",
     ),
-    ("leading_filler_only", "Um synthetic filler sample", "Synthetic filler sample"),
+    (
+        "filler_presentation_only",
+        "Um synthetic filler sample",
+        "Um, synthetic filler sample.",
+    ),
     ("mixed_permitted_transformations", "synthetic mixed sample", "Synthetic mixed sample."),
     (
         "combined_preservation_challenge",

@@ -35,7 +35,7 @@ OPENAI_MAX_OUTPUT_TOKENS = 128_000
 EVALUATION_TOTAL_BUDGET_SECONDS = 20.0
 EVALUATION_PRIMARY_ATTEMPT_SECONDS = 12.0
 EVALUATION_FALLBACK_ATTEMPT_SECONDS = 8.0
-REMOVABLE_LEADING_FILLERS = frozenset({"erm", "hmm", "uh", "um"})
+SMART_UNREVIEWED_LEADING_FILLERS = frozenset({"erm", "hmm", "uh", "um"})
 LEXICAL_WORD = re.compile(r"\w+(?:['’]\w+)*['’]?")
 MINIMUM_ATTEMPT_SECONDS = 0.5
 ROUTE_BREAKER_BASE_SECONDS = 15.0
@@ -1231,21 +1231,9 @@ def _validate_output(
             )
         return prepared
 
-    removable_prefix = 0
-    while (
-        removable_prefix < len(original_words)
-        and original_words[removable_prefix] & REMOVABLE_LEADING_FILLERS
-    ):
-        removable_prefix += 1
-    if not any(
-        len(original_words) - start == len(prepared_words)
-        and all(
-            source_forms & prepared_forms
-            for source_forms, prepared_forms in zip(
-                original_words[start:], prepared_words, strict=True
-            )
-        )
-        for start in range(removable_prefix + 1)
+    if len(original_words) != len(prepared_words) or not all(
+        source_forms & prepared_forms
+        for source_forms, prepared_forms in zip(original_words, prepared_words, strict=True)
     ):
         raise ProviderRejectedOutputError("The cleanup result was not source-preserving")
     return prepared
@@ -1294,7 +1282,7 @@ def _lexical_edits(
     removable_prefix = 0
     while (
         removable_prefix < len(original)
-        and original[removable_prefix].forms & REMOVABLE_LEADING_FILLERS
+        and original[removable_prefix].forms & SMART_UNREVIEWED_LEADING_FILLERS
     ):
         removable_prefix += 1
     compared_original = original[removable_prefix:]

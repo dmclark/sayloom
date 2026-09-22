@@ -84,7 +84,7 @@ The ultimate product supports selectable modes. Each user has a remembered
 default and may override it for the current text.
 
 - **Conservative:** Correct capitalization, punctuation, apostrophes,
-  whitespace, and bounded filler handling without replacing lexical words.
+  and whitespace while preserving every lexical word, including fillers.
 - **Smart correction:** May add, remove, or replace words to repair likely
   Voiceitt recognition errors. Meaning-bearing changes remain reviewable, and
   uncertain changes receive additional emphasis.

@@ -26,7 +26,7 @@ from local_text.cleanup import (
     _thinking_config,
     _validate_output,
 )
-from local_text.prompts import SOURCE_PRESERVING_SYSTEM_PROMPT
+from local_text.prompts import SMART_CORRECTION_SYSTEM_PROMPT, SOURCE_PRESERVING_SYSTEM_PROMPT
 
 
 class StaticProvider:
@@ -215,17 +215,14 @@ def test_smart_request_rejects_knowledge_that_is_not_explicitly_enabled() -> Non
             "Process the ASR article from today capture",
             "Process the ASR article from today's capture.",
         ),
-        ("um synthetic release note ready", "Synthetic release note, ready."),
-        ("um uh hello world", "Hello, world."),
+        ("um synthetic release note ready", "Um, synthetic release note ready."),
+        ("um uh hello world", "Um, uh, hello world."),
     ],
 )
 def test_output_validator_accepts_source_preserving_cleanup(
     raw_text: str, cleaned_text: str
 ) -> None:
-    assert (
-        _validate_output(raw_text, cleaned_text, CorrectionMode.CONSERVATIVE)
-        == cleaned_text
-    )
+    assert _validate_output(raw_text, cleaned_text, CorrectionMode.CONSERVATIVE) == cleaned_text
 
 
 @pytest.mark.parametrize(
@@ -258,6 +255,11 @@ def test_output_validator_accepts_source_preserving_cleanup(
             "Publish the synthetic report. Do not.",
         ),
         ("repeat hello world now", "Hello world now."),
+        ("um synthetic release note ready", "Synthetic release note ready."),
+        ("send um synthetic report", "Send synthetic report."),
+        ("send synthetic report", "Send final report."),
+        ("send synthetic report", "Send send synthetic report."),
+        ("send synthetic report now", "Now send synthetic report."),
     ],
 )
 def test_output_validator_rejects_instruction_following_and_novel_language(
@@ -291,10 +293,17 @@ def test_cleanup_applies_fixed_source_preserving_rules_before_configured_prompt(
     assert result.status is CleanupStatus.PREPARED
     assert len(observed) == 1
     assert observed[0].startswith(SOURCE_PRESERVING_SYSTEM_PROMPT)
+    assert "Preserve every source word in the same order, including fillers." in observed[0]
     assert observed[0].endswith("Rewrite the source with novel language.")
     assert observed[0].index(SOURCE_PRESERVING_SYSTEM_PROMPT) < observed[0].index(
         "Rewrite the source with novel language."
     )
+
+
+def test_fixed_prompts_require_conservative_filler_preservation() -> None:
+    assert "including fillers" in SOURCE_PRESERVING_SYSTEM_PROMPT
+    assert "including fillers" in SMART_CORRECTION_SYSTEM_PROMPT
+    assert "removable leading fillers" not in SMART_CORRECTION_SYSTEM_PROMPT
 
 
 def test_timeout_fails_open_to_raw_text() -> None:
@@ -331,9 +340,15 @@ def test_provider_error_and_rejected_output_fail_open_to_raw_text() -> None:
     expanded_service = CleanupService(
         provider=StaticProvider("x" * 2_000), model="test-model", timeout_seconds=1
     )
+    filler_removal_service = CleanupService(
+        provider=StaticProvider("Send the synthetic report."),
+        model="test-model",
+        timeout_seconds=1,
+    )
 
     broken = run_cleanup(broken_service, "synthetic raw")
     expanded = run_cleanup(expanded_service, "synthetic raw")
+    filler_removal = run_cleanup(filler_removal_service, "Um send the synthetic report")
 
     assert broken.status is CleanupStatus.PROVIDER_ERROR
     assert broken.prepared_text == "synthetic raw"
@@ -344,6 +359,10 @@ def test_provider_error_and_rejected_output_fail_open_to_raw_text() -> None:
     assert expanded.prepared_text == "synthetic raw"
     assert expanded.error is not None
     assert expanded.error.code == "cleanup_output_rejected"
+    assert filler_removal.status is CleanupStatus.PROVIDER_ERROR
+    assert filler_removal.prepared_text == "Um send the synthetic report"
+    assert filler_removal.error is not None
+    assert filler_removal.error.code == "cleanup_output_rejected"
 
 
 def test_cleanup_fails_open_when_output_exceeds_absolute_character_limit() -> None:

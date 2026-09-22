@@ -22,7 +22,6 @@ from local_text.cleanup import (
     OPENAI_GPT_56_LUNA,
     OPENAI_MAX_OUTPUT_TOKENS,
     PREPARED_TEXT_SCHEMA,
-    REMOVABLE_LEADING_FILLERS,
     SOURCE_TEXT_FRAME,
     GeminiAdapter,
     OpenAIAdapter,
@@ -102,7 +101,6 @@ def build_cleanup_contract_snapshot(
         constants={
             "lexical_word_pattern": LEXICAL_WORD.pattern,
             "maximum_prepared_text_characters": MAX_PREPARED_TEXT_CHARACTERS,
-            "removable_leading_fillers": sorted(REMOVABLE_LEADING_FILLERS),
         },
     )
     output_cap_bytes = _implementation_bytes(
