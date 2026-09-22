@@ -40,6 +40,7 @@ itself rather than being duplicated here.
 
 | Document | Authority |
 | --- | --- |
+| [Correction modes and fallback routing decision](adr/0001-correction-modes-and-fallback-routing.md) | Accepted separation of correction authority, automatic preparation, provider fallback, latency, and pre-pilot Smart disclosure. |
 | [Automatic correction prototype specification](automatic-correction-prototype-spec.md) | Focused definition of done for the automatic-correction prototype. |
 | [Intended-meaning evidence collection contract](intended-meaning-evidence-collection-contract.md) | Approved interaction, privacy, and external-package boundary for prospective evidence collection. |
 | [Evaluation and automatic-correction prototype map](evaluation-mvp-map.md) | Current milestone order and separation of Cleanup and Smart evaluation. |
