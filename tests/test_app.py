@@ -187,9 +187,10 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
         1
     ].split("</article>", maxsplit=1)[0]
     assert "readonly" in prepared_panel
-    assert response.text.index('class="outgoing-strip"') < response.text.index(
-        'id="cleanup-status"'
-    )
+    assert 'id="cleanup-disclosure"' in prepared_panel
+    assert 'id="cleanup-disclosure"' not in response.text.split(
+        'class="outgoing-strip"', maxsplit=1
+    )[1]
 
 
 def test_status_errors_use_one_accessible_privacy_safe_dialog(
@@ -201,17 +202,50 @@ def test_status_errors_use_one_accessible_privacy_safe_dialog(
     script = client.get("/static/app.js").text
     stylesheet = client.get("/static/app.css").text
 
-    assert '<button id="cleanup-status"' in page
+    prepared_header = page.split(
+        'class="text-panel prepared-panel"', maxsplit=1
+    )[1].split("</header>", maxsplit=1)[0]
+    outgoing = page.split('class="outgoing-strip"', maxsplit=1)[1].split(
+        "</section>", maxsplit=1
+    )[0]
+
+    assert 'id="cleanup-status"' in prepared_header
+    assert "Cleanup unavailable</button>" in prepared_header
+    assert '<button id="retry-cleanup"' in prepared_header
+    assert "Retry cleanup\n" in prepared_header
+    assert 'id="cleanup-status"' not in outgoing
+    assert 'id="retry-cleanup"' not in outgoing
+    assert '<span id="outgoing-kind"' in page
     assert '<button id="publication-state"' in page
     assert page.count('<dialog id="error-details-dialog"') == 1
     assert page.count('aria-controls="error-details-dialog"') == 2
     assert 'id="cleanup-error"' not in page
     assert 'id="publication-error"' not in page
     assert "Copy details" in page
-    assert 'elements.status.addEventListener("click"' in script
+    assert 'elements.cleanupStatus.addEventListener("click"' in script
     assert 'elements.publication.addEventListener("click"' in script
     assert "elements.errorDialog.showModal()" in script
     assert "navigator.clipboard.writeText" in script
+    assert 'id="copy-outgoing-state" class="visually-hidden"' in page
+    assert ">Copy</button>" in page
+    assert "Copy outgoing" not in page
+    assert 'id="publication-state"' in page and "disabled hidden" in page
+    assert 'elements.publication.hidden = nextState !== "error"' in script
+
+    retry_handler = script.split(
+        'elements.retryCleanup.addEventListener("click"', maxsplit=1
+    )[1].split(";", maxsplit=1)[0]
+    assert "runCleanup()" in retry_handler
+    assert "copyOutgoing" not in retry_handler
+    assert "requestEvidenceJudgment" not in retry_handler
+    assert "publishNow" not in retry_handler
+
+    feedback = script.split("function showCopyFeedback", maxsplit=1)[1].split(
+        "async function copyOutgoing", maxsplit=1
+    )[0]
+    assert 'elements.copyOutgoing.textContent = "Copy"' in feedback
+    assert 'elements.copyOutgoingState.textContent = ""' in feedback
+    assert "1_500" in feedback
 
     error_fields = script.split("function errorFields", maxsplit=1)[1].split(
         "function errorTrigger", maxsplit=1
@@ -1117,11 +1151,7 @@ def test_outgoing_state_is_published_and_cleared_in_memory(
         "revision": 1,
     }
     assert published.json() == expanded
-    assert client.get("/api/outgoing-state").json() == {
-        **expanded,
-        "delivery_allowed": True,
-        "delivery_error": None,
-    }
+    assert client.get("/api/outgoing-state").json() == expanded
 
     cleared = client.delete("/api/outgoing-state")
     assert cleared.status_code == 200
@@ -1311,7 +1341,7 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     assert "selectedPromptVersionId" not in script.text
     assert "originalOutgoingOverride = true" in script.text
     assert "originalOutgoingOverride = false" in script.text
-    assert "Original fallback · replacement Prepared pending" in script.text
+    assert "Using Original — Replacement Prepared pending" in script.text
     assert "original_text: originalText" in script.text
     assert "prepared_text: preparedText" in script.text
     assert 'usePrepared ? "prepared" : "original"' in script.text
@@ -1674,7 +1704,7 @@ const vm = require("vm");
 class Element {
   constructor() {
     this.value = ""; this.checked = true; this.disabled = false; this.hidden = false;
-    this.dataset = {}; this.options = [{ textContent: "" }]; this.children = [];
+    this.open = false; this.dataset = {}; this.options = [{ textContent: "" }]; this.children = [];
     this.listeners = {}; this.textContent = ""; this.attributes = {};
     this.style = { setProperty() {} };
     this.classList = { add() {}, remove() {}, toggle() {}, contains() { return false; } };
@@ -1695,7 +1725,8 @@ class Element {
   setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
   getBoundingClientRect() { return { top: 0, height: 100 }; }
   focus() { document.activeElement = this; }
-  close() {}
+  showModal() { this.open = true; }
+  close() { this.open = false; }
 }
 const elements = {};
 const document = {
@@ -1707,6 +1738,7 @@ const document = {
 const publications = [];
 const copied = [];
 let malformed = false;
+let cleanupRequests = 0;
 const response = (body) => ({ ok: true, status: 200, json: async () => body });
 const fetch = async (url, options = {}) => {
   if (url === "/api/config") return response({
@@ -1720,21 +1752,24 @@ const fetch = async (url, options = {}) => {
     if (options.body) publications.push(JSON.parse(options.body));
     return response({ revision: publications.length + 1 });
   }
-  if (url === "/api/cleanup" && malformed) return response({
-    prepared_text: "unlisted lexical change", status: "prepared", provider: "test",
-    model: "model-b", lexical_repairs: [], attempts: [],
-  });
-  if (url === "/api/cleanup") return response({
-    prepared_text: "send the report now", status: "prepared", provider: "test", model: "model-a",
-    lexical_repairs: [
-      { operation: "replacement", original_span: { start: 5, end: 8, text: "teh" },
-        prepared_span: { start: 5, end: 8, text: "the" }, context: "send the report now",
-        queue_position: 1, inspection_reason: "Prepared replaces wording; verify meaning." },
-      { operation: "addition", original_span: { start: 15, end: 15, text: "" },
-        prepared_span: { start: 16, end: 19, text: "now" }, context: "send the report now",
-        queue_position: 2, inspection_reason: "Prepared adds wording; verify meaning." },
-    ], attempts: [],
-  });
+  if (url === "/api/cleanup") {
+    cleanupRequests += 1;
+    if (malformed) return response({
+      prepared_text: "unlisted lexical change", status: "prepared", provider: "test",
+      model: "model-b", lexical_repairs: [], attempts: [],
+    });
+    return response({
+      prepared_text: "send the report now", status: "prepared", provider: "test", model: "model-a",
+      lexical_repairs: [
+        { operation: "replacement", original_span: { start: 5, end: 8, text: "teh" },
+          prepared_span: { start: 5, end: 8, text: "the" }, context: "send the report now",
+          queue_position: 1, inspection_reason: "Prepared replaces wording; verify meaning." },
+        { operation: "addition", original_span: { start: 15, end: 15, text: "" },
+          prepared_span: { start: 16, end: 19, text: "now" }, context: "send the report now",
+          queue_position: 2, inspection_reason: "Prepared adds wording; verify meaning." },
+      ], attempts: [],
+    });
+  }
   throw new Error(`Unexpected request: ${url}`);
 };
 const window = {
@@ -1780,11 +1815,32 @@ async function settle() { await new Promise((resolve) => setImmediate(resolve));
   await elements["#smart-task-context"].dispatch("input");
   malformed = true;
   await elements["#run-cleanup"].dispatch("click");
+  const cleanupTrigger = elements["#cleanup-status"];
+  await cleanupTrigger.dispatch("click");
+  const malformedResult = {
+    prepared: elements["#prepared-text"].value,
+    status: elements["#outgoing-kind"].dataset.state,
+    outgoing: elements["#outgoing-kind"].textContent,
+    trigger: cleanupTrigger.textContent,
+    recoveryHidden: elements["#cleanup-recovery"].hidden,
+    dialogOpen: elements["#error-details-dialog"].open,
+    dialogKind: elements["#error-details-dialog"].dataset.kind,
+  };
+  const invalidatedBeforeRetry = elements["#smart-repair-review"].hidden;
+  malformed = false;
+  const cleanupRequestsBeforeRetry = cleanupRequests;
+  const copiedBeforeRetry = copied.length;
+  await elements["#retry-cleanup"].dispatch("click"); await settle();
   process.stdout.write(JSON.stringify({
-    before, inspected, copied, invalidated: elements["#smart-repair-review"].hidden,
-    malformed: {
+    before, inspected, copied, invalidated: invalidatedBeforeRetry,
+    malformed: malformedResult,
+    retry: {
       prepared: elements["#prepared-text"].value,
-      status: elements["#cleanup-status"].dataset.state,
+      outgoing: elements["#outgoing-kind"].textContent,
+      cleanupRequestDelta: cleanupRequests - cleanupRequestsBeforeRetry,
+      copiedDelta: copied.length - copiedBeforeRetry,
+      recoveryHidden: elements["#cleanup-recovery"].hidden,
+      dialogOpen: elements["#error-details-dialog"].open,
     },
   }));
 })().catch((error) => { process.stderr.write(error.stack); process.exit(1); });
@@ -1812,7 +1868,23 @@ async function settle() { await new Promise((resolve) => setImmediate(resolve));
         },
         "copied": ["send the report now"],
         "invalidated": True,
-        "malformed": {"prepared": "send teh report", "status": "error"},
+        "malformed": {
+            "prepared": "send teh report",
+            "status": "error",
+            "outgoing": "Using Original",
+            "trigger": "Cleanup unavailable",
+            "recoveryHidden": False,
+            "dialogOpen": True,
+            "dialogKind": "cleanup",
+        },
+        "retry": {
+            "prepared": "send the report now",
+            "outgoing": "Using Prepared",
+            "cleanupRequestDelta": 1,
+            "copiedDelta": 0,
+            "recoveryHidden": True,
+            "dialogOpen": False,
+        },
     }
 
 
@@ -1852,8 +1924,7 @@ async function run(originalValue) {
     "#original-text": original,
     "#prepared-text": new Element(), "#cleanup-enabled": new Element(),
     "#run-cleanup": new Element(), "#clear-text": new Element(),
-    "#toggle-original": new Element(), "#cleanup-status": new Element(),
-    "#cleanup-status-text": new Element(), "#original-count": new Element(),
+    "#toggle-original": new Element(), "#original-count": new Element(),
     "#prepared-count": new Element(), "#outgoing-kind": new Element(),
     "#select-prepared": new Element(), "#select-original": new Element(),
     "#publication-state": new Element(), "#model-label": new Element(),

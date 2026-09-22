@@ -369,7 +369,7 @@ def test_confirmed_observation_is_verified_before_smart_receives_only_frozen_inp
     assert record["confirmed_at"].endswith("Z")
 
 
-def test_outgoing_delivery_requires_current_receipt_and_reload_disarms(
+def test_outgoing_state_requires_current_receipt_and_never_queues_delivery(
     initialized_settings: Settings, tmp_path: Path
 ) -> None:
     evaluation_directory, _package = configured_package(tmp_path)
@@ -396,33 +396,13 @@ def test_outgoing_delivery_requires_current_receipt_and_reload_disarms(
         "evidence_receipt": None,
     }
     assert client.put("/api/outgoing-state", json=outgoing).status_code == 200
-    blocked = client.get("/api/outgoing-state").json()
-    assert blocked["delivery_allowed"] is False
-    assert blocked["delivery_error"] == (
-        "Complete intended-meaning confirmation in Sayloom, then retry."
-    )
-    delivery = client.post("/api/outgoing-delivery")
-    assert delivery.status_code == 202
-    request_id = delivery.json()["request_id"]
-    assert delivery.json()["status"] == "waiting_for_evidence"
-    assert client.get(
-        "/api/outgoing-delivery/pending",
-        params={"lease_token": lease["lease_token"]},
-    ).json() == {
-        "status": "waiting_for_evidence",
-        "request_id": request_id,
+    blocked = client.get("/api/outgoing-state")
+    assert blocked.status_code == 409
+    assert blocked.json() == {
+        "detail": "Complete intended-meaning confirmation in Sayloom, then retry."
     }
-    completed = client.post(
-        f"/api/outgoing-delivery/{request_id}/complete",
-        json={
-            "lease_token": lease["lease_token"],
-            "outgoing_text": "Synthetic source",
-        },
-    )
-    assert completed.json()["status"] == "ready"
-    assert client.get(f"/api/outgoing-delivery/{request_id}").json()[
-        "outgoing_text"
-    ] == "Synthetic source"
+    assert "Synthetic source" not in blocked.text
+    assert client.post("/api/outgoing-delivery").status_code == 404
 
     frozen = client.post(
         "/api/evidence-collection/trigger",
@@ -444,7 +424,9 @@ def test_outgoing_delivery_requires_current_receipt_and_reload_disarms(
     assert confirmed["artifact_type"] == "exclusion"
     outgoing["evidence_receipt"] = confirmed["evidence_receipt"]
     client.put("/api/outgoing-state", json=outgoing)
-    assert client.get("/api/outgoing-state").json()["delivery_allowed"] is True
+    released = client.get("/api/outgoing-state")
+    assert released.status_code == 200
+    assert released.json()["outgoing_text"] == "Synthetic source"
 
     client.get(
         "/api/config",
@@ -453,11 +435,11 @@ def test_outgoing_delivery_requires_current_receipt_and_reload_disarms(
             "X-Evidence-Previous-Lease": lease["lease_token"],
         },
     )
-    assert client.get("/api/outgoing-state").json()["delivery_allowed"] is False
+    assert client.get("/api/outgoing-state").status_code == 409
     outgoing["evidence_lease_token"] = None
     outgoing["evidence_receipt"] = None
     client.put("/api/outgoing-state", json=outgoing)
-    assert client.get("/api/outgoing-state").json()["delivery_allowed"] is True
+    assert client.get("/api/outgoing-state").status_code == 200
 
 
 def test_stale_config_reload_cannot_disarm_a_newer_browser_lease(
@@ -539,16 +521,6 @@ def test_stale_config_reload_cannot_disarm_a_newer_browser_lease(
         ),
         ("smart", "#run-cleanup", "exclude", "STALE BROWSER VALUE", "prepared"),
         ("smart", "#copy-outgoing", "edit_intended", "Send the report.", "prepared"),
-        ("smart", "target", "edit_intended", "Send the report.", "prepared"),
-        ("conservative", "target", "edit_intended", "Send the report.", "prepared"),
-        (
-            "smart",
-            "target",
-            "presentation_cleanup_needed",
-            "STALE BROWSER VALUE",
-            "provider_error",
-        ),
-        ("smart", "target-cancel", "", "", "cancelled"),
     ],
 )
 def test_browser_armed_smart_conceals_candidate_until_confirmation(
@@ -561,6 +533,8 @@ def test_browser_armed_smart_conceals_candidate_until_confirmation(
 ) -> None:
     client = TestClient(create_app(initialized_settings))
     script = client.get("/static/app.js").text
+    assert "/api/outgoing-delivery" not in script
+    assert "scheduleDeliveryPoll" not in script
     harness = r"""
 const vm = require("vm");
 class Element {
@@ -602,9 +576,10 @@ const document = {
 };
 const requests = [];
 const copied = [];
+const routineLogs = [];
 let confirmationReceipt = false;
-let pendingDeliveryReturned = false;
-let targetInvoked = false;
+let outgoingReads = 0;
+let copyConflictReturned = false;
 const response = (body, status = 200) => ({
   ok: status >= 200 && status < 300, status, json: async () => body,
 });
@@ -616,20 +591,20 @@ const fetch = async (url, options = {}) => {
     cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
     evidence_collection: { ready: true }, evaluation_configuration: { available: false },
   });
-  if (url === "/api/outgoing-state") return response(
-    options.method === "PUT"
-      ? { revision: 1 }
-      : { revision: 1, delivery_allowed: confirmationReceipt, outgoing_text: "Send the report." },
-  );
-  if (url.startsWith("/api/outgoing-delivery/pending")) {
-    if (targetInvoked && !pendingDeliveryReturned) {
-      pendingDeliveryReturned = true;
-      return response({ status: "waiting_for_evidence", request_id: "request-1" });
+  if (url === "/api/outgoing-state") {
+    if (options.method === "PUT") return response({ revision: 1 });
+    outgoingReads += 1;
+    if (
+      process.argv[3] === "#copy-outgoing"
+      && confirmationReceipt
+      && !copyConflictReturned
+    ) {
+      copyConflictReturned = true;
+      return response({
+        detail: "Complete intended-meaning confirmation in Sayloom, then retry.",
+      }, 409);
     }
-    return response(null, 204);
-  }
-  if (url === "/api/outgoing-delivery/request-1/complete") {
-    return response({ status: "ready", outgoing_text: body.outgoing_text });
+    return response({ revision: 1, outgoing_text: "Send the report." });
   }
   if (url === "/api/evidence-collection/arm") return response({ lease_token: "lease-1" });
   if (url === "/api/evidence-collection/trigger") {
@@ -685,7 +660,12 @@ const window = {
   matchMedia() { return { matches: false, addEventListener() {} }; },
 };
 const context = {
-  document, window, fetch, AbortController, Promise, console,
+  document, window, fetch, AbortController, Promise,
+  console: {
+    log(...values) { routineLogs.push(values.join(" ")); },
+    warn(...values) { routineLogs.push(values.join(" ")); },
+    error(...values) { routineLogs.push(values.join(" ")); },
+  },
   navigator: { clipboard: { async writeText(value) { copied.push(value); } } },
 };
 const settle = async () => {
@@ -705,21 +685,7 @@ const settle = async () => {
     elements["#smart-task-context"].value = "Stale hidden Smart context";
   }
   elements["#prepared-text"].value = "STALE PREPARED";
-  let beforeTarget = null;
-  if (process.argv[3].startsWith("target")) {
-    await new Promise((resolve) => setTimeout(resolve, 800)); await settle();
-    beforeTarget = {
-      prepared: elements["#prepared-text"].value,
-      dialogOpen: elements["#evidence-judgment-dialog"].open,
-      candidateRequests: requests.filter(
-        (item) => item.url === "/api/cleanup" || item.url.endsWith("/confirm"),
-      ).length,
-    };
-    targetInvoked = true;
-    await new Promise((resolve) => setTimeout(resolve, 300)); await settle();
-  } else {
-    await elements[process.argv[3]].dispatch("click"); await settle();
-  }
+  await elements[process.argv[3]].dispatch("click"); await settle();
   const before = {
     prepared: elements["#prepared-text"].value,
     dialogOpen: elements["#evidence-judgment-dialog"].open,
@@ -729,31 +695,35 @@ const settle = async () => {
         || item.url.endsWith("/confirm"),
     ).length,
   };
-  if (process.argv[3] === "target-cancel") {
-    await elements["#cancel-evidence-judgment"].dispatch("click"); await settle();
-  } else {
-    const disposition = process.argv[4];
-    const dispositionSelect = elements["#evidence-disposition"];
-    dispositionSelect.name = "evidence-disposition";
-    dispositionSelect.value = disposition;
-    await elements["#evidence-judgment-form"].dispatch("change", { target: dispositionSelect });
-    elements["#evidence-intended-text"].value = process.argv[5];
-    await elements["#evidence-judgment-form"].dispatch("submit"); await settle();
-  }
+  const disposition = process.argv[4];
+  const dispositionSelect = elements["#evidence-disposition"];
+  dispositionSelect.name = "evidence-disposition";
+  dispositionSelect.value = disposition;
+  await elements["#evidence-judgment-form"].dispatch("change", { target: dispositionSelect });
+  elements["#evidence-intended-text"].value = process.argv[5];
+  await elements["#evidence-judgment-form"].dispatch("submit"); await settle();
+  let copyConflict = null;
   if (process.argv[3] === "#copy-outgoing") {
+    await elements["#copy-outgoing"].dispatch("click"); await settle();
+    copyConflict = {
+      copied: [...copied],
+      message: elements["#copy-outgoing-state"].textContent,
+      outgoingReads,
+    };
     await elements["#copy-outgoing"].dispatch("click"); await settle();
   }
   process.stdout.write(JSON.stringify({
-    beforeTarget,
     before,
+    copyConflict,
     dialogOpenAfter: elements["#evidence-judgment-dialog"].open,
     armedLabel: elements["#evidence-collection-state"].textContent,
     prepared: elements["#prepared-text"].value,
-    status: elements["#cleanup-status"].dataset.state,
+    status: elements["#outgoing-kind"].dataset.state,
     repairCount: elements["#prepared-text"].dataset.repairCount,
     copied,
+    outgoingReads,
+    routineLogs,
     requests: requests.filter((item) => item.url.startsWith("/api/evidence-collection")),
-    deliveries: requests.filter((item) => item.url.includes("/api/outgoing-delivery")),
   }));
 })().catch((error) => { process.stderr.write(error.stack); process.exit(1); });
 """
@@ -776,14 +746,6 @@ const settle = async () => {
     assert result.returncode == 0, result.stderr
     observed = json.loads(result.stdout)
 
-    if action_selector.startswith("target"):
-        assert observed["beforeTarget"] == {
-            "prepared": "STALE PREPARED",
-            "dialogOpen": False,
-            "candidateRequests": 0,
-        }
-    else:
-        assert observed["beforeTarget"] is None
     assert observed["before"] == {
         "prepared": "",
         "dialogOpen": True,
@@ -805,16 +767,24 @@ const settle = async () => {
     assert observed["copied"] == (
         ["Send the report."] if action_selector == "#copy-outgoing" else []
     )
+    if action_selector == "#copy-outgoing":
+        assert observed["copyConflict"] == {
+            "copied": [],
+            "message": "Complete intended-meaning confirmation in Sayloom, then retry.",
+            "outgoingReads": 2,
+        }
+        assert observed["outgoingReads"] == 3
+        assert "Send teh report." not in observed["copyConflict"]["message"]
+    else:
+        assert observed["copyConflict"] is None
+        assert observed["outgoingReads"] == 1
+    assert observed["routineLogs"] == []
     expected_evidence_requests = [
         "/api/evidence-collection/arm",
         "/api/evidence-collection/cancel",
         "/api/evidence-collection/trigger",
     ]
-    expected_evidence_requests.append(
-        "/api/evidence-collection/cancel"
-        if result_status == "cancelled"
-        else "/api/evidence-collection/confirm"
-    )
+    expected_evidence_requests.append("/api/evidence-collection/confirm")
     assert [request["url"] for request in observed["requests"]] == expected_evidence_requests
     trigger = observed["requests"][2]
     assert trigger["body"] == {
@@ -823,28 +793,16 @@ const settle = async () => {
         "task_context": "Synthetic project update" if default_mode == "smart" else None,
         "correction_mode": default_mode,
     }
-    if result_status != "cancelled":
-        confirmation = observed["requests"][3]
-        expected_intended = (
-            None
-            if disposition in {"not_voiceitt", "cannot_reliably_reconstruct", "exclude"}
-            else "Send the report."
-            if disposition == "edit_intended"
-            else "Send teh report."
-        )
-        assert confirmation["body"]["intended_text"] == expected_intended
+    confirmation = observed["requests"][3]
+    expected_intended = (
+        None
+        if disposition in {"not_voiceitt", "cannot_reliably_reconstruct", "exclude"}
+        else "Send the report."
+        if disposition == "edit_intended"
+        else "Send teh report."
+    )
+    assert confirmation["body"]["intended_text"] == expected_intended
     assert "intended_text" not in trigger["body"]
-    if action_selector.startswith("target"):
-        completion = observed["deliveries"][-1]
-        assert completion["url"] == "/api/outgoing-delivery/request-1/complete"
-        assert completion["body"] == {
-            "lease_token": "lease-1",
-            "outgoing_text": (
-                "Send the report." if result_status == "prepared" else "Send teh report."
-            ),
-        }
-    else:
-        assert observed["deliveries"] == []
 
 
 def test_browser_collection_failure_requires_explicit_recovery_choice(

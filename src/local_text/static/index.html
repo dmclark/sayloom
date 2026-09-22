@@ -146,6 +146,18 @@
                 <h2>Prepared</h2>
               </div>
               <div class="prepared-heading-actions">
+                <div id="cleanup-recovery" class="cleanup-recovery" hidden>
+                  <button
+                    id="cleanup-status"
+                    class="cleanup-status"
+                    type="button"
+                    aria-haspopup="dialog"
+                    aria-controls="error-details-dialog"
+                  >Cleanup unavailable</button>
+                  <button id="retry-cleanup" class="button button-quiet" type="button">
+                    Retry cleanup
+                  </button>
+                </div>
                 <span id="smart-correction-state" class="smart-correction-state" role="status" aria-live="polite" hidden></span>
                 <button id="run-smart-correction" class="button button-quiet" type="button" hidden>
                   Run Smart correction
@@ -160,6 +172,19 @@
               </div>
             </header>
             <div class="prepared-body">
+              <details id="cleanup-disclosure" class="cleanup-disclosure">
+                <summary>
+                  <span class="cleanup-disclosure-label">Cleanup route</span>
+                  <strong id="cleanup-disclosure-summary">Loading configuration…</strong>
+                </summary>
+                <div class="cleanup-disclosure-detail">
+                  <ol id="cleanup-route-list" aria-label="Configured cleanup route order"></ol>
+                  <p id="cleanup-processing-disclosure"></p>
+                  <p id="cleanup-fallback-disclosure"></p>
+                  <p id="cleanup-corpus-disclosure"></p>
+                  <p id="cleanup-validation-detail" class="cleanup-validation-detail" hidden></p>
+                </div>
+              </details>
               <div class="editor-wrap">
                 <textarea
                   id="prepared-text"
@@ -373,34 +398,17 @@
               <button id="select-prepared" type="button" aria-pressed="false">Prepared</button>
               <button id="select-original" type="button" aria-pressed="true">Original</button>
             </div>
-            <strong id="outgoing-kind">Nothing yet</strong>
-            <button id="copy-outgoing" class="button button-quiet" type="button" disabled>Copy outgoing</button>
+            <span id="outgoing-kind" class="current-outgoing">Nothing yet</span>
+            <button id="copy-outgoing" class="button button-quiet" type="button" disabled>Copy</button>
             <span id="copy-outgoing-state" class="visually-hidden" role="status" aria-live="polite"></span>
           </div>
           <div class="outgoing-statuses">
-            <button id="cleanup-status" class="status-pill" data-state="unchanged" type="button" aria-haspopup="dialog" aria-controls="error-details-dialog" disabled>
-              <span class="status-light" aria-hidden="true"></span>
-              <span id="cleanup-status-text" role="status" aria-live="polite">Ready</span>
-            </button>
-            <button id="publication-state" class="publication-state" type="button" aria-haspopup="dialog" aria-controls="error-details-dialog" disabled>
+            <button id="publication-state" class="publication-state" type="button" aria-haspopup="dialog" aria-controls="error-details-dialog" disabled hidden>
               <span aria-hidden="true"></span>
               <span role="status" aria-live="polite">State ready</span>
             </button>
           </div>
         </div>
-        <details id="cleanup-disclosure" class="cleanup-disclosure">
-          <summary>
-            <span class="cleanup-disclosure-label">Cleanup route</span>
-            <strong id="cleanup-disclosure-summary">Loading configuration…</strong>
-          </summary>
-          <div class="cleanup-disclosure-detail">
-            <ol id="cleanup-route-list" aria-label="Configured cleanup route order"></ol>
-            <p id="cleanup-processing-disclosure"></p>
-            <p id="cleanup-fallback-disclosure"></p>
-            <p id="cleanup-corpus-disclosure"></p>
-            <p id="cleanup-validation-detail" class="cleanup-validation-detail" hidden></p>
-          </div>
-        </details>
       </section>
     </main>
 

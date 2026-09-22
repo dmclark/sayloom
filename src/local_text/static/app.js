@@ -3,7 +3,6 @@
 
   const CLEANUP_DEBOUNCE_MS = 700;
   const PUBLICATION_DEBOUNCE_MS = 150;
-  const DELIVERY_POLL_MS = 250;
   const WORKSPACE_PREFERENCES_KEY = "local-text.workspace-preferences.v1";
   const DEFAULT_STACKED_SHARE = 55;
   const DEFAULT_SIDE_BY_SIDE_SHARE = 50;
@@ -37,8 +36,6 @@
     smartRepairReason: document.querySelector("#smart-repair-reason"),
     runCleanup: document.querySelector("#run-cleanup"),
     clear: document.querySelector("#clear-text"),
-    status: document.querySelector("#cleanup-status"),
-    statusText: document.querySelector("#cleanup-status-text"),
     originalCount: document.querySelector("#original-count"),
     preparedCount: document.querySelector("#prepared-count"),
     outgoingKind: document.querySelector("#outgoing-kind"),
@@ -47,6 +44,9 @@
     copyOutgoing: document.querySelector("#copy-outgoing"),
     copyOutgoingState: document.querySelector("#copy-outgoing-state"),
     publication: document.querySelector("#publication-state"),
+    cleanupRecovery: document.querySelector("#cleanup-recovery"),
+    cleanupStatus: document.querySelector("#cleanup-status"),
+    retryCleanup: document.querySelector("#retry-cleanup"),
     modelLabel: document.querySelector("#model-label"),
     cleanupDisclosure: document.querySelector("#cleanup-disclosure"),
     cleanupDisclosureSummary: document.querySelector("#cleanup-disclosure-summary"),
@@ -164,19 +164,10 @@
     cancelEvaluationExportSecondary: document.querySelector("#cancel-evaluation-export-secondary"),
   };
 
-  const statusLabels = {
-    unchanged: "Unchanged",
-    waiting: "Waiting",
-    cleaning: "Cleaning…",
-    prepared: "Prepared",
-    disabled: "Disabled · Original",
-    timeout: "Timeout · Original",
-    error: "Error · Original",
-  };
-
   let status = "unchanged";
   let cleanupTimer = null;
   let publicationTimer = null;
+  let copyFeedbackTimer = null;
   let publicationChain = Promise.resolve();
   let publicationSequence = 0;
   let activeRequest = null;
@@ -213,7 +204,6 @@
   let frozenEvidence = null;
   let evidenceRecovery = null;
   let evidenceCancellation = Promise.resolve();
-  let deliveryPollTimer = null;
   let evaluationAvailable = false;
   let currentEvaluation = null;
   let evaluationCases = [];
@@ -248,8 +238,8 @@
 
   function setStatus(nextStatus) {
     status = nextStatus;
-    elements.status.dataset.state = nextStatus;
-    elements.statusText.textContent = statusLabels[nextStatus] || nextStatus;
+    elements.outgoingKind.dataset.state = nextStatus;
+    renderCountsAndSelection();
   }
 
   function effectiveCorrectionMode() {
@@ -558,17 +548,17 @@
 
   function fallbackLabel() {
     if (!elements.original.value) return "Nothing yet";
-    if (originalOutgoingOverride) return "Original selected for this draft";
+    if (originalOutgoingOverride) return "Using Original — Selected for this draft";
     if (preparedIsCurrent()) return status === "unchanged"
-      ? "Prepared selected · result unchanged"
-      : "Prepared selected · current result";
+      ? "Using Prepared — Result unchanged"
+      : "Using Prepared";
     return {
-      waiting: "Original fallback · replacement Prepared pending",
-      cleaning: "Original fallback · cleanup in progress",
-      disabled: "Original fallback · cleanup disabled",
-      timeout: "Original fallback · cleanup timed out",
-      error: "Original fallback · cleanup unavailable",
-    }[status] || "Original fallback · Prepared unavailable";
+      waiting: "Using Original — Replacement Prepared pending",
+      cleaning: "Using Original — Cleanup in progress",
+      disabled: "Using Original — Cleanup disabled",
+      timeout: "Using Original",
+      error: "Using Original",
+    }[status] || "Using Original — Prepared unavailable";
   }
 
   function selectedOutgoingState() {
@@ -607,6 +597,7 @@
   function setPublicationState(nextState, label) {
     elements.publication.dataset.state = nextState;
     elements.publication.lastElementChild.textContent = label;
+    elements.publication.hidden = nextState !== "error";
   }
 
   function invalidateEvaluationCapture() {
@@ -661,7 +652,7 @@
   }
 
   function errorTrigger(kind) {
-    return kind === "cleanup" ? elements.status : elements.publication;
+    return kind === "cleanup" ? elements.cleanupStatus : elements.publication;
   }
 
   function makeError({ operation, summary, model = null, httpStatus = null, code, message, retryAction }) {
@@ -680,7 +671,8 @@
   function setError(kind, error) {
     errors[kind] = error;
     const trigger = errorTrigger(kind);
-    trigger.disabled = error === null;
+    if (kind === "cleanup") elements.cleanupRecovery.hidden = error === null;
+    else trigger.disabled = error === null;
     trigger.classList.toggle("has-error-details", error !== null);
     if (error === null) {
       trigger.removeAttribute("aria-label");
@@ -689,7 +681,8 @@
       }
       return;
     }
-    const statusText = trigger.lastElementChild.textContent;
+    const statusText = kind === "cleanup" ? "Cleanup unavailable" : trigger.textContent.trim();
+    if (kind === "cleanup") trigger.textContent = statusText;
     trigger.setAttribute("aria-label", `${statusText}. View ${kind} error details`);
   }
 
@@ -730,6 +723,17 @@
     window.setTimeout(() => { elements.copyError.textContent = "Copy details"; }, 1_500);
   }
 
+  function showCopyFeedback(buttonLabel, announcement) {
+    window.clearTimeout(copyFeedbackTimer);
+    elements.copyOutgoing.textContent = buttonLabel;
+    elements.copyOutgoingState.textContent = announcement;
+    copyFeedbackTimer = window.setTimeout(() => {
+      elements.copyOutgoing.textContent = "Copy";
+      elements.copyOutgoingState.textContent = "";
+      copyFeedbackTimer = null;
+    }, 1_500);
+  }
+
   async function copyOutgoing() {
     if (!selectedOutgoingState().outgoing_text) return;
     if (evidenceLease && evidenceReceipt?.originalText !== elements.original.value) {
@@ -745,32 +749,40 @@
     try {
       if (!evidenceLease && !blockedEvidenceLease) {
         await navigator.clipboard.writeText(selectedOutgoingState().outgoing_text);
-        elements.copyOutgoing.textContent = "Copied";
-        elements.copyOutgoingState.textContent = "Outgoing copied.";
-        window.setTimeout(() => { elements.copyOutgoing.textContent = "Copy outgoing"; }, 1_500);
+        showCopyFeedback("Copied", "Outgoing copied.");
         return;
       }
       await publishNow();
       const response = await fetch("/api/outgoing-state");
+      if (response.status === 409) {
+        throw makeError({
+          operation: "Outgoing copy",
+          summary: "Outgoing copy is waiting for intended-meaning confirmation.",
+          httpStatus: 409,
+          code: "evidence_confirmation_required",
+          message: "Complete intended-meaning confirmation in Sayloom, then retry.",
+          retryAction: "Complete confirmation in Sayloom, then retry Copy.",
+        });
+      }
       if (!response.ok) throw await safeHttpError(response, "Outgoing copy");
       const outgoing = await readJson(response, "Outgoing copy");
-      if (outgoing?.delivery_allowed !== true || typeof outgoing.outgoing_text !== "string") {
+      if (typeof outgoing?.outgoing_text !== "string") {
         throw makeError({
           operation: "Outgoing copy",
           summary: "Outgoing copy is waiting for intended-meaning confirmation.",
           code: "evidence_confirmation_required",
-          message: outgoing?.delivery_error || "Complete intended-meaning confirmation.",
-          retryAction: "Complete confirmation in Sayloom, then retry Copy outgoing.",
+          message: "Complete intended-meaning confirmation in Sayloom, then retry.",
+          retryAction: "Complete confirmation in Sayloom, then retry Copy.",
         });
       }
       await navigator.clipboard.writeText(outgoing.outgoing_text);
-      elements.copyOutgoing.textContent = "Copied";
-      elements.copyOutgoingState.textContent = "Outgoing copied.";
+      showCopyFeedback("Copied", "Outgoing copied.");
     } catch (error) {
-      elements.copyOutgoing.textContent = "Copy unavailable";
-      elements.copyOutgoingState.textContent = error?.message || "Outgoing could not be copied.";
+      showCopyFeedback(
+        "Copy unavailable",
+        error?.message || "Outgoing could not be copied.",
+      );
     }
-    window.setTimeout(() => { elements.copyOutgoing.textContent = "Copy outgoing"; }, 1_500);
   }
 
   async function safeHttpError(response, operation) {
@@ -1114,65 +1126,6 @@
     }
   }
 
-  function deliveryRequestId(action) {
-    return typeof action === "string" && action.startsWith("delivery:")
-      ? action.slice("delivery:".length)
-      : null;
-  }
-
-  async function completeDelivery(action, outgoingText) {
-    const requestId = deliveryRequestId(action);
-    if (!requestId) return;
-    const response = await fetch(`/api/outgoing-delivery/${requestId}/complete`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lease_token: evidenceLease, outgoing_text: outgoingText }),
-    });
-    if (!response.ok) throw await safeHttpError(response, "Target delivery");
-  }
-
-  function scheduleDeliveryPoll() {
-    window.clearTimeout(deliveryPollTimer);
-    deliveryPollTimer = null;
-    if (!evidenceLease || !elements.original.value.trim() || frozenEvidence) return;
-    deliveryPollTimer = window.setTimeout(pollForDeliveryRequest, DELIVERY_POLL_MS);
-  }
-
-  async function pollForDeliveryRequest() {
-    deliveryPollTimer = null;
-    const leaseToken = evidenceLease;
-    const originalText = elements.original.value;
-    if (!leaseToken || !originalText.trim() || frozenEvidence) return;
-    try {
-      const response = await fetch(
-        `/api/outgoing-delivery/pending?lease_token=${encodeURIComponent(leaseToken)}`,
-      );
-      if (
-        leaseToken !== evidenceLease
-        || originalText !== elements.original.value
-        || frozenEvidence
-      ) return;
-      if (response.status === 204) {
-        scheduleDeliveryPoll();
-        return;
-      }
-      if (!response.ok) throw await safeHttpError(response, "Target delivery");
-      const result = await readJson(response, "Target delivery");
-      if (typeof result?.request_id !== "string") {
-        throw malformedResponseError("Target delivery", response.status);
-      }
-      await requestEvidenceJudgment(
-        originalText,
-        effectiveCorrectionMode() === "smart" ? elements.smartTaskContext.value : "",
-        false,
-        effectiveCorrectionMode(),
-        `delivery:${result.request_id}`,
-      );
-    } catch (_error) {
-      scheduleDeliveryPoll();
-    }
-  }
-
   function scheduleCleanup() {
     window.clearTimeout(cleanupTimer);
     setExplicitSmartState("hidden");
@@ -1183,7 +1136,6 @@
       abortActiveRequest();
       setStatus("waiting");
       schedulePublication();
-      scheduleDeliveryPoll();
       return;
     }
     if (!elements.cleanupEnabled.checked) {
@@ -1307,6 +1259,7 @@
     saveWorkspacePreferences();
   });
   elements.runCleanup.addEventListener("click", () => runCleanup());
+  elements.retryCleanup.addEventListener("click", () => runCleanup());
   elements.runSmartCorrection.addEventListener("click", () => runCleanup("smart"));
   elements.selectOriginal.addEventListener("click", () => {
     originalOutgoingOverride = true;
@@ -1342,7 +1295,7 @@
     elements.original.focus();
   });
 
-  elements.status.addEventListener("click", () => openErrorDetails("cleanup"));
+  elements.cleanupStatus.addEventListener("click", () => openErrorDetails("cleanup"));
   elements.publication.addEventListener("click", () => openErrorDetails("publication"));
   elements.closeErrorDialog.addEventListener("click", () => elements.errorDialog.close());
   elements.errorDialog.addEventListener("click", (event) => {
@@ -1385,8 +1338,7 @@
     if (explicitSmart) setExplicitSmartState("available");
   }
 
-  async function cancelEvidenceJudgment(deliverOriginal = false) {
-    const snapshot = frozenEvidence;
+  async function cancelEvidenceJudgment() {
     const leaseToken = evidenceLease;
     closeEvidenceJudgment();
     evidenceReceipt = null;
@@ -1403,14 +1355,6 @@
       } catch (_error) { /* The stale receipt remains blocked by the published lease token. */ }
     });
     await evidenceCancellation;
-    if (deliverOriginal && snapshot) {
-      try {
-        await completeDelivery(snapshot.action, snapshot.originalText);
-      } catch (error) {
-        setCleanupError(error?.code ? error : networkError("Target delivery"));
-      }
-    }
-    scheduleDeliveryPoll();
   }
 
   function showEvidenceFailure(error, recovery) {
@@ -1451,10 +1395,9 @@
     taskContext,
     explicitSmart = false,
     correctionMode = "smart",
-    action = "cleanup",
   ) {
     if (!originalText.trim()) return;
-    const recovery = { originalText, taskContext, explicitSmart, correctionMode, action };
+    const recovery = { originalText, taskContext, explicitSmart, correctionMode };
     elements.prepared.value = "";
     originalOutgoingOverride = true;
     invalidateSmartRepairReview();
@@ -1489,7 +1432,6 @@
         taskContext,
         explicitSmart,
         correctionMode,
-        action,
       };
       elements.evidenceIntendedText.value = originalText;
       elements.evidenceIntendedText.readOnly = true;
@@ -1524,7 +1466,6 @@
       return;
     }
     window.clearTimeout(evidenceLeaseTimer);
-    window.clearTimeout(deliveryPollTimer);
     evidenceLease = null;
     blockedEvidenceLease = null;
     evidenceReceipt = null;
@@ -1566,7 +1507,6 @@
       invalidateEvaluationCapture();
       renderEvidenceCollection();
       schedulePublication();
-      scheduleDeliveryPoll();
       const retry = evidenceRecovery;
       evidenceRecovery = null;
       if (retry && retry.originalText === elements.original.value) {
@@ -1575,7 +1515,6 @@
           retry.taskContext,
           retry.explicitSmart,
           retry.correctionMode,
-          retry.action,
         );
       }
     } catch (error) {
@@ -1583,11 +1522,11 @@
       elements.evidenceAttestationStatus.textContent = `${safe.message} ${safe.retryAction}`;
     }
   });
-  elements.cancelEvidenceJudgment.addEventListener("click", () => cancelEvidenceJudgment(true));
-  elements.cancelEvidenceJudgmentSecondary.addEventListener("click", () => cancelEvidenceJudgment(true));
+  elements.cancelEvidenceJudgment.addEventListener("click", cancelEvidenceJudgment);
+  elements.cancelEvidenceJudgmentSecondary.addEventListener("click", cancelEvidenceJudgment);
   elements.evidenceJudgmentDialog.addEventListener("cancel", (event) => {
     event.preventDefault();
-    cancelEvidenceJudgment(true);
+    cancelEvidenceJudgment();
   });
   elements.evidenceJudgmentForm.addEventListener("change", (event) => {
     if (event.target.name !== "evidence-disposition" || !frozenEvidence) return;
@@ -1681,8 +1620,6 @@
         if (snapshot.explicitSmart) setExplicitSmartState("retry", "Smart correction failed.");
         else if (snapshot.correctionMode === "conservative") setExplicitSmartState("available");
         await publishNow();
-        await completeDelivery(snapshot.action, snapshot.originalText);
-        scheduleDeliveryPoll();
         return;
       }
       elements.prepared.value = result.prepared_text;
@@ -1706,8 +1643,6 @@
         setExplicitSmartState("available");
       }
       await publishNow();
-      await completeDelivery(snapshot.action, selectedOutgoingState().outgoing_text);
-      scheduleDeliveryPoll();
     } catch (error) {
       const safe = error?.code ? error : networkError("Evidence confirmation");
       if (snapshot.explicitSmart) setExplicitSmartState("retry", "Smart correction failed.");
@@ -1738,7 +1673,7 @@
     elements.evidenceFailureDialog.close();
     renderEvidenceCollection();
     schedulePublication();
-    if (recovery?.action === "cleanup") {
+    if (recovery) {
       runCleanup(recovery.explicitSmart ? "smart" : null, true);
     }
   });
