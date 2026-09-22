@@ -2,9 +2,11 @@ import hashlib
 import importlib.util
 import json
 import os
+import signal
 import socket
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -235,6 +237,240 @@ def test_status_without_selection_rejects_multiple_states_for_current_checkout(
 
     assert status.returncode != 0
     assert "multiple development states (first, second)" in status.stderr
+
+
+def test_logs_show_bounded_labeled_output_for_current_checkout(tmp_path: Path) -> None:
+    state_root = tmp_path / "states"
+    assert run_dev(state_root, "create", "selected").returncode == 0
+    selected_logs = state_root / "selected/logs"
+    selected_logs.mkdir()
+    (selected_logs / "service.log").write_text("old output\nrecent output\nlatest output\n")
+    (selected_logs / "service-error.log").write_text("old error\nlatest error\n")
+    write_foreign_state(
+        state_root,
+        name="other",
+        repository=tmp_path / "another-checkout",
+        port=unused_port(),
+    )
+    other_logs = state_root / "other/logs"
+    other_logs.mkdir()
+    (other_logs / "service.log").write_text("private other output\n")
+    (other_logs / "service-error.log").write_text("private other error\n")
+
+    result = run_dev(state_root, "logs", "--lines", "2")
+
+    assert result.returncode == 0
+    assert result.stdout.splitlines() == [
+        "==> service output <==",
+        "recent output",
+        "latest output",
+        "==> service errors <==",
+        "old error",
+        "latest error",
+    ]
+    assert "private other" not in result.stdout
+    assert str(state_root) not in result.stdout
+
+
+def test_logs_line_count_short_option_bounds_each_stream(tmp_path: Path) -> None:
+    state_root = tmp_path / "states"
+    assert run_dev(state_root, "create", "selected").returncode == 0
+    logs = state_root / "selected/logs"
+    logs.mkdir()
+    (logs / "service.log").write_text("first output\nlast output\n")
+    (logs / "service-error.log").write_text("first error\nlast error\n")
+
+    result = run_dev(state_root, "logs", "-n", "1")
+
+    assert result.returncode == 0
+    assert result.stdout.splitlines() == [
+        "==> service output <==",
+        "last output",
+        "==> service errors <==",
+        "last error",
+    ]
+
+
+def test_logs_format_json_entries_for_human_reading(tmp_path: Path) -> None:
+    state_root = tmp_path / "states"
+    assert run_dev(state_root, "create", "selected").returncode == 0
+    logs = state_root / "selected/logs"
+    logs.mkdir()
+    (logs / "service.log").write_text('{"level":"info","event":"ready"}\nplain output\n')
+    (logs / "service-error.log").write_text('{"level":"error","status":503}\n')
+
+    result = run_dev(state_root, "logs")
+
+    assert result.returncode == 0
+    assert result.stdout.splitlines() == [
+        "==> service output <==",
+        "{",
+        '  "level": "info",',
+        '  "event": "ready"',
+        "}",
+        "plain output",
+        "==> service errors <==",
+        "{",
+        '  "level": "error",',
+        '  "status": 503',
+        "}",
+    ]
+
+
+def test_logs_format_complete_json_after_a_text_prefix(tmp_path: Path) -> None:
+    state_root = tmp_path / "states"
+    assert run_dev(state_root, "create", "selected").returncode == 0
+    logs = state_root / "selected/logs"
+    logs.mkdir()
+    (logs / "service.log").write_text(
+        'INFO:     cleanup_result {"attempts":[{"outcome":"failure"}],"status":503}\n'
+    )
+    (logs / "service-error.log").write_text("ordinary text with {braces}\n")
+
+    result = run_dev(state_root, "logs")
+
+    assert result.returncode == 0
+    assert result.stdout.splitlines() == [
+        "==> service output <==",
+        "INFO:     cleanup_result",
+        "{",
+        '  "attempts": [',
+        "    {",
+        '      "outcome": "failure"',
+        "    }",
+        "  ],",
+        '  "status": 503',
+        "}",
+        "==> service errors <==",
+        "ordinary text with {braces}",
+    ]
+
+
+def test_logs_default_output_is_bounded_per_stream(tmp_path: Path) -> None:
+    state_root = tmp_path / "states"
+    assert run_dev(state_root, "create", "selected").returncode == 0
+    logs = state_root / "selected/logs"
+    logs.mkdir()
+    for filename, label in (("service.log", "output"), ("service-error.log", "error")):
+        (logs / filename).write_text("".join(f"{label} {number}\n" for number in range(101)))
+
+    result = run_dev(state_root, "logs")
+
+    assert result.returncode == 0
+    assert "output 0\n" not in result.stdout
+    assert "error 0\n" not in result.stdout
+    assert "output 1\n" in result.stdout
+    assert "error 1\n" in result.stdout
+
+
+@pytest.mark.parametrize("invalid_count", ["0", "-1", "many"])
+def test_logs_reject_invalid_line_counts_before_reading_logs(
+    tmp_path: Path, invalid_count: str
+) -> None:
+    state_root = tmp_path / "private-states"
+    assert run_dev(state_root, "create", "selected").returncode == 0
+    logs = state_root / "selected/logs"
+    logs.mkdir()
+    (logs / "service.log").write_text("private sentinel output\n")
+    (logs / "service-error.log").write_text("private sentinel error\n")
+
+    result = run_dev(state_root, "logs", "--lines", invalid_count)
+
+    assert result.returncode != 0
+    assert "lines must be a positive integer" in result.stderr
+    assert "private sentinel" not in result.stdout + result.stderr
+    assert str(state_root) not in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("follow_option", ["-f", "--follow"])
+def test_logs_follow_both_streams_until_stopped(tmp_path: Path, follow_option: str) -> None:
+    state_root = tmp_path / "states"
+    assert run_dev(state_root, "create", "selected").returncode == 0
+    logs = state_root / "selected/logs"
+    logs.mkdir()
+    output_log = logs / "service.log"
+    error_log = logs / "service-error.log"
+    output_log.write_text("")
+    error_log.write_text("")
+    process = subprocess.Popen(
+        [
+            str(REPOSITORY_ROOT / "scripts/dev.py"),
+            "--state-root",
+            str(state_root),
+            "logs",
+            follow_option,
+        ],
+        cwd=REPOSITORY_ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert process.stdout is not None
+    initial = [process.stdout.readline().strip(), process.stdout.readline().strip()]
+
+    with output_log.open("a") as stream:
+        stream.write("appended output\n")
+    with error_log.open("a") as stream:
+        stream.write("appended error\n")
+    time.sleep(0.3)
+    process.send_signal(signal.SIGINT)
+    stdout, stderr = process.communicate(timeout=2)
+
+    combined = "\n".join([*initial, stdout])
+    assert process.returncode == 0
+    assert "==> service output <==" in combined
+    assert "appended output" in combined
+    assert "==> service errors <==" in combined
+    assert "appended error" in combined
+    assert str(state_root) not in combined + stderr
+
+
+def test_logs_fail_without_a_state_or_complete_readable_log_set(tmp_path: Path) -> None:
+    missing_state_root = tmp_path / "missing-state"
+    missing_state = run_dev(missing_state_root, "logs")
+    assert missing_state.returncode != 0
+    assert "this checkout has no development state" in missing_state.stderr
+    assert str(missing_state_root) not in missing_state.stdout + missing_state.stderr
+
+    state_root = tmp_path / "private-states"
+    assert run_dev(state_root, "create", "selected").returncode == 0
+    logs = state_root / "selected/logs"
+    logs.mkdir()
+    (logs / "service.log").write_text("private sentinel output\n")
+    missing_file = run_dev(state_root, "logs")
+    assert missing_file.returncode != 0
+    assert "selected development state logs are missing or unreadable" in missing_file.stderr
+    assert "private sentinel" not in missing_file.stdout + missing_file.stderr
+    assert str(state_root) not in missing_file.stdout + missing_file.stderr
+
+    unreadable = logs / "service-error.log"
+    unreadable.write_text("private sentinel error\n")
+    unreadable.chmod(0)
+    try:
+        unreadable_file = run_dev(state_root, "logs")
+    finally:
+        unreadable.chmod(0o600)
+    assert unreadable_file.returncode != 0
+    assert "selected development state logs are missing or unreadable" in unreadable_file.stderr
+    assert "private sentinel" not in unreadable_file.stdout + unreadable_file.stderr
+    assert str(state_root) not in unreadable_file.stdout + unreadable_file.stderr
+
+
+def test_logs_reject_a_log_directory_outside_the_registered_state(tmp_path: Path) -> None:
+    state_root = tmp_path / "states"
+    assert run_dev(state_root, "create", "selected").returncode == 0
+    external_logs = tmp_path / "unregistered-logs"
+    external_logs.mkdir()
+    (external_logs / "service.log").write_text("private external output\n")
+    (external_logs / "service-error.log").write_text("private external error\n")
+    (state_root / "selected/logs").symlink_to(external_logs, target_is_directory=True)
+
+    result = run_dev(state_root, "logs")
+
+    assert result.returncode != 0
+    assert "selected development state logs are missing or unreadable" in result.stderr
+    assert "private external" not in result.stdout + result.stderr
+    assert str(external_logs) not in result.stdout + result.stderr
 
 
 def test_init_creates_branch_named_state_then_migrates_and_seeds(tmp_path: Path) -> None:
@@ -637,6 +873,7 @@ def test_help_lists_checkout_service_database_and_cleanup_commands() -> None:
         "initialize",
         "restart",
         "activate",
+        "logs",
         "list",
         "remove",
         "prune",
@@ -645,6 +882,15 @@ def test_help_lists_checkout_service_database_and_cleanup_commands() -> None:
     ):
         assert command_name in result.stdout
     assert "Running without a command is equivalent to status" in result.stdout
+
+    logs_help = run_dev(Path("unused"), "logs", "--help")
+    assert logs_help.returncode == 0
+    assert "-n LINES, --lines LINES" in logs_help.stdout
+    assert "-f, --follow" in logs_help.stdout
+    assert "default: 100" in logs_help.stdout
+    normalized_help = " ".join(logs_help.stdout.split())
+    assert "Valid JSON entries are indented" in normalized_help
+    assert "private filesystem paths" in normalized_help
 
 
 def test_supacode_lifecycle_initializes_runs_and_deletes_without_archiving() -> None:

@@ -13,6 +13,8 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections import deque
+from contextlib import ExitStack
 from dataclasses import replace
 from pathlib import Path
 from urllib import parse, request
@@ -46,6 +48,16 @@ from raycast_aliases import AliasPlan, apply_plan, plan_install
 class HelpFormatter(argparse.RawDescriptionHelpFormatter):
     def __init__(self, prog: str) -> None:
         super().__init__(prog, max_help_position=26, width=88)
+
+
+def positive_line_count(value: str) -> int:
+    try:
+        count = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("lines must be a positive integer") from None
+    if count < 1:
+        raise argparse.ArgumentTypeError("lines must be a positive integer")
+    return count
 
 
 def print_state(state: State) -> None:
@@ -253,6 +265,68 @@ def prepare_service_files(state: State) -> None:
         log_path = log_directory / filename
         log_path.touch(mode=0o600, exist_ok=True)
         os.chmod(log_path, 0o600)
+
+
+def print_log_entries(label: str, entries: list[str]) -> None:
+    print(f"==> {label} <==")
+    for entry in entries:
+        prefix = ""
+        try:
+            parsed = json.loads(entry)
+        except json.JSONDecodeError:
+            decoder = json.JSONDecoder()
+            for index, character in enumerate(entry):
+                if character not in "{[":
+                    continue
+                try:
+                    parsed, end = decoder.raw_decode(entry, index)
+                except json.JSONDecodeError:
+                    continue
+                if entry[end:].strip():
+                    continue
+                prefix = entry[:index].rstrip()
+                break
+            else:
+                print(entry, end="" if entry.endswith("\n") else "\n")
+                continue
+        if prefix:
+            print(prefix)
+        print(json.dumps(parsed, indent=2, ensure_ascii=False))
+
+
+def show_logs(state: State, *, lines: int, follow: bool) -> None:
+    log_directory = Path(state.state_directory) / "logs"
+    streams = (
+        ("service output", log_directory / "service.log"),
+        ("service errors", log_directory / "service-error.log"),
+    )
+    try:
+        if (
+            log_directory.is_symlink()
+            or not log_directory.is_dir()
+            or any(path.is_symlink() or not path.is_file() for _, path in streams)
+        ):
+            fail("selected development state logs are missing or unreadable")
+        with ExitStack() as stack:
+            opened = [
+                (label, stack.enter_context(path.open())) for label, path in streams
+            ]
+            output = [(label, list(deque(stream, maxlen=lines))) for label, stream in opened]
+            for label, entries in output:
+                print_log_entries(label, entries)
+            sys.stdout.flush()
+            while follow:
+                for label, stream in opened:
+                    entries = stream.readlines()
+                    if not entries:
+                        continue
+                    print_log_entries(label, entries)
+                    sys.stdout.flush()
+                time.sleep(0.1)
+    except KeyboardInterrupt:
+        return
+    except (OSError, UnicodeError):
+        fail("selected development state logs are missing or unreadable")
 
 
 def install_service(state: State) -> None:
@@ -704,6 +778,9 @@ def command(arguments: argparse.Namespace) -> int:
     if operation == "activate":
         activate(root, state)
         return 0
+    if operation == "logs":
+        show_logs(state, lines=arguments.lines, follow=arguments.follow)
+        return 0
     if operation == "remove":
         remove_state(root, state, confirmed=arguments.yes)
         return 0
@@ -725,6 +802,8 @@ def parser() -> argparse.ArgumentParser:
   scripts/dev.py init            create its state, then migrate and seed
   scripts/dev.py restart         verify, back up, initialize, and restart
   scripts/dev.py activate        move this checkout to Raycast port 7523
+  scripts/dev.py logs            show the last 100 lines from each service stream
+  scripts/dev.py logs -f         continue showing output appended to either stream
   scripts/dev.py list            show every registered development state
   scripts/dev.py prune           preview stale-state cleanup
 
@@ -777,6 +856,24 @@ status and prune are read-only unless prune receives --apply.
         "activate", help=f"move this checkout to Raycast port {DEVELOPMENT_PORT}"
     )
     activate_parser.add_argument("--state", help=argparse.SUPPRESS)
+
+    logs_parser = subparsers.add_parser(
+        "logs",
+        help="show this checkout's service logs",
+        description="Show only the current checkout's registered development-state logs. "
+        "Valid JSON entries are indented for readability. Stream labels do not reveal "
+        "private filesystem paths.",
+    )
+    logs_parser.add_argument(
+        "-n",
+        "--lines",
+        type=positive_line_count,
+        default=100,
+        help="initial lines per stream (default: 100)",
+    )
+    logs_parser.add_argument(
+        "-f", "--follow", action="store_true", help="continue showing appended output"
+    )
 
     subparsers.add_parser("list", help="list every registered state")
 

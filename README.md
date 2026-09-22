@@ -45,6 +45,17 @@ state-scoped service. Multiple checkout states may run concurrently on their
 persisted ports. Missing, changed, cross-checkout, duplicate, and path-escaping
 manifests are rejected before use.
 
+Use `scripts/dev.py logs` to show the last 100 lines from both `service.log` and
+`service-error.log` for this checkout's registered state. `-n LINES` and
+`--lines LINES` change the positive line count; equivalent `-f` and `--follow`
+options continue showing appended output until interrupted. The streams receive
+neutral labels, valid JSON entries are indented for readability, and private
+filesystem paths are never printed. The command never falls back to another
+checkout or stable application state and fails without displaying log content
+when the selected files are unavailable. It only presents content already in
+those external logs and does not change log format, retention, redaction, or
+destination.
+
 Raycast continues to use `127.0.0.1:7523`. Run `scripts/dev.py activate` to move
 the current checkout to that port and atomically repoint each installed managed
 Raycast alias to that checkout; the previous owner moves to the current
