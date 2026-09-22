@@ -317,6 +317,35 @@ def test_logs_format_json_entries_for_human_reading(tmp_path: Path) -> None:
     ]
 
 
+def test_logs_format_complete_json_after_a_text_prefix(tmp_path: Path) -> None:
+    state_root = tmp_path / "states"
+    assert run_dev(state_root, "create", "selected").returncode == 0
+    logs = state_root / "selected/logs"
+    logs.mkdir()
+    (logs / "service.log").write_text(
+        'INFO:     cleanup_result {"attempts":[{"outcome":"failure"}],"status":503}\n'
+    )
+    (logs / "service-error.log").write_text("ordinary text with {braces}\n")
+
+    result = run_dev(state_root, "logs")
+
+    assert result.returncode == 0
+    assert result.stdout.splitlines() == [
+        "==> service output <==",
+        "INFO:     cleanup_result",
+        "{",
+        '  "attempts": [',
+        "    {",
+        '      "outcome": "failure"',
+        "    }",
+        "  ],",
+        '  "status": 503',
+        "}",
+        "==> service errors <==",
+        "ordinary text with {braces}",
+    ]
+
+
 def test_logs_default_output_is_bounded_per_stream(tmp_path: Path) -> None:
     state_root = tmp_path / "states"
     assert run_dev(state_root, "create", "selected").returncode == 0

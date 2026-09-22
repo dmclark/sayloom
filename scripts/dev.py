@@ -270,12 +270,28 @@ def prepare_service_files(state: State) -> None:
 def print_log_entries(label: str, entries: list[str]) -> None:
     print(f"==> {label} <==")
     for entry in entries:
+        prefix = ""
         try:
             parsed = json.loads(entry)
         except json.JSONDecodeError:
-            print(entry, end="" if entry.endswith("\n") else "\n")
-        else:
-            print(json.dumps(parsed, indent=2, ensure_ascii=False))
+            decoder = json.JSONDecoder()
+            for index, character in enumerate(entry):
+                if character not in "{[":
+                    continue
+                try:
+                    parsed, end = decoder.raw_decode(entry, index)
+                except json.JSONDecodeError:
+                    continue
+                if entry[end:].strip():
+                    continue
+                prefix = entry[:index].rstrip()
+                break
+            else:
+                print(entry, end="" if entry.endswith("\n") else "\n")
+                continue
+        if prefix:
+            print(prefix)
+        print(json.dumps(parsed, indent=2, ensure_ascii=False))
 
 
 def show_logs(state: State, *, lines: int, follow: bool) -> None:
