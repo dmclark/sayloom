@@ -36,8 +36,6 @@
     smartRepairReason: document.querySelector("#smart-repair-reason"),
     runCleanup: document.querySelector("#run-cleanup"),
     clear: document.querySelector("#clear-text"),
-    status: document.querySelector("#cleanup-status"),
-    statusText: document.querySelector("#cleanup-status-text"),
     originalCount: document.querySelector("#original-count"),
     preparedCount: document.querySelector("#prepared-count"),
     outgoingKind: document.querySelector("#outgoing-kind"),
@@ -163,19 +161,10 @@
     cancelEvaluationExportSecondary: document.querySelector("#cancel-evaluation-export-secondary"),
   };
 
-  const statusLabels = {
-    unchanged: "Unchanged",
-    waiting: "Waiting",
-    cleaning: "Cleaning…",
-    prepared: "Prepared",
-    disabled: "Disabled · Original",
-    timeout: "Timeout · Original",
-    error: "Error · Original",
-  };
-
   let status = "unchanged";
   let cleanupTimer = null;
   let publicationTimer = null;
+  let copyFeedbackTimer = null;
   let publicationChain = Promise.resolve();
   let publicationSequence = 0;
   let activeRequest = null;
@@ -246,8 +235,8 @@
 
   function setStatus(nextStatus) {
     status = nextStatus;
-    elements.status.dataset.state = nextStatus;
-    elements.statusText.textContent = statusLabels[nextStatus] || nextStatus;
+    elements.outgoingKind.dataset.state = nextStatus;
+    renderCountsAndSelection();
   }
 
   function effectiveCorrectionMode() {
@@ -556,17 +545,17 @@
 
   function fallbackLabel() {
     if (!elements.original.value) return "Nothing yet";
-    if (originalOutgoingOverride) return "Original selected for this draft";
+    if (originalOutgoingOverride) return "Using Original — Selected for this draft";
     if (preparedIsCurrent()) return status === "unchanged"
-      ? "Prepared selected · result unchanged"
-      : "Prepared selected · current result";
+      ? "Using Prepared — Result unchanged"
+      : "Using Prepared";
     return {
-      waiting: "Original fallback · replacement Prepared pending",
-      cleaning: "Original fallback · cleanup in progress",
-      disabled: "Original fallback · cleanup disabled",
-      timeout: "Original fallback · cleanup timed out",
-      error: "Original fallback · cleanup unavailable",
-    }[status] || "Original fallback · Prepared unavailable";
+      waiting: "Using Original — Replacement Prepared pending",
+      cleaning: "Using Original — Cleanup in progress",
+      disabled: "Using Original — Cleanup disabled",
+      timeout: "Using Original — Cleanup timed out",
+      error: "Using Original — Cleanup unavailable",
+    }[status] || "Using Original — Prepared unavailable";
   }
 
   function selectedOutgoingState() {
@@ -605,6 +594,7 @@
   function setPublicationState(nextState, label) {
     elements.publication.dataset.state = nextState;
     elements.publication.lastElementChild.textContent = label;
+    elements.publication.hidden = nextState !== "error";
   }
 
   function invalidateEvaluationCapture() {
@@ -659,7 +649,7 @@
   }
 
   function errorTrigger(kind) {
-    return kind === "cleanup" ? elements.status : elements.publication;
+    return kind === "cleanup" ? elements.outgoingKind : elements.publication;
   }
 
   function makeError({ operation, summary, model = null, httpStatus = null, code, message, retryAction }) {
@@ -687,7 +677,7 @@
       }
       return;
     }
-    const statusText = trigger.lastElementChild.textContent;
+    const statusText = trigger.textContent.trim();
     trigger.setAttribute("aria-label", `${statusText}. View ${kind} error details`);
   }
 
@@ -728,6 +718,17 @@
     window.setTimeout(() => { elements.copyError.textContent = "Copy details"; }, 1_500);
   }
 
+  function showCopyFeedback(buttonLabel, announcement) {
+    window.clearTimeout(copyFeedbackTimer);
+    elements.copyOutgoing.textContent = buttonLabel;
+    elements.copyOutgoingState.textContent = announcement;
+    copyFeedbackTimer = window.setTimeout(() => {
+      elements.copyOutgoing.textContent = "Copy";
+      elements.copyOutgoingState.textContent = "";
+      copyFeedbackTimer = null;
+    }, 1_500);
+  }
+
   async function copyOutgoing() {
     if (!selectedOutgoingState().outgoing_text) return;
     if (evidenceLease && evidenceReceipt?.originalText !== elements.original.value) {
@@ -743,9 +744,7 @@
     try {
       if (!evidenceLease && !blockedEvidenceLease) {
         await navigator.clipboard.writeText(selectedOutgoingState().outgoing_text);
-        elements.copyOutgoing.textContent = "Copied";
-        elements.copyOutgoingState.textContent = "Outgoing copied.";
-        window.setTimeout(() => { elements.copyOutgoing.textContent = "Copy outgoing"; }, 1_500);
+        showCopyFeedback("Copied", "Outgoing copied.");
         return;
       }
       await publishNow();
@@ -757,7 +756,7 @@
           httpStatus: 409,
           code: "evidence_confirmation_required",
           message: "Complete intended-meaning confirmation in Sayloom, then retry.",
-          retryAction: "Complete confirmation in Sayloom, then retry Copy outgoing.",
+          retryAction: "Complete confirmation in Sayloom, then retry Copy.",
         });
       }
       if (!response.ok) throw await safeHttpError(response, "Outgoing copy");
@@ -768,17 +767,17 @@
           summary: "Outgoing copy is waiting for intended-meaning confirmation.",
           code: "evidence_confirmation_required",
           message: "Complete intended-meaning confirmation in Sayloom, then retry.",
-          retryAction: "Complete confirmation in Sayloom, then retry Copy outgoing.",
+          retryAction: "Complete confirmation in Sayloom, then retry Copy.",
         });
       }
       await navigator.clipboard.writeText(outgoing.outgoing_text);
-      elements.copyOutgoing.textContent = "Copied";
-      elements.copyOutgoingState.textContent = "Outgoing copied.";
+      showCopyFeedback("Copied", "Outgoing copied.");
     } catch (error) {
-      elements.copyOutgoing.textContent = "Copy unavailable";
-      elements.copyOutgoingState.textContent = error?.message || "Outgoing could not be copied.";
+      showCopyFeedback(
+        "Copy unavailable",
+        error?.message || "Outgoing could not be copied.",
+      );
     }
-    window.setTimeout(() => { elements.copyOutgoing.textContent = "Copy outgoing"; }, 1_500);
   }
 
   async function safeHttpError(response, operation) {
@@ -1290,7 +1289,7 @@
     elements.original.focus();
   });
 
-  elements.status.addEventListener("click", () => openErrorDetails("cleanup"));
+  elements.outgoingKind.addEventListener("click", () => openErrorDetails("cleanup"));
   elements.publication.addEventListener("click", () => openErrorDetails("publication"));
   elements.closeErrorDialog.addEventListener("click", () => elements.errorDialog.close());
   elements.errorDialog.addEventListener("click", (event) => {

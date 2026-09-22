@@ -718,7 +718,7 @@ const settle = async () => {
     dialogOpenAfter: elements["#evidence-judgment-dialog"].open,
     armedLabel: elements["#evidence-collection-state"].textContent,
     prepared: elements["#prepared-text"].value,
-    status: elements["#cleanup-status"].dataset.state,
+    status: elements["#outgoing-kind"].dataset.state,
     repairCount: elements["#prepared-text"].dataset.repairCount,
     copied,
     outgoingReads,

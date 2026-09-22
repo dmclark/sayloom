@@ -106,7 +106,7 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="prepared-text"' in response.text
     assert f'href="/static/app.css?v={STATIC_VERSION}"' in response.text
     assert f'src="/static/app.js?v={STATIC_VERSION}"' in response.text
-    assert 'id="cleanup-status"' in response.text
+    assert 'id="cleanup-status"' not in response.text
     assert 'class="status-label"' not in response.text
     assert 'id="cancel-cleanup"' not in response.text
     assert 'id="active-prompt-selector"' not in response.text
@@ -187,9 +187,10 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
         1
     ].split("</article>", maxsplit=1)[0]
     assert "readonly" in prepared_panel
-    assert response.text.index('class="outgoing-strip"') < response.text.index(
-        'id="cleanup-status"'
-    )
+    assert 'id="cleanup-disclosure"' in prepared_panel
+    assert 'id="cleanup-disclosure"' not in response.text.split(
+        'class="outgoing-strip"', maxsplit=1
+    )[1]
 
 
 def test_status_errors_use_one_accessible_privacy_safe_dialog(
@@ -201,19 +202,30 @@ def test_status_errors_use_one_accessible_privacy_safe_dialog(
     script = client.get("/static/app.js").text
     stylesheet = client.get("/static/app.css").text
 
-    assert '<button id="cleanup-status"' in page
+    assert '<button id="cleanup-status"' not in page
+    assert '<button id="outgoing-kind"' in page
     assert '<button id="publication-state"' in page
     assert page.count('<dialog id="error-details-dialog"') == 1
     assert page.count('aria-controls="error-details-dialog"') == 2
     assert 'id="cleanup-error"' not in page
     assert 'id="publication-error"' not in page
     assert "Copy details" in page
-    assert 'elements.status.addEventListener("click"' in script
+    assert 'elements.outgoingKind.addEventListener("click"' in script
     assert 'elements.publication.addEventListener("click"' in script
     assert "elements.errorDialog.showModal()" in script
     assert "navigator.clipboard.writeText" in script
-    assert 'id="copy-outgoing-state" class="copy-outgoing-state"' in page
-    assert ".copy-outgoing-state:empty { display: none; }" in stylesheet
+    assert 'id="copy-outgoing-state" class="visually-hidden"' in page
+    assert ">Copy</button>" in page
+    assert "Copy outgoing" not in page
+    assert 'id="publication-state"' in page and "disabled hidden" in page
+    assert 'elements.publication.hidden = nextState !== "error"' in script
+
+    feedback = script.split("function showCopyFeedback", maxsplit=1)[1].split(
+        "async function copyOutgoing", maxsplit=1
+    )[0]
+    assert 'elements.copyOutgoing.textContent = "Copy"' in feedback
+    assert 'elements.copyOutgoingState.textContent = ""' in feedback
+    assert "1_500" in feedback
 
     error_fields = script.split("function errorFields", maxsplit=1)[1].split(
         "function errorTrigger", maxsplit=1
@@ -1309,7 +1321,7 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     assert "selectedPromptVersionId" not in script.text
     assert "originalOutgoingOverride = true" in script.text
     assert "originalOutgoingOverride = false" in script.text
-    assert "Original fallback · replacement Prepared pending" in script.text
+    assert "Using Original — Replacement Prepared pending" in script.text
     assert "original_text: originalText" in script.text
     assert "prepared_text: preparedText" in script.text
     assert 'usePrepared ? "prepared" : "original"' in script.text
@@ -1672,7 +1684,7 @@ const vm = require("vm");
 class Element {
   constructor() {
     this.value = ""; this.checked = true; this.disabled = false; this.hidden = false;
-    this.dataset = {}; this.options = [{ textContent: "" }]; this.children = [];
+    this.open = false; this.dataset = {}; this.options = [{ textContent: "" }]; this.children = [];
     this.listeners = {}; this.textContent = ""; this.attributes = {};
     this.style = { setProperty() {} };
     this.classList = { add() {}, remove() {}, toggle() {}, contains() { return false; } };
@@ -1693,7 +1705,8 @@ class Element {
   setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
   getBoundingClientRect() { return { top: 0, height: 100 }; }
   focus() { document.activeElement = this; }
-  close() {}
+  showModal() { this.open = true; }
+  close() { this.open = false; }
 }
 const elements = {};
 const document = {
@@ -1778,11 +1791,17 @@ async function settle() { await new Promise((resolve) => setImmediate(resolve));
   await elements["#smart-task-context"].dispatch("input");
   malformed = true;
   await elements["#run-cleanup"].dispatch("click");
+  const cleanupTrigger = elements["#outgoing-kind"];
+  await cleanupTrigger.dispatch("click");
   process.stdout.write(JSON.stringify({
     before, inspected, copied, invalidated: elements["#smart-repair-review"].hidden,
     malformed: {
       prepared: elements["#prepared-text"].value,
-      status: elements["#cleanup-status"].dataset.state,
+      status: elements["#outgoing-kind"].dataset.state,
+      trigger: cleanupTrigger.textContent,
+      triggerDisabled: cleanupTrigger.disabled,
+      dialogOpen: elements["#error-details-dialog"].open,
+      dialogKind: elements["#error-details-dialog"].dataset.kind,
     },
   }));
 })().catch((error) => { process.stderr.write(error.stack); process.exit(1); });
@@ -1810,7 +1829,14 @@ async function settle() { await new Promise((resolve) => setImmediate(resolve));
         },
         "copied": ["send the report now"],
         "invalidated": True,
-        "malformed": {"prepared": "send teh report", "status": "error"},
+        "malformed": {
+            "prepared": "send teh report",
+            "status": "error",
+            "trigger": "Using Original — Cleanup unavailable",
+            "triggerDisabled": False,
+            "dialogOpen": True,
+            "dialogKind": "cleanup",
+        },
     }
 
 
@@ -1850,8 +1876,7 @@ async function run(originalValue) {
     "#original-text": original,
     "#prepared-text": new Element(), "#cleanup-enabled": new Element(),
     "#run-cleanup": new Element(), "#clear-text": new Element(),
-    "#toggle-original": new Element(), "#cleanup-status": new Element(),
-    "#cleanup-status-text": new Element(), "#original-count": new Element(),
+    "#toggle-original": new Element(), "#original-count": new Element(),
     "#prepared-count": new Element(), "#outgoing-kind": new Element(),
     "#select-prepared": new Element(), "#select-original": new Element(),
     "#publication-state": new Element(), "#model-label": new Element(),
