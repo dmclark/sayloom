@@ -1690,6 +1690,138 @@ const settle = async () => {
     }
 
 
+def test_browser_smart_failure_shows_only_the_smart_retry_action(
+    initialized_settings: Settings,
+) -> None:
+    script = TestClient(create_app(initialized_settings)).get("/static/app.js").text
+    harness = r"""
+const vm = require("vm");
+
+class Element {
+  constructor() {
+    this.value = ""; this.checked = true; this.disabled = false; this.hidden = false;
+    this.open = false; this.dataset = {}; this.listeners = {}; this.children = [];
+    this.attributes = {}; this.textContent = ""; this.selectionStart = 0; this.selectionEnd = 0;
+    this.lastElementChild = { textContent: "" }; this.style = { setProperty() {} };
+    this.classList = { add() {}, remove() {}, toggle() {}, contains() { return false; } };
+  }
+  addEventListener(type, callback) { (this.listeners[type] ||= []).push(callback); }
+  async dispatch(type, event = {}) {
+    event.target ||= this; event.preventDefault ||= () => {};
+    for (const callback of this.listeners[type] || []) await callback(event);
+  }
+  setAttribute(name, value) { this.attributes[name] = String(value); }
+  getAttribute(name) { return this.attributes[name] || (name === "aria-valuenow" ? "55" : null); }
+  removeAttribute(name) { delete this.attributes[name]; }
+  toggleAttribute() {}
+  append(...children) { this.children.push(...children); }
+  setPointerCapture() {}
+  setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
+  getBoundingClientRect() { return { top: 0, left: 0, width: 100, height: 100 }; }
+  focus() { document.activeElement = this; }
+  close() { this.open = false; }
+  showModal() { this.open = true; }
+  reportValidity() { return true; }
+  querySelectorAll() { return []; }
+  querySelector() { return null; }
+}
+const elements = {};
+const document = {
+  activeElement: null,
+  querySelector(selector) { return elements[selector] ||= new Element(); },
+  createElement() { return new Element(); },
+  addEventListener() {},
+};
+let failConservative = false;
+const response = (body) => ({ ok: true, status: 200, json: async () => body });
+const fetch = async (url, options = {}) => {
+  if (url === "/api/config") return response({
+    preparation_default: "conservative",
+    cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
+    evidence_collection: { ready: false }, evaluation_configuration: { available: false },
+  });
+  if (url === "/api/cleanup") {
+    const body = JSON.parse(options.body);
+    if (body.correction_mode === "smart" || failConservative) return response({
+      prepared_text: body.original_text, status: "provider_error",
+      provider: "test", model: "model-a",
+      lexical_repairs: [], attempts: [], error: {
+        code: "cleanup_provider_error", message: "The provider failed.",
+        retry_action: "Retry correction or continue with Original.", http_status: 503,
+      },
+    });
+    return response({
+      prepared_text: body.original_text, status: "unchanged", lexical_repairs: [],
+    });
+  }
+  if (url === "/api/outgoing-state") return response({ revision: 1 });
+  throw new Error(`Unexpected request: ${url}`);
+};
+const window = {
+  clearTimeout() {}, setTimeout() { return 1; },
+  requestAnimationFrame(callback) { callback(); }, addEventListener() {},
+  matchMedia() { return { matches: false, addEventListener() {} }; },
+};
+const context = {
+  document, window, fetch, AbortController, Promise, console,
+  navigator: { clipboard: {} },
+};
+const settle = async () => {
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+};
+
+(async () => {
+  vm.runInNewContext(process.argv[1], context); await settle();
+  elements["#original-text"].value = "Send teh report";
+  await elements["#original-text"].dispatch("input", { isTrusted: true });
+  await elements["#run-cleanup"].dispatch("click"); await settle();
+  await elements["#run-smart-correction"].dispatch("click"); await settle();
+
+  const smartFailure = {
+    cleanupDetailsVisible: !elements["#cleanup-recovery"].hidden,
+    cleanupRetryVisible: !elements["#cleanup-recovery"].hidden
+      && !elements["#retry-cleanup"].hidden,
+    smartMessage: elements["#smart-correction-state"].textContent,
+    smartRetryVisible: !elements["#run-smart-correction"].hidden,
+    smartRetryLabel: elements["#run-smart-correction"].textContent,
+  };
+
+  failConservative = true;
+  elements["#original-text"].value = "Send the report";
+  await elements["#original-text"].dispatch("input", { isTrusted: true });
+  await elements["#run-cleanup"].dispatch("click"); await settle();
+
+  process.stdout.write(JSON.stringify({
+    smartFailure,
+    conservativeFailure: {
+      cleanupRetryVisible: !elements["#cleanup-recovery"].hidden
+        && !elements["#retry-cleanup"].hidden,
+      smartRetryVisible: !elements["#run-smart-correction"].hidden,
+    },
+  }));
+})().catch((error) => { process.stderr.write(error.stack); process.exit(1); });
+"""
+
+    result = subprocess.run(
+        ["node", "-e", harness, script], check=True, capture_output=True, text=True
+    )
+
+    assert json.loads(result.stdout) == {
+        "smartFailure": {
+            "cleanupDetailsVisible": True,
+            "cleanupRetryVisible": False,
+            "smartMessage": "Smart correction failed.",
+            "smartRetryVisible": True,
+            "smartRetryLabel": "Retry Smart correction",
+        },
+        "conservativeFailure": {
+            "cleanupRetryVisible": True,
+            "smartRetryVisible": False,
+        },
+    }
+
+
 def test_browser_smart_repair_queue_selects_span_and_does_not_gate_outgoing(
     initialized_settings: Settings,
 ) -> None:

@@ -264,6 +264,7 @@
     }[explicitSmartState] || "Run Smart correction";
     elements.smartCorrectionState.hidden = !explicitSmartMessage || automaticSmart;
     elements.smartCorrectionState.textContent = automaticSmart ? "" : explicitSmartMessage;
+    elements.retryCleanup.hidden = explicitSmartState === "retry";
   }
 
   function setExplicitSmartState(nextState, message = "") {
