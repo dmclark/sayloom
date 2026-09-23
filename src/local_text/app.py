@@ -30,6 +30,7 @@ from local_text.cleanup import (
     EvaluationCaptureContext,
     GeminiAdapter,
     OpenAIAdapter,
+    PreparationMode,
     SequentialCleanupProvider,
 )
 from local_text.config import Profile, Settings, load_settings
@@ -206,8 +207,8 @@ class PromptCreateRequest(BaseModel):
         return value
 
 
-class CorrectionModePreferenceRequest(BaseModel):
-    correction_mode: CorrectionMode
+class PreparationDefaultRequest(BaseModel):
+    preparation_default: PreparationMode
 
 
 class EvidenceArmRequest(BaseModel):
@@ -287,15 +288,19 @@ def create_app(
     targets = TargetStore(database)
     adapter = target_adapter or TargetAdapter(runtime.resolved_raycast_directory)
     configuration_error: str | None = None
-    cleanup_enabled = True
-    default_correction_mode = CorrectionMode.CONSERVATIVE
+    preparation_default = PreparationMode.CONSERVATIVE
     if schema.ready:
         try:
-            cleanup_enabled = prompts.cleanup_enabled_by_default()
-            default_correction_mode = prompts.default_correction_mode()
+            preparation_default = prompts.preparation_default()
             prompts.active()
         except SeedStateError as exc:
             configuration_error = str(exc)
+    cleanup_enabled = preparation_default is not PreparationMode.OFF
+    default_correction_mode = (
+        CorrectionMode.SMART
+        if preparation_default is PreparationMode.SMART
+        else CorrectionMode.CONSERVATIVE
+    )
     state = OutgoingStateStore(
         cleanup_enabled=cleanup_enabled,
         correction_mode=default_correction_mode,
@@ -463,8 +468,7 @@ def create_app(
             "display_name": runtime.display_name,
             "profile": runtime.profile,
             "development_state": runtime.development_state_name,
-            "cleanup_enabled_by_default": prompts.cleanup_enabled_by_default(),
-            "default_correction_mode": prompts.default_correction_mode(),
+            "preparation_default": prompts.preparation_default(),
             "cleanup_available": cleanup_available,
             "cleanup_model": cleanup_configuration.routes[0][1]
             if cleanup_configuration.routes
@@ -591,13 +595,13 @@ def create_app(
             evidence_failure(exc)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    @application.put("/api/preferences/correction-mode")
-    def update_correction_mode_preference(
-        request: CorrectionModePreferenceRequest,
-    ) -> dict[str, CorrectionMode]:
+    @application.put("/api/preferences/preparation-default")
+    def update_preparation_default(
+        request: PreparationDefaultRequest,
+    ) -> dict[str, PreparationMode]:
         require_configuration()
-        prompts.set_default_correction_mode(request.correction_mode)
-        return {"default_correction_mode": request.correction_mode}
+        prompts.set_preparation_default(request.preparation_default)
+        return {"preparation_default": request.preparation_default}
 
     @application.post("/api/cleanup", response_model=CleanupResult)
     async def clean_text(request: CleanupRequest) -> CleanupResult:
@@ -699,14 +703,20 @@ def create_app(
     @application.put("/api/outgoing-state")
     def publish_outgoing_state(update: OutgoingStateUpdate) -> dict[str, object]:
         require_configuration()
-        if update.cleanup_enabled != prompts.cleanup_enabled_by_default():
-            prompts.set_cleanup_enabled_by_default(update.cleanup_enabled)
         return state.update(update).public()
 
     @application.delete("/api/outgoing-state")
     def clear_outgoing_state() -> dict[str, object]:
         require_configuration()
-        return state.clear(correction_mode=prompts.default_correction_mode()).public()
+        saved_default = prompts.preparation_default()
+        return state.clear(
+            cleanup_enabled=saved_default is not PreparationMode.OFF,
+            correction_mode=(
+                CorrectionMode.SMART
+                if saved_default is PreparationMode.SMART
+                else CorrectionMode.CONSERVATIVE
+            ),
+        ).public()
 
     def require_evaluation() -> EvaluationStore:
         require_configuration()

@@ -21,7 +21,7 @@
     original: document.querySelector("#original-text"),
     prepared: document.querySelector("#prepared-text"),
     cleanupEnabled: document.querySelector("#cleanup-enabled"),
-    defaultCorrectionMode: document.querySelector("#default-correction-mode"),
+    defaultPreparationMode: document.querySelector("#default-preparation-mode"),
     modeSaveState: document.querySelector("#mode-save-state"),
     runSmartCorrection: document.querySelector("#run-smart-correction"),
     smartCorrectionState: document.querySelector("#smart-correction-state"),
@@ -183,7 +183,7 @@
   let sidebarCollapsed = false;
   let maximizedPane = null;
   let originalOutgoingOverride = false;
-  let defaultCorrectionMode = "conservative";
+  let defaultPreparationMode = "conservative";
   let draftCorrectionMode = null;
   let currentOriginalText = elements.original.value;
   let explicitSmartState = "hidden";
@@ -243,7 +243,7 @@
   }
 
   function effectiveCorrectionMode() {
-    return draftCorrectionMode || defaultCorrectionMode;
+    return draftCorrectionMode || (defaultPreparationMode === "smart" ? "smart" : "conservative");
   }
 
   function isEvidenceExclusion(disposition) {
@@ -427,7 +427,7 @@
   }
 
   function renderCorrectionMode() {
-    elements.defaultCorrectionMode.value = defaultCorrectionMode;
+    elements.defaultPreparationMode.value = defaultPreparationMode;
     elements.smartTaskContextField.hidden = draftCorrectionMode !== "smart";
     elements.smartTaskContext.disabled = draftCorrectionMode !== "smart";
     renderExplicitSmartAction();
@@ -1161,7 +1161,8 @@
     const startsNewOriginal = replaceAllPending
       || (!currentOriginalText && Boolean(elements.original.value));
     if (startsNewOriginal) {
-      draftCorrectionMode = defaultCorrectionMode;
+      elements.cleanupEnabled.checked = defaultPreparationMode !== "off";
+      draftCorrectionMode = defaultPreparationMode === "smart" ? "smart" : "conservative";
       elements.prepared.value = "";
       elements.smartTaskContext.value = "";
     } else if (!elements.original.value) {
@@ -1215,31 +1216,31 @@
     }
   });
 
-  elements.defaultCorrectionMode.addEventListener("change", async () => {
-    const previousMode = defaultCorrectionMode;
-    const nextMode = elements.defaultCorrectionMode.value;
-    elements.defaultCorrectionMode.disabled = true;
-    elements.modeSaveState.textContent = "Saving default correction mode…";
+  elements.defaultPreparationMode.addEventListener("change", async () => {
+    const previousMode = defaultPreparationMode;
+    const nextMode = elements.defaultPreparationMode.value;
+    elements.defaultPreparationMode.disabled = true;
+    elements.modeSaveState.textContent = "Saving preparation default…";
     try {
-      const response = await fetch("/api/preferences/correction-mode", {
+      const response = await fetch("/api/preferences/preparation-default", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ correction_mode: nextMode }),
+        body: JSON.stringify({ preparation_default: nextMode }),
       });
-      if (!response.ok) throw await safeHttpError(response, "Correction mode preference");
-      const result = await readJson(response, "Correction mode preference");
-      if (!result || result.default_correction_mode !== nextMode) {
-        throw malformedResponseError("Correction mode preference", response.status);
+      if (!response.ok) throw await safeHttpError(response, "Preparation default");
+      const result = await readJson(response, "Preparation default");
+      if (!result || result.preparation_default !== nextMode) {
+        throw malformedResponseError("Preparation default", response.status);
       }
-      defaultCorrectionMode = nextMode;
+      defaultPreparationMode = nextMode;
       elements.modeSaveState.textContent = `${titleCaseState(nextMode)} saved for the next Original.`;
       renderCorrectionMode();
     } catch (error) {
-      defaultCorrectionMode = previousMode;
+      defaultPreparationMode = previousMode;
       elements.modeSaveState.textContent = `${error.message} ${error.retryAction}`;
       renderCorrectionMode();
     } finally {
-      elements.defaultCorrectionMode.disabled = false;
+      elements.defaultPreparationMode.disabled = false;
     }
   });
 
@@ -2435,13 +2436,15 @@
       const config = await readJson(configResponse, "Workspace configuration");
       storeEvidenceLease(null);
 
-      elements.cleanupEnabled.checked = config.cleanup_enabled_by_default ?? true;
-      defaultCorrectionMode = ["conservative", "smart"].includes(config.default_correction_mode)
-        ? config.default_correction_mode
+      defaultPreparationMode = ["off", "conservative", "smart"].includes(config.preparation_default)
+        ? config.preparation_default
         : "conservative";
+      elements.cleanupEnabled.checked = defaultPreparationMode !== "off";
       currentOriginalText = elements.original.value;
-      draftCorrectionMode = currentOriginalText ? defaultCorrectionMode : null;
-      elements.modeSaveState.textContent = `${titleCaseState(defaultCorrectionMode)} is the saved default.`;
+      draftCorrectionMode = currentOriginalText
+        ? defaultPreparationMode === "smart" ? "smart" : "conservative"
+        : null;
+      elements.modeSaveState.textContent = `${titleCaseState(defaultPreparationMode)} is the saved default.`;
       renderCorrectionMode();
       renderCleanupConfiguration(config.cleanup_configuration);
       evidenceReady = config.evidence_collection?.ready === true;

@@ -76,6 +76,12 @@ class CorrectionMode(StrEnum):
     SMART = "smart"
 
 
+class PreparationMode(StrEnum):
+    OFF = "off"
+    CONSERVATIVE = "conservative"
+    SMART = "smart"
+
+
 class CleanupRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 

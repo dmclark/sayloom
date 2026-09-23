@@ -587,7 +587,7 @@ const fetch = async (url, options = {}) => {
   const body = options.body ? JSON.parse(options.body) : null;
   requests.push({ url, method: options.method || "GET", body });
   if (url === "/api/config") return response({
-    cleanup_enabled_by_default: true, default_correction_mode: process.argv[2],
+    preparation_default: process.argv[2],
     cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
     evidence_collection: { ready: true }, evaluation_configuration: { available: false },
   });
@@ -861,7 +861,7 @@ const fetch = async (url, options = {}) => {
   const body = options.body ? JSON.parse(options.body) : null;
   requests.push({ url, method: options.method || "GET", body });
   if (url === "/api/config") return response({
-    cleanup_enabled_by_default: true, default_correction_mode: "smart",
+    preparation_default: "smart",
     cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
     evidence_collection: { ready: true }, evaluation_configuration: { available: false },
   });

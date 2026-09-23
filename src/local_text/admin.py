@@ -96,7 +96,7 @@ def _run(args: argparse.Namespace) -> int:
             source_fingerprint=preview.source_fingerprint,
             preview_digest=preview.preview_digest,
             prompt_text=preview.prompt_text,
-            cleanup_enabled=preview.cleanup_enabled_by_default,
+            preparation_default=preview.preparation_default,
         )
         _print(
             {

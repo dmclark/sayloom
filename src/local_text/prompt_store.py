@@ -8,7 +8,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from local_text.cleanup import CorrectionMode
+from local_text.cleanup import PreparationMode
 from local_text.database import ApplicationDatabase
 from local_text.models import (
     ActivePrompt,
@@ -20,8 +20,7 @@ from local_text.models import (
 )
 from local_text.prompts import DEFAULT_PROMPT_TITLE, DEFAULT_SEED_RELEASE, DEFAULT_SYSTEM_PROMPT
 
-CLEANUP_ENABLED_SETTING = "cleanup_enabled_by_default"
-DEFAULT_CORRECTION_MODE_SETTING = "default_correction_mode"
+PREPARATION_DEFAULT_SETTING = "preparation_default"
 
 
 class PromptNotFoundError(LookupError):
@@ -102,8 +101,8 @@ class PromptStore:
             )
             session.add(
                 AppSetting(
-                    key=CLEANUP_ENABLED_SETTING,
-                    value_json=json.dumps(True),
+                    key=PREPARATION_DEFAULT_SETTING,
+                    value_json=json.dumps(PreparationMode.CONSERVATIVE.value),
                     updated_at=utc_now(),
                 )
             )
@@ -171,49 +170,21 @@ class PromptStore:
             record = _record(prompt)
         return record
 
-    def cleanup_enabled_by_default(self) -> bool:
+    def preparation_default(self) -> PreparationMode:
         with self.database.session_factory() as session:
-            setting = session.get(AppSetting, CLEANUP_ENABLED_SETTING)
+            setting = session.get(AppSetting, PREPARATION_DEFAULT_SETTING)
             if setting is None:
-                raise SeedStateError("cleanup default setting is missing")
+                raise SeedStateError("preparation default setting is missing")
             try:
-                value = json.loads(setting.value_json)
-            except json.JSONDecodeError as exc:
-                raise SeedStateError("cleanup default setting is invalid") from exc
-            if not isinstance(value, bool):
-                raise SeedStateError("cleanup default setting is invalid")
-            return value
-
-    def set_cleanup_enabled_by_default(self, value: bool) -> None:
-        with self.database.session_factory.begin() as session:
-            setting = session.get(AppSetting, CLEANUP_ENABLED_SETTING)
-            if setting is None:
-                raise SeedStateError("cleanup default setting is missing")
-            setting.value_json = json.dumps(value)
-            setting.updated_at = utc_now()
-
-    def default_correction_mode(self) -> CorrectionMode:
-        with self.database.session_factory() as session:
-            setting = session.get(AppSetting, DEFAULT_CORRECTION_MODE_SETTING)
-            if setting is None:
-                return CorrectionMode.CONSERVATIVE
-            try:
-                return CorrectionMode(json.loads(setting.value_json))
+                return PreparationMode(json.loads(setting.value_json))
             except (json.JSONDecodeError, ValueError, TypeError) as exc:
-                raise SeedStateError("default correction mode setting is invalid") from exc
+                raise SeedStateError("preparation default setting is invalid") from exc
 
-    def set_default_correction_mode(self, value: CorrectionMode) -> None:
+    def set_preparation_default(self, value: PreparationMode) -> None:
         with self.database.session_factory.begin() as session:
-            setting = session.get(AppSetting, DEFAULT_CORRECTION_MODE_SETTING)
+            setting = session.get(AppSetting, PREPARATION_DEFAULT_SETTING)
             if setting is None:
-                session.add(
-                    AppSetting(
-                        key=DEFAULT_CORRECTION_MODE_SETTING,
-                        value_json=json.dumps(value.value),
-                        updated_at=utc_now(),
-                    )
-                )
-                return
+                raise SeedStateError("preparation default setting is missing")
             setting.value_json = json.dumps(value.value)
             setting.updated_at = utc_now()
 
@@ -223,12 +194,12 @@ class PromptStore:
         source_fingerprint: str,
         preview_digest: str,
         prompt_text: str | None,
-        cleanup_enabled: bool | None,
+        preparation_default: PreparationMode | None,
     ) -> PromptRecord | None:
         with self.database.session_factory.begin() as session:
             if session.get(ActivePrompt, 1) is None:
                 raise SeedStateError("default seed must be applied before configuration import")
-            setting = session.get(AppSetting, CLEANUP_ENABLED_SETTING)
+            setting = session.get(AppSetting, PREPARATION_DEFAULT_SETTING)
             if setting is None:
                 raise SeedStateError("default seed must be applied before configuration import")
             if session.scalar(select(func.count()).select_from(ImportRun)):
@@ -249,8 +220,8 @@ class PromptStore:
                 session.flush()
                 self._activate(session, imported_prompt.id)
 
-            if cleanup_enabled is not None:
-                setting.value_json = json.dumps(cleanup_enabled)
+            if preparation_default is not None:
+                setting.value_json = json.dumps(preparation_default.value)
                 setting.updated_at = utc_now()
 
             session.add(

@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -6,6 +7,7 @@ from conftest import initialize_database
 from sqlalchemy import func, select
 
 from local_text.admin import _alembic_config
+from local_text.cleanup import PreparationMode
 from local_text.database import ApplicationDatabase
 from local_text.legacy_import import LegacyImportError, preview_legacy_configuration
 from local_text.models import PromptVersion
@@ -36,7 +38,7 @@ def test_preview_reads_only_allowlisted_configuration_without_changing_source(
     preview = preview_legacy_configuration(source)
 
     assert preview.prompt_text == "Return synthetic text only."
-    assert preview.cleanup_enabled_by_default is False
+    assert preview.preparation_default is PreparationMode.OFF
     assert len(preview.source_fingerprint) == 64
     assert len(preview.preview_digest) == 64
     assert {path.name: path.read_bytes() for path in source.iterdir()} == before
@@ -69,19 +71,19 @@ def test_confirmed_import_is_atomic_durable_and_one_time(tmp_path: Path) -> None
         source_fingerprint=preview.source_fingerprint,
         preview_digest=preview.preview_digest,
         prompt_text=preview.prompt_text,
-        cleanup_enabled=preview.cleanup_enabled_by_default,
+        preparation_default=preview.preparation_default,
     )
 
     assert imported is not None
     assert imported.source == "import"
     assert store.active().id == imported.id
-    assert store.cleanup_enabled_by_default() is False
+    assert store.preparation_default() is PreparationMode.OFF
     with pytest.raises(ImportAlreadyCompletedError, match="already complete"):
         store.import_configuration(
             source_fingerprint=preview.source_fingerprint,
             preview_digest=preview.preview_digest,
             prompt_text=preview.prompt_text,
-            cleanup_enabled=preview.cleanup_enabled_by_default,
+            preparation_default=preview.preparation_default,
         )
 
 
@@ -95,7 +97,7 @@ def test_import_requires_seed_and_leaves_migrated_database_unchanged(tmp_path: P
             source_fingerprint="a" * 64,
             preview_digest="b" * 64,
             prompt_text="Synthetic imported instruction.",
-            cleanup_enabled=None,
+            preparation_default=None,
         )
 
     with database.session_factory() as session:
@@ -112,3 +114,44 @@ def test_preview_digest_changes_when_source_changes(tmp_path: Path) -> None:
 
     assert second.preview_digest != first.preview_digest
     assert second.source_fingerprint != first.source_fingerprint
+
+
+@pytest.mark.parametrize(
+    ("preferences", "expected"),
+    [
+        ({"cleanup_enabled_by_default": False}, PreparationMode.OFF),
+        ({"cleanup_enabled_by_default": True}, PreparationMode.CONSERVATIVE),
+        (
+            {"cleanup_enabled_by_default": True, "default_correction_mode": "smart"},
+            PreparationMode.SMART,
+        ),
+        ({"default_correction_mode": "smart"}, PreparationMode.SMART),
+    ],
+)
+def test_legacy_preferences_map_to_one_preparation_default(
+    tmp_path: Path, preferences: dict[str, object], expected: PreparationMode
+) -> None:
+    source = tmp_path / "legacy-configuration"
+    source.mkdir()
+    (source / "preferences.json").write_text(json.dumps(preferences))
+
+    assert preview_legacy_configuration(source).preparation_default is expected
+
+
+@pytest.mark.parametrize(
+    "preferences",
+    [
+        {"cleanup_enabled_by_default": "true"},
+        {"default_correction_mode": "off"},
+        {"default_correction_mode": "polished"},
+    ],
+)
+def test_legacy_preferences_reject_invalid_values(
+    tmp_path: Path, preferences: dict[str, object]
+) -> None:
+    source = tmp_path / "legacy-configuration"
+    source.mkdir()
+    (source / "preferences.json").write_text(json.dumps(preferences))
+
+    with pytest.raises(LegacyImportError):
+        preview_legacy_configuration(source)

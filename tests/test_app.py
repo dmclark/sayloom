@@ -38,8 +38,8 @@ def test_health_reports_development_profile(initialized_settings: Settings) -> N
         "development_state": None,
         "database": {
             "state": "current",
-            "current_revision": "0002_target_management",
-            "expected_revision": "0002_target_management",
+            "current_revision": "0003_unified_preparation_default",
+            "expected_revision": "0003_unified_preparation_default",
         },
         "configuration_error": None,
     }
@@ -86,7 +86,7 @@ def test_health_reports_schema_mismatch(tmp_path: Path) -> None:
     assert response.json()["database"] == {
         "state": "mismatch",
         "current_revision": "obsolete_revision",
-        "expected_revision": "0002_target_management",
+        "expected_revision": "0003_unified_preparation_default",
     }
 
 
@@ -127,7 +127,15 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="maximize-original"' in response.text
     assert 'id="maximize-prepared"' in response.text
     assert 'id="toggle-sidebar"' in response.text
-    assert 'id="default-correction-mode"' in response.text
+    assert 'id="default-preparation-mode"' in response.text
+    assert '<option value="off">Off — Keep Original</option>' in response.text
+    assert (
+        '<option value="conservative">Conservative — Preserve my words</option>'
+        in response.text
+    )
+    assert (
+        '<option value="smart">Smart — Repair likely wrong words</option>' in response.text
+    )
     assert 'id="current-correction-mode"' not in response.text
     assert 'id="active-correction-mode"' not in response.text
     assert 'id="run-smart-correction"' in response.text
@@ -318,8 +326,7 @@ def test_config_reports_cleanup_without_exposing_key(initialized_settings: Setti
         "display_name": "Sayloom Development",
         "profile": "development",
         "development_state": None,
-        "cleanup_enabled_by_default": True,
-        "default_correction_mode": "conservative",
+        "preparation_default": "conservative",
         "cleanup_available": True,
         "cleanup_model": "gemini-3.5-flash",
     }
@@ -1073,7 +1080,9 @@ def test_cleanup_can_use_a_session_prompt_without_changing_the_durable_default(
     assert missing.json()["detail"]["code"] == "prompt_version_not_found"
 
 
-def test_cleanup_toggle_is_durable_configuration(initialized_settings: Settings) -> None:
+def test_active_draft_does_not_change_saved_preparation_default(
+    initialized_settings: Settings,
+) -> None:
     client = TestClient(create_app(initialized_settings))
     update = {
         "cleanup_enabled": False,
@@ -1087,21 +1096,21 @@ def test_cleanup_toggle_is_durable_configuration(initialized_settings: Settings)
     assert client.put("/api/outgoing-state", json=update).status_code == 200
 
     restarted = TestClient(create_app(initialized_settings))
-    assert restarted.get("/api/config").json()["cleanup_enabled_by_default"] is False
-    assert restarted.get("/api/outgoing-state").json()["cleanup_enabled"] is False
+    assert restarted.get("/api/config").json()["preparation_default"] == "conservative"
+    assert restarted.get("/api/outgoing-state").json()["cleanup_enabled"] is True
 
 
-def test_correction_mode_preference_is_durable_and_separate_from_workspace_state(
+def test_preparation_default_is_durable_and_new_draft_snapshots_it(
     initialized_settings: Settings,
 ) -> None:
     client = TestClient(create_app(initialized_settings))
 
     saved = client.put(
-        "/api/preferences/correction-mode",
-        json={"correction_mode": "smart"},
+        "/api/preferences/preparation-default",
+        json={"preparation_default": "smart"},
     )
     assert saved.status_code == 200
-    assert saved.json() == {"default_correction_mode": "smart"}
+    assert saved.json() == {"preparation_default": "smart"}
 
     workspace_override = client.put(
         "/api/outgoing-state",
@@ -1118,15 +1127,30 @@ def test_correction_mode_preference_is_durable_and_separate_from_workspace_state
     assert workspace_override.status_code == 200
     assert workspace_override.json()["correction_mode"] == "conservative"
 
+    assert client.get("/api/outgoing-state").json()["correction_mode"] == "conservative"
+
+    new_draft = client.delete("/api/outgoing-state")
+    assert new_draft.json()["cleanup_enabled"] is True
+    assert new_draft.json()["correction_mode"] == "smart"
+
     restarted = TestClient(create_app(initialized_settings))
-    assert restarted.get("/api/config").json()["default_correction_mode"] == "smart"
+    assert restarted.get("/api/config").json()["preparation_default"] == "smart"
     assert restarted.get("/api/outgoing-state").json()["correction_mode"] == "smart"
 
     invalid = client.put(
-        "/api/preferences/correction-mode",
-        json={"correction_mode": "polished"},
+        "/api/preferences/preparation-default",
+        json={"preparation_default": "polished"},
     )
     assert invalid.status_code == 422
+
+    off = client.put(
+        "/api/preferences/preparation-default",
+        json={"preparation_default": "off"},
+    )
+    assert off.status_code == 200
+    off_draft = client.delete("/api/outgoing-state").json()
+    assert off_draft["cleanup_enabled"] is False
+    assert off_draft["correction_mode"] == "conservative"
 
 
 def test_outgoing_state_is_published_and_cleared_in_memory(
@@ -1359,7 +1383,7 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     assert 'window.matchMedia("(max-width: 980px)")' in script.text
     assert "correction_mode: correctionMode" in script.text
     assert "task_context: taskContext" in script.text
-    assert 'fetch("/api/preferences/correction-mode"' in script.text
+    assert 'fetch("/api/preferences/preparation-default"' in script.text
     assert "draftCorrectionMode = null" in script.text
     assert "renderCorrectionMode();" in script.text
     assert 'elements.prepared.addEventListener("input"' not in script.text
@@ -1433,8 +1457,7 @@ const cleanupResolvers = [];
 const response = (body) => ({ ok: true, status: 200, json: async () => body });
 const fetch = (url, options = {}) => {
   if (url === "/api/config") return Promise.resolve(response({
-    cleanup_enabled_by_default: true,
-    default_correction_mode: "smart",
+    preparation_default: "smart",
     cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
     correction_benchmark_configuration: { available: false },
     evaluation_configuration: { available: false },
@@ -1567,12 +1590,12 @@ const fetch = async (url, options = {}) => {
   const body = options.body ? JSON.parse(options.body) : null;
   requests.push({ url, method: options.method || "GET", body });
   if (url === "/api/config") return response({
-    cleanup_enabled_by_default: true, default_correction_mode: "conservative",
+    preparation_default: "conservative",
     cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
     evidence_collection: { ready: false }, evaluation_configuration: { available: false },
   });
-  if (url === "/api/preferences/correction-mode") {
-    return response({ default_correction_mode: body.correction_mode });
+  if (url === "/api/preferences/preparation-default") {
+    return response({ preparation_default: body.preparation_default });
   }
   if (url === "/api/cleanup") return response({
     prepared_text: body.original_text, status: "unchanged", lexical_repairs: [],
@@ -1597,7 +1620,7 @@ const settle = async () => {
 (async () => {
   vm.runInNewContext(process.argv[1], context); await settle();
   const original = elements["#original-text"];
-  const defaultMode = elements["#default-correction-mode"];
+  const defaultMode = elements["#default-preparation-mode"];
   const runCleanup = elements["#run-cleanup"];
   const runSmart = elements["#run-smart-correction"];
 
@@ -1742,7 +1765,7 @@ let cleanupRequests = 0;
 const response = (body) => ({ ok: true, status: 200, json: async () => body });
 const fetch = async (url, options = {}) => {
   if (url === "/api/config") return response({
-    cleanup_enabled_by_default: true, default_correction_mode: "smart",
+    preparation_default: "smart",
     cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
     correction_benchmark_configuration: { available: false },
     evaluation_configuration: { available: false },
@@ -1931,7 +1954,7 @@ async function run(originalValue) {
     "#cleanup-disclosure": new Element(), "#cleanup-disclosure-summary": new Element(),
     "#cleanup-route-list": new Element(), "#cleanup-processing-disclosure": new Element(),
     "#cleanup-fallback-disclosure": new Element(), "#cleanup-corpus-disclosure": new Element(),
-    "#cleanup-validation-detail": new Element(), "#default-correction-mode": new Element(),
+    "#cleanup-validation-detail": new Element(), "#default-preparation-mode": new Element(),
     "#run-smart-correction": new Element(), "#smart-correction-state": new Element(),
     ".workspace": new Element(), "#workspace-resizer": new Element(),
     "#error-details-dialog": new Element(),
@@ -1948,8 +1971,7 @@ async function run(originalValue) {
   const window = { clearTimeout, setTimeout, requestAnimationFrame, addEventListener };
   const fetch = (url) => {
     const configBody = {
-      cleanup_enabled_by_default: true,
-      default_correction_mode: "conservative",
+      preparation_default: "conservative",
       cleanup_available: false,
     };
     const body = url === "/api/config" ? configBody : { revision: 1 };
@@ -2060,8 +2082,7 @@ async function run({
   const fetch = async (url, options = {}) => {
     const method = options.method || "GET";
     if (url === "/api/config") return response(200, {
-      cleanup_enabled_by_default: true,
-      default_correction_mode: "conservative",
+      preparation_default: "conservative",
       cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
       correction_benchmark_configuration: { available: true },
       evaluation_configuration: { available: false },

@@ -382,6 +382,11 @@ def test_migration_upgrades_prompt_database_without_startup_or_data_loss(tmp_pat
     command.upgrade(_alembic_config(database.url), "0001_gate2_prompt_core")
     PromptStore(database).seed_default()
     with sqlite3.connect(database_path) as connection:
+        connection.execute("DELETE FROM app_settings WHERE key = 'preparation_default'")
+        connection.execute(
+            "INSERT INTO app_settings (key, value_json, updated_at) "
+            "VALUES ('cleanup_enabled_by_default', 'true', CURRENT_TIMESTAMP)"
+        )
         before = connection.execute("SELECT system_text FROM prompt_versions").fetchall()
 
     settings = Settings(Profile.DEVELOPMENT, database_path=database_path)
