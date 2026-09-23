@@ -56,6 +56,22 @@ when the selected files are unavailable. It only presents content already in
 those external logs and does not change log format, retention, redaction, or
 destination.
 
+For provider troubleshooting, run `scripts/dev.py logs --provider-traffic`.
+This creates a temporary, state-scoped diagnostic session and follows both log
+streams until interrupted. **While active, the logs contain the exact Gemini or
+OpenAI request JSON—including the actual dictated/transcribed text and cleanup
+prompt—and the exact response body, including error bodies.** They do not contain
+request headers, authorization values, API keys, or credential-bearing URLs.
+Press Ctrl-C as soon as diagnosis is complete; the opt-in is removed when the
+viewer exits. Runtime enables diagnostics only while the viewer holds an
+exclusive lock, so an unlocked marker left by a killed viewer—or marker content
+that happens to match a reused process ID—cannot reactivate logging. The next
+session safely reclaims an unlocked marker. The diagnostic switch cannot be
+persisted in a development environment file and is unavailable in the release
+profile. After the development service has been restarted once onto code
+containing this feature, starting or stopping a diagnostic session requires no
+further restart.
+
 Raycast continues to use `127.0.0.1:7523`. Run `scripts/dev.py activate` to move
 the current checkout to that port and atomically repoint each installed managed
 Raycast alias to that checkout; the previous owner moves to the current
@@ -304,7 +320,7 @@ The **Settings** destination places the persisted default correction mode before
 
 Original and Prepared default to resizable stacked panes and can switch to a resizable side-by-side layout on wide viewports. Layout, divider positions, and the collapsible navigation rail are local browser preferences; pane maximization is temporary, and narrow viewports enforce stacking without changing the saved desktop preference. Both dividers support pointer and keyboard adjustment, and the editors scroll independently. Original uses the browser's native insertion point; Prepared is read-only. The compact Outgoing status bar explicitly selects Prepared or Original and expands to show route details. Prepared becomes the default after a current successful cleanup; pending, stale, disabled, timed-out, and failed cleanup states fall back to Original, and an explicit per-draft Original selection survives reruns until Clear or reload. Cleanup and publication failures provide persistent, expandable, copyable safe details without including operating text, provider payloads, credentials, stack traces, or private paths.
 
-Cleanup details distinguish provider authentication/access rejection, quota or rate limits, provider service errors, other HTTP rejection, transport failure, timeout, malformed provider responses, and output rejected by provider or local safety checks. The attempted model and provider HTTP status are included when available. Cleanup uses `gemini-3.5-flash` by default and makes one bounded `gemini-2.5-flash` fallback attempt after HTTP 429 or 503; a five-minute per-model cooldown prevents automatic cleanup from repeatedly hitting a transiently failing model. The cleanup timeout remains the total deadline, and every exhausted path still fails open to Original. Server logs record only structured provider/model, category/status, duration, and input-length metadata; they never record operating text, prompts, credentials, headers, or provider payloads.
+Cleanup details distinguish provider authentication/access rejection, quota or rate limits, provider service errors, other HTTP rejection, transport failure, timeout, malformed provider responses, and output rejected by provider or local safety checks. The attempted model and provider HTTP status are included when available. Cleanup uses `gemini-3.5-flash` by default and makes one bounded `gemini-2.5-flash` fallback attempt after HTTP 429 or 503; a five-minute per-model cooldown prevents automatic cleanup from repeatedly hitting a transiently failing model. The cleanup timeout remains the total deadline, and every exhausted path still fails open to Original. Normal server logs record only structured provider/model, category/status, duration, and input-length metadata; they never record operating text, prompts, credentials, headers, or provider payloads. The temporary development-only provider traffic session documented above is the explicit exception for request payloads and response bodies; it still never records credentials or headers.
 
 Normal startup only checks schema state. Development-state administration is explicit:
 

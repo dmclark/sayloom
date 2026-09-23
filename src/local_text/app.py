@@ -329,6 +329,9 @@ def create_app(
                         model,
                         client,
                         quota_group_id=quota_group_id,
+                        traffic_diagnostics_enabled=(
+                            runtime.provider_traffic_diagnostics_enabled
+                        ),
                     )
                     if provider_id == "gemini"
                     else OpenAIAdapter(
@@ -336,6 +339,9 @@ def create_app(
                         client,
                         model=model,
                         quota_group_id=quota_group_id,
+                        traffic_diagnostics_enabled=(
+                            runtime.provider_traffic_diagnostics_enabled
+                        ),
                     )
                 )
                 adapters.append(

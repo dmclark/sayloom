@@ -499,6 +499,7 @@ class GeminiAdapter:
     endpoint: str = GEMINI_ENDPOINT
     provider_id: str = "gemini"
     quota_group_id: str | None = None
+    traffic_diagnostics_enabled: Callable[[], bool] | None = None
 
     def __post_init__(self) -> None:
         if not MODEL_IDENTIFIER.fullmatch(self.model):
@@ -529,6 +530,13 @@ class GeminiAdapter:
             task_context=task_context,
             relevant_curated_knowledge=relevant_curated_knowledge,
         )
+        _log_provider_traffic(
+            enabled=self.traffic_diagnostics_enabled,
+            provider=self.provider_id,
+            model=self.model,
+            direction="request",
+            payload=payload,
+        )
         try:
             response = await self.client.post(
                 url,
@@ -543,6 +551,14 @@ class GeminiAdapter:
             failure = ProviderTransportError("provider transport failure", model=self.model)
             _attribute_failure(failure, self, started)
             raise failure from error
+        _log_provider_traffic(
+            enabled=self.traffic_diagnostics_enabled,
+            provider=self.provider_id,
+            model=self.model,
+            direction="response",
+            status=response.status_code,
+            response=response,
+        )
         if response.is_error:
             error = ProviderHTTPError(
                 response.status_code,
@@ -589,6 +605,7 @@ class OpenAIAdapter:
     endpoint: str = OPENAI_ENDPOINT
     provider_id: str = "openai"
     quota_group_id: str | None = None
+    traffic_diagnostics_enabled: Callable[[], bool] | None = None
 
     def __post_init__(self) -> None:
         if self.model != OPENAI_GPT_56_LUNA:
@@ -618,6 +635,13 @@ class OpenAIAdapter:
             task_context=task_context,
             relevant_curated_knowledge=relevant_curated_knowledge,
         )
+        _log_provider_traffic(
+            enabled=self.traffic_diagnostics_enabled,
+            provider=self.provider_id,
+            model=self.model,
+            direction="request",
+            payload=payload,
+        )
         try:
             response = await self.client.post(
                 self.endpoint,
@@ -632,6 +656,14 @@ class OpenAIAdapter:
             failure = ProviderTransportError("provider transport failure", model=self.model)
             _attribute_failure(failure, self, started)
             raise failure from error
+        _log_provider_traffic(
+            enabled=self.traffic_diagnostics_enabled,
+            provider=self.provider_id,
+            model=self.model,
+            direction="response",
+            status=response.status_code,
+            response=response,
+        )
         if response.is_error:
             provider_code = _provider_error_code(response)
             error = ProviderHTTPError(
@@ -1706,6 +1738,39 @@ def _log_cleanup(
             sort_keys=True,
         ),
     )
+
+
+def _log_provider_traffic(
+    *,
+    enabled: Callable[[], bool] | None,
+    provider: str,
+    model: str,
+    direction: Literal["request", "response"],
+    payload: dict[str, Any] | None = None,
+    status: int | None = None,
+    response: httpx.Response | None = None,
+) -> None:
+    try:
+        if enabled is None or not enabled():
+            return
+        entry: dict[str, Any] = {
+            "event": "provider_traffic",
+            "provider": _safe_identifier(provider),
+            "model": _safe_model(model),
+            "direction": direction,
+        }
+        if direction == "request":
+            entry["payload"] = payload
+        else:
+            entry["status"] = status
+            entry["body"] = response.text if response is not None else None
+        logger.info(
+            "provider_traffic %s",
+            json.dumps(entry, ensure_ascii=False, separators=(",", ":"), sort_keys=True),
+        )
+    except Exception:
+        # Diagnostics must never change provider request or response behavior.
+        return
 
 
 def _safe_model(model: str) -> str:
