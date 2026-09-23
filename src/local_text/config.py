@@ -1,6 +1,8 @@
 """Runtime profile and display branding configuration."""
 
+import fcntl
 import os
+import stat
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -28,6 +30,7 @@ class Settings:
     database_path: Path | None = None
     raycast_directory: Path | None = None
     evaluation_data_directory: Path | None = None
+    provider_traffic_diagnostics_file: Path | None = field(default=None, repr=False)
 
     @property
     def display_name(self) -> str:
@@ -55,6 +58,28 @@ class Settings:
         if self.raycast_directory is not None:
             return self.raycast_directory
         return Path.home() / ".config/raycast/scripts"
+
+    def provider_traffic_diagnostics_enabled(self) -> bool:
+        path = self.provider_traffic_diagnostics_file
+        if self.profile is not Profile.DEVELOPMENT or path is None:
+            return False
+        try:
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        except OSError:
+            return False
+        try:
+            if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+                return False
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return True
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+            return False
+        except OSError:
+            return False
+        finally:
+            os.close(descriptor)
 
 
 def load_settings() -> Settings:
@@ -89,6 +114,12 @@ def load_settings() -> Settings:
         evaluation_data_directory=(
             Path(value)
             if (value := os.getenv("LOCAL_TEXT_EVALUATION_DATA_DIRECTORY"))
+            else None
+        ),
+        provider_traffic_diagnostics_file=(
+            Path(value)
+            if profile is Profile.DEVELOPMENT
+            and (value := os.getenv("LOCAL_TEXT_PROVIDER_TRAFFIC_DIAGNOSTICS_FILE"))
             else None
         ),
     )

@@ -1,5 +1,7 @@
 import asyncio
+import fcntl
 import json
+import os
 import sqlite3
 import subprocess
 from dataclasses import replace
@@ -92,6 +94,32 @@ def test_health_reports_schema_mismatch(tmp_path: Path) -> None:
 
 def test_default_cleanup_timeout_allows_provider_generation_latency() -> None:
     assert Settings(Profile.DEVELOPMENT).cleanup_timeout_seconds == 30
+
+
+def test_provider_traffic_diagnostics_require_an_actively_locked_development_session(
+    tmp_path: Path,
+) -> None:
+    marker = tmp_path / "provider-traffic"
+    marker.write_text(str(os.getpid()))
+
+    development = Settings(
+        Profile.DEVELOPMENT,
+        provider_traffic_diagnostics_file=marker,
+    )
+    release = Settings(
+        Profile.RELEASE,
+        provider_traffic_diagnostics_file=marker,
+    )
+
+    assert development.provider_traffic_diagnostics_enabled() is False
+    assert release.provider_traffic_diagnostics_enabled() is False
+    with marker.open() as session:
+        fcntl.flock(session, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        assert development.provider_traffic_diagnostics_enabled() is True
+        assert release.provider_traffic_diagnostics_enabled() is False
+    assert development.provider_traffic_diagnostics_enabled() is False
+    marker.write_text("reused-current-pid-content")
+    assert development.provider_traffic_diagnostics_enabled() is False
 
 
 def test_development_page_identifies_development_brand(initialized_settings: Settings) -> None:

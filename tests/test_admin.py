@@ -1,3 +1,4 @@
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -887,10 +888,57 @@ def test_help_lists_checkout_service_database_and_cleanup_commands() -> None:
     assert logs_help.returncode == 0
     assert "-n LINES, --lines LINES" in logs_help.stdout
     assert "-f, --follow" in logs_help.stdout
+    assert "--provider-traffic" in logs_help.stdout
     assert "default: 100" in logs_help.stdout
     normalized_help = " ".join(logs_help.stdout.split())
     assert "Valid JSON entries are indented" in normalized_help
     assert "private filesystem paths" in normalized_help
+    assert "exact request and response content, including dictated/transcribed text" in (
+        normalized_help
+    )
+
+
+def test_provider_traffic_diagnostics_marker_is_temporary_and_exclusively_locked(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    state_root = tmp_path / "states"
+    assert run_dev(state_root, "create", "selected").returncode == 0
+
+    scripts = str(REPOSITORY_ROOT / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        specification = importlib.util.spec_from_file_location(
+            "sayloom_dev_provider_traffic_script", REPOSITORY_ROOT / "scripts/dev.py"
+        )
+        assert specification is not None and specification.loader is not None
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+    finally:
+        sys.path.remove(scripts)
+
+    marker = state_root / "selected/.provider-traffic-diagnostics"
+    marker.write_text(str(os.getpid()))
+    observed: list[tuple[int, bool]] = []
+
+    def observe_logs(state, *, lines: int, follow: bool) -> None:
+        assert marker.read_text() == str(os.getpid())
+        assert marker.stat().st_mode & 0o777 == 0o600
+        with marker.open() as contender:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(contender, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        observed.append((lines, follow))
+
+    module.show_logs = observe_logs
+    arguments = module.parser().parse_args(
+        ["--state-root", str(state_root), "logs", "--provider-traffic"]
+    )
+
+    assert module.command(arguments) == 0
+    assert not marker.exists()
+    assert observed == [(100, True)]
+    warning = capsys.readouterr().out
+    assert "exact dictated/transcribed text" in warning
+    assert "Press Ctrl-C" in warning
 
 
 def test_supacode_lifecycle_initializes_runs_and_deletes_without_archiving() -> None:
@@ -1032,6 +1080,9 @@ def test_runtime_environment_passes_evaluation_data_directory(
 
     assert captured_environment["LOCAL_TEXT_EVALUATION_DATA_DIRECTORY"] == str(
         evaluation_data_directory
+    )
+    assert captured_environment["LOCAL_TEXT_PROVIDER_TRAFFIC_DIAGNOSTICS_FILE"] == str(
+        state_root / "selected/.provider-traffic-diagnostics"
     )
 
 

@@ -34,6 +34,7 @@ APPLICATION_ENVIRONMENT_KEYS = ALLOWED_ENVIRONMENT_KEYS | {
     "LOCAL_TEXT_DATABASE_PATH",
     "LOCAL_TEXT_DEVELOPMENT_STATE_NAME",
     "LOCAL_TEXT_PROFILE",
+    "LOCAL_TEXT_PROVIDER_TRAFFIC_DIAGNOSTICS_FILE",
     "LOCAL_TEXT_STATE_DIRECTORY",
 }
 ENVIRONMENT_LINE = re.compile(r"([A-Z][A-Z0-9_]*)=(.*)")
@@ -260,4 +261,7 @@ def state_environment(state: State, *, load_configuration: bool = False) -> dict
         environment.update(state_configuration(state))
     environment["LOCAL_TEXT_STATE_DIRECTORY"] = state.state_directory
     environment["LOCAL_TEXT_PROFILE"] = "development"
+    environment["LOCAL_TEXT_PROVIDER_TRAFFIC_DIAGNOSTICS_FILE"] = str(
+        Path(state.state_directory) / ".provider-traffic-diagnostics"
+    )
     return environment

@@ -2,6 +2,7 @@
 """Manage checkout-scoped Sayloom development environments."""
 
 import argparse
+import fcntl
 import hashlib
 import json
 import os
@@ -9,12 +10,13 @@ import re
 import shutil
 import signal
 import sqlite3
+import stat
 import subprocess
 import sys
 import tempfile
 import time
 from collections import deque
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from dataclasses import replace
 from pathlib import Path
 from urllib import parse, request
@@ -292,6 +294,79 @@ def print_log_entries(label: str, entries: list[str]) -> None:
         if prefix:
             print(prefix)
         print(json.dumps(parsed, indent=2, ensure_ascii=False))
+
+
+def marker_matches_descriptor(marker: Path, descriptor: int) -> bool:
+    try:
+        opened = os.fstat(descriptor)
+        current = os.stat(marker, follow_symlinks=False)
+    except OSError:
+        return False
+    return (
+        stat.S_ISREG(opened.st_mode)
+        and stat.S_ISREG(current.st_mode)
+        and (opened.st_dev, opened.st_ino) == (current.st_dev, current.st_ino)
+    )
+
+
+def remove_inactive_diagnostics_marker(marker: Path) -> None:
+    descriptor = os.open(marker, os.O_RDWR | os.O_NOFOLLOW)
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            fail("provider traffic diagnostics marker is invalid")
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            fail("another provider traffic diagnostics session is active")
+        if not marker_matches_descriptor(marker, descriptor):
+            fail("provider traffic diagnostics marker is invalid")
+        marker.unlink()
+    finally:
+        os.close(descriptor)
+
+
+@contextmanager
+def provider_traffic_diagnostics(state: State):
+    marker = Path(state.state_directory) / ".provider-traffic-diagnostics"
+    descriptor: int | None = None
+    try:
+        if marker.exists() or marker.is_symlink():
+            if marker.is_symlink() or not marker.is_file():
+                fail("provider traffic diagnostics marker is invalid")
+            remove_inactive_diagnostics_marker(marker)
+        descriptor = os.open(
+            marker,
+            os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW,
+            0o600,
+        )
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        os.write(descriptor, str(os.getpid()).encode())
+    except OSError:
+        if descriptor is not None:
+            try:
+                if marker_matches_descriptor(marker, descriptor):
+                    marker.unlink()
+            finally:
+                os.close(descriptor)
+        fail("cannot enable provider traffic diagnostics for the selected state")
+
+    print(
+        "WARNING: provider traffic diagnostics are active; logs will contain exact "
+        "dictated/transcribed text, prompts, and provider response bodies."
+    )
+    print("Press Ctrl-C to stop diagnostics and remove the temporary opt-in.")
+    sys.stdout.flush()
+    try:
+        yield
+    finally:
+        try:
+            if descriptor is not None and marker_matches_descriptor(marker, descriptor):
+                marker.unlink()
+        except OSError:
+            pass
+        if descriptor is not None:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+            os.close(descriptor)
 
 
 def show_logs(state: State, *, lines: int, follow: bool) -> None:
@@ -779,7 +854,11 @@ def command(arguments: argparse.Namespace) -> int:
         activate(root, state)
         return 0
     if operation == "logs":
-        show_logs(state, lines=arguments.lines, follow=arguments.follow)
+        if arguments.provider_traffic:
+            with provider_traffic_diagnostics(state):
+                show_logs(state, lines=arguments.lines, follow=True)
+        else:
+            show_logs(state, lines=arguments.lines, follow=arguments.follow)
         return 0
     if operation == "remove":
         remove_state(root, state, confirmed=arguments.yes)
@@ -804,6 +883,8 @@ def parser() -> argparse.ArgumentParser:
   scripts/dev.py activate        move this checkout to Raycast port 7523
   scripts/dev.py logs            show the last 100 lines from each service stream
   scripts/dev.py logs -f         continue showing output appended to either stream
+  scripts/dev.py logs --provider-traffic
+                                temporarily log and follow exact provider traffic
   scripts/dev.py list            show every registered development state
   scripts/dev.py prune           preview stale-state cleanup
 
@@ -862,7 +943,8 @@ status and prune are read-only unless prune receives --apply.
         help="show this checkout's service logs",
         description="Show only the current checkout's registered development-state logs. "
         "Valid JSON entries are indented for readability. Stream labels do not reveal "
-        "private filesystem paths.",
+        "private filesystem paths. --provider-traffic temporarily logs exact request and "
+        "response content, including dictated/transcribed text, and follows until interrupted.",
     )
     logs_parser.add_argument(
         "-n",
@@ -873,6 +955,11 @@ status and prune are read-only unless prune receives --apply.
     )
     logs_parser.add_argument(
         "-f", "--follow", action="store_true", help="continue showing appended output"
+    )
+    logs_parser.add_argument(
+        "--provider-traffic",
+        action="store_true",
+        help="temporarily log exact provider content and follow until interrupted",
     )
 
     subparsers.add_parser("list", help="list every registered state")

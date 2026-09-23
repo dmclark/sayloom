@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 import pytest
 
+import local_text.cleanup as cleanup_module
 from local_text.cleanup import (
     GEMINI_37_FLASH,
     GEMINI_MAX_OUTPUT_TOKENS,
@@ -165,6 +166,180 @@ def test_openai_luna_request_shape_and_usage_are_provider_correct() -> None:
     }
     assert body["max_output_tokens"] < 2_048
     assert "temperature" not in body
+
+
+@pytest.mark.parametrize("provider", ["gemini", "openai"])
+def test_enabled_provider_traffic_logs_exact_request_and_success_response(
+    provider: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    messages: list[str] = []
+    raw_body = (
+        '{"candidates":[{"content":{"parts":[{"text":"{\\"prepared_text\\":'
+        '\\"Synthetic prepared text.\\"}"}]}}],"usageMetadata":'
+        '{"promptTokenCount":11,"candidatesTokenCount":7}}'
+        if provider == "gemini"
+        else '{"status":"completed","output":[{"type":"message","content":'
+        '[{"type":"output_text","text":"{\\"prepared_text\\":'
+        '\\"Synthetic prepared text.\\"}"}]}],"usage":{"input_tokens":13,'
+        '"output_tokens":5}}'
+    )
+
+    monkeypatch.setattr(
+        cleanup_module.logger,
+        "info",
+        lambda template, entry: messages.append(template % entry),
+    )
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=raw_body, headers={"content-type": "application/json"})
+
+    async def exercise() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            adapter = (
+                GeminiAdapter(
+                    "synthetic-key",
+                    GEMINI_37_FLASH,
+                    client,
+                    traffic_diagnostics_enabled=lambda: True,
+                )
+                if provider == "gemini"
+                else OpenAIAdapter(
+                    "synthetic-key",
+                    client,
+                    traffic_diagnostics_enabled=lambda: True,
+                )
+            )
+            await adapter.clean("private synthetic dictation", "Synthetic system instruction")
+
+    asyncio.run(exercise())
+
+    entries = [json.loads(message.split(" ", maxsplit=1)[1]) for message in messages]
+    assert [entry["direction"] for entry in entries] == ["request", "response"]
+    request_entry, response_entry = entries
+    assert request_entry["event"] == "provider_traffic"
+    assert request_entry["provider"] == provider
+    assert request_entry["model"] == (
+        GEMINI_37_FLASH if provider == "gemini" else OPENAI_GPT_56_LUNA
+    )
+    if provider == "gemini":
+        assert request_entry["payload"]["system_instruction"] == {
+            "parts": [{"text": "Synthetic system instruction"}]
+        }
+        assert request_entry["payload"]["contents"] == [
+            {
+                "role": "user",
+                "parts": [
+                    {"text": "<SOURCE_TEXT>\nprivate synthetic dictation\n</SOURCE_TEXT>"}
+                ],
+            }
+        ]
+    else:
+        assert request_entry["payload"]["model"] == "gpt-5.6-luna"
+        assert request_entry["payload"]["input"] == [
+            {"role": "system", "content": "Synthetic system instruction"},
+            {
+                "role": "user",
+                "content": "<SOURCE_TEXT>\nprivate synthetic dictation\n</SOURCE_TEXT>",
+            },
+        ]
+        assert request_entry["payload"]["store"] is False
+    assert response_entry == {
+        "body": raw_body,
+        "direction": "response",
+        "event": "provider_traffic",
+        "model": GEMINI_37_FLASH if provider == "gemini" else OPENAI_GPT_56_LUNA,
+        "provider": provider,
+        "status": 200,
+    }
+    serialized = json.dumps(entries)
+    assert "synthetic-key" not in serialized
+    assert "authorization" not in serialized.lower()
+    assert "api.openai.com" not in serialized
+    assert "googleapis.com" not in serialized
+
+
+@pytest.mark.parametrize("provider", ["gemini", "openai"])
+def test_enabled_provider_traffic_logs_exact_error_response(
+    provider: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    messages: list[str] = []
+    raw_body = '{"error":{"code":"synthetic_failure","message":"exact private detail"}}'
+    monkeypatch.setattr(
+        cleanup_module.logger,
+        "info",
+        lambda template, entry: messages.append(template % entry),
+    )
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, content=raw_body)
+
+    async def exercise() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            adapter = (
+                GeminiAdapter(
+                    "synthetic-key",
+                    GEMINI_37_FLASH,
+                    client,
+                    traffic_diagnostics_enabled=lambda: True,
+                )
+                if provider == "gemini"
+                else OpenAIAdapter(
+                    "synthetic-key",
+                    client,
+                    traffic_diagnostics_enabled=lambda: True,
+                )
+            )
+            with pytest.raises(ProviderHTTPError):
+                await adapter.clean("synthetic source", "Synthetic instruction")
+
+    asyncio.run(exercise())
+
+    response_entry = json.loads(messages[-1].split(" ", maxsplit=1)[1])
+    assert response_entry["provider"] == provider
+    assert response_entry["status"] == 503
+    assert response_entry["body"] == raw_body
+
+
+def test_disabled_or_broken_provider_traffic_diagnostics_do_not_change_requests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logging_attempts = 0
+
+    def fail_to_log(template: str, entry: str) -> None:
+        nonlocal logging_attempts
+        logging_attempts += 1
+        raise RuntimeError("synthetic logging failure")
+
+    monkeypatch.setattr(cleanup_module.logger, "info", fail_to_log)
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=openai_response())
+
+    async def exercise() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            disabled = OpenAIAdapter(
+                "synthetic-key", client, traffic_diagnostics_enabled=lambda: False
+            )
+            assert (await disabled.clean("private disabled source", "instruction")).text == (
+                "Synthetic prepared text."
+            )
+            broken = OpenAIAdapter(
+                "synthetic-key",
+                client,
+                traffic_diagnostics_enabled=lambda: (_ for _ in ()).throw(RuntimeError()),
+            )
+            assert (await broken.clean("private broken source", "instruction")).text == (
+                "Synthetic prepared text."
+            )
+            enabled = OpenAIAdapter(
+                "synthetic-key", client, traffic_diagnostics_enabled=lambda: True
+            )
+            assert (await enabled.clean("private enabled source", "instruction")).text == (
+                "Synthetic prepared text."
+            )
+
+    asyncio.run(exercise())
+    assert logging_attempts == 2
 
 
 @pytest.mark.parametrize("provider", ["gemini", "openai"])
