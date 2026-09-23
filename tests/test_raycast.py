@@ -182,18 +182,23 @@ def test_raycast_uses_the_fixed_development_port_without_a_generic_service() -> 
     opener = (RAYCAST_DIRECTORY / "open-sayloom.sh").read_text()
 
     assert "http://127.0.0.1:7523" in library
+    assert '"$LOCAL_TEXT_BASE_URL/api/outgoing-state"' in library
+    assert "/api/outgoing-delivery" not in library
     assert "http://127.0.0.1:7523/" in opener
     assert "launchctl kickstart" not in opener
     assert "local.local-text.development\"" not in opener
 
 
 class OutgoingStateServer:
-    def __init__(self, state: dict[str, object]) -> None:
+    def __init__(self, state: dict[str, object], *, status: int = 200) -> None:
         body = json.dumps({"status": "ready", **state}, ensure_ascii=False).encode()
 
         class Handler(BaseHTTPRequestHandler):
-            def do_POST(self) -> None:  # noqa: N802
-                self.send_response(200)
+            def do_GET(self) -> None:  # noqa: N802
+                if self.path != "/api/outgoing-state":
+                    self.send_error(404)
+                    return
+                self.send_response(status)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
@@ -251,6 +256,16 @@ def test_raycast_fetch_preserves_utf8_outgoing_text() -> None:
     assert result.stdout == outgoing.encode()
     assert "LC_ALL=en_US.UTF-8 /usr/bin/pbcopy" in (RAYCAST_DIRECTORY / "lib.sh").read_text()
     assert "LC_ALL=en_US.UTF-8 /usr/bin/pbpaste" in (RAYCAST_DIRECTORY / "lib.sh").read_text()
+
+
+@pytest.mark.skipif(not Path("/usr/bin/plutil").exists(), reason="requires macOS plutil")
+def test_raycast_fetch_requires_retry_after_evidence_conflict() -> None:
+    detail = "Complete intended-meaning confirmation in Sayloom, then retry."
+    with OutgoingStateServer({"detail": detail}, status=409) as url:
+        result = run_fetch(url)
+
+    assert result.returncode == 1
+    assert result.stderr == f"{detail}\n".encode()
 
 
 @pytest.mark.skipif(not Path("/usr/bin/plutil").exists(), reason="requires macOS plutil")
