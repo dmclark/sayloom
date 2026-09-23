@@ -127,6 +127,7 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="maximize-original"' in response.text
     assert 'id="maximize-prepared"' in response.text
     assert 'id="toggle-sidebar"' in response.text
+    assert 'id="draft-preparation-mode"' in response.text
     assert 'id="default-preparation-mode"' in response.text
     assert '<option value="off">Off — Keep Original</option>' in response.text
     assert (
@@ -136,9 +137,12 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert (
         '<option value="smart">Smart — Repair likely wrong words</option>' in response.text
     )
-    assert 'id="current-correction-mode"' not in response.text
-    assert 'id="active-correction-mode"' not in response.text
-    assert 'id="run-smart-correction"' in response.text
+    assert 'id="cleanup-enabled"' not in response.text
+    assert "Clean automatically" not in response.text
+    assert "Experimental — not yet evidence-backed" in response.text
+    assert "Learn about the pilot" in response.text
+    assert "Enrollment is not currently open." in response.text
+    assert 'id="run-smart-correction"' not in response.text
     assert 'id="nav-settings"' in response.text
     assert response.text.index('id="correction-settings-title"') < response.text.index(
         'id="targets-title"'
@@ -1384,7 +1388,9 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     assert "correction_mode: correctionMode" in script.text
     assert "task_context: taskContext" in script.text
     assert 'fetch("/api/preferences/preparation-default"' in script.text
-    assert "draftCorrectionMode = null" in script.text
+    assert 'elements.draftPreparationMode.addEventListener("change"' in script.text
+    assert "requestDraftRevision !== draftRevision" in script.text
+    assert "correctionMode !== effectiveCorrectionMode()" in script.text
     assert "renderCorrectionMode();" in script.text
     assert 'elements.prepared.addEventListener("input"' not in script.text
     run_cleanup = script.text.split("async function runCleanup(", maxsplit=1)[1].split(
@@ -1393,8 +1399,8 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     scheduled_cleanup = script.text.split("function scheduleCleanup()", maxsplit=1)[1].split(
         "function originalIsFullySelected", maxsplit=1
     )[0]
-    assert 'elements.prepared.value = "";' not in run_cleanup
-    assert 'elements.prepared.value = "";' not in scheduled_cleanup
+    assert 'if (draftPreparationMode === "off")' in run_cleanup
+    assert 'if (draftPreparationMode === "off")' in scheduled_cleanup
     assert '(status === "prepared" || status === "unchanged")' in script.text
     initialization = script.text.split("async function initialize()", maxsplit=1)[1].split(
         "initialize();", maxsplit=1
@@ -1539,7 +1545,7 @@ async function settle() {
     assert observed["taskContextHidden"] is False
 
 
-def test_browser_snapshots_default_per_original_and_runs_explicit_smart_once(
+def test_browser_applies_active_preparation_mode_independently_of_saved_default(
     initialized_settings: Settings,
 ) -> None:
     script = TestClient(create_app(initialized_settings)).get("/static/app.js").text
@@ -1621,8 +1627,8 @@ const settle = async () => {
   vm.runInNewContext(process.argv[1], context); await settle();
   const original = elements["#original-text"];
   const defaultMode = elements["#default-preparation-mode"];
+  const draftMode = elements["#draft-preparation-mode"];
   const runCleanup = elements["#run-cleanup"];
-  const runSmart = elements["#run-smart-correction"];
 
   original.value = "First draft";
   await original.dispatch("input", { isTrusted: true });
@@ -1635,18 +1641,21 @@ const settle = async () => {
   original.value = "First draft edited";
   await original.dispatch("input", { isTrusted: true });
   await runCleanup.dispatch("click"); await settle();
-  const actionAfterConservative = { hidden: runSmart.hidden, label: runSmart.textContent };
 
-  await runSmart.dispatch("click"); await settle();
-  const explicitResult = {
-    hidden: runSmart.hidden,
-    status: elements["#smart-correction-state"].textContent,
+  draftMode.value = "smart";
+  await draftMode.dispatch("change"); await settle();
+  const smartMode = {
+    selected: draftMode.value,
+    disclosureHidden: elements["#smart-mode-disclosure"].hidden,
+    taskContextHidden: elements["#smart-task-context-field"].hidden,
   };
 
-  original.value = "First draft edited again";
-  await original.dispatch("input", { isTrusted: true });
-  await runCleanup.dispatch("click"); await settle();
-  const actionAfterEdit = { hidden: runSmart.hidden, label: runSmart.textContent };
+  draftMode.value = "off";
+  await draftMode.dispatch("change"); await settle();
+  const offMode = {
+    prepared: elements["#prepared-text"].value,
+    outgoing: elements["#outgoing-kind"].textContent,
+  };
 
   elements["#smart-task-context"].value = "Stale context from the previous Original";
   original.selectionStart = 0; original.selectionEnd = original.value.length;
@@ -1666,8 +1675,9 @@ const settle = async () => {
       requests.filter((item) => item.url === "/api/cleanup").at(-1).body,
       "task_context",
     ),
-    actionAfterConservative, explicitResult, actionAfterEdit,
-    automaticSmartActionHidden: runSmart.hidden,
+    smartMode, offMode,
+    replacementMode: draftMode.value,
+    savedDefault: defaultMode.value,
   }));
 })().catch((error) => { process.stderr.write(error.stack); process.exit(1); });
 """
@@ -1679,18 +1689,25 @@ const settle = async () => {
 
     assert observed == {
         "cleanupCountAfterSave": 1,
-        "modes": ["conservative", "conservative", "smart", "conservative", "smart"],
-        "promptOverrides": [False, False, False, False, False],
+        "modes": ["conservative", "conservative", "smart", "smart"],
+        "promptOverrides": [False, False, False, False],
         "promptHistoryRequested": False,
         "replacementCarriedTaskContext": False,
-        "actionAfterConservative": {"hidden": False, "label": "Run Smart correction"},
-        "explicitResult": {"hidden": True, "status": "Smart correction unchanged."},
-        "actionAfterEdit": {"hidden": False, "label": "Run Smart correction"},
-        "automaticSmartActionHidden": True,
+        "smartMode": {
+            "selected": "smart",
+            "disclosureHidden": False,
+            "taskContextHidden": False,
+        },
+        "offMode": {
+            "prepared": "",
+            "outgoing": "Using Original — Cleanup disabled",
+        },
+        "replacementMode": "smart",
+        "savedDefault": "smart",
     }
 
 
-def test_browser_smart_failure_shows_only_the_smart_retry_action(
+def test_browser_active_mode_failure_keeps_generic_retry_without_legacy_smart_action(
     initialized_settings: Settings,
 ) -> None:
     script = TestClient(create_app(initialized_settings)).get("/static/app.js").text
@@ -1776,18 +1793,18 @@ const settle = async () => {
   elements["#original-text"].value = "Send teh report";
   await elements["#original-text"].dispatch("input", { isTrusted: true });
   await elements["#run-cleanup"].dispatch("click"); await settle();
-  await elements["#run-smart-correction"].dispatch("click"); await settle();
+  elements["#draft-preparation-mode"].value = "smart";
+  await elements["#draft-preparation-mode"].dispatch("change"); await settle();
 
   const smartFailure = {
     cleanupDetailsVisible: !elements["#cleanup-recovery"].hidden,
     cleanupRetryVisible: !elements["#cleanup-recovery"].hidden
       && !elements["#retry-cleanup"].hidden,
-    smartMessage: elements["#smart-correction-state"].textContent,
-    smartRetryVisible: !elements["#run-smart-correction"].hidden,
-    smartRetryLabel: elements["#run-smart-correction"].textContent,
   };
 
   failConservative = true;
+  elements["#draft-preparation-mode"].value = "conservative";
+  await elements["#draft-preparation-mode"].dispatch("change"); await settle();
   elements["#original-text"].value = "Send the report";
   await elements["#original-text"].dispatch("input", { isTrusted: true });
   await elements["#run-cleanup"].dispatch("click"); await settle();
@@ -1797,7 +1814,6 @@ const settle = async () => {
     conservativeFailure: {
       cleanupRetryVisible: !elements["#cleanup-recovery"].hidden
         && !elements["#retry-cleanup"].hidden,
-      smartRetryVisible: !elements["#run-smart-correction"].hidden,
     },
   }));
 })().catch((error) => { process.stderr.write(error.stack); process.exit(1); });
@@ -1810,14 +1826,10 @@ const settle = async () => {
     assert json.loads(result.stdout) == {
         "smartFailure": {
             "cleanupDetailsVisible": True,
-            "cleanupRetryVisible": False,
-            "smartMessage": "Smart correction failed.",
-            "smartRetryVisible": True,
-            "smartRetryLabel": "Retry Smart correction",
+            "cleanupRetryVisible": True,
         },
         "conservativeFailure": {
             "cleanupRetryVisible": True,
-            "smartRetryVisible": False,
         },
     }
 
