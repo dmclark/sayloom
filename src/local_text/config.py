@@ -27,6 +27,7 @@ class Settings:
     openai_quota_group_id: str | None = None
     paid_data_acknowledgement: str | None = None
     cleanup_timeout_seconds: float = 30.0
+    cleanup_route_attempt_seconds: tuple[float, ...] | None = None
     database_path: Path | None = None
     raycast_directory: Path | None = None
     evaluation_data_directory: Path | None = None
@@ -105,6 +106,9 @@ def load_settings() -> Settings:
         openai_quota_group_id=os.getenv("LOCAL_TEXT_OPENAI_QUOTA_GROUP_ID"),
         paid_data_acknowledgement=os.getenv("LOCAL_TEXT_CLEANUP_PAID_DATA_ACKNOWLEDGEMENT"),
         cleanup_timeout_seconds=float(os.getenv("LOCAL_TEXT_CLEANUP_TIMEOUT_SECONDS", "30")),
+        cleanup_route_attempt_seconds=_route_attempt_seconds(
+            os.getenv("LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS")
+        ),
         database_path=Path(
             os.getenv("LOCAL_TEXT_DATABASE_PATH", state_directory / "local-text.sqlite3")
         ),
@@ -123,3 +127,17 @@ def load_settings() -> Settings:
             else None
         ),
     )
+
+
+def _route_attempt_seconds(value: str | None) -> tuple[float, ...] | None:
+    if value is None:
+        return None
+    try:
+        allocations = tuple(float(part.strip()) for part in value.split(","))
+    except ValueError as exc:
+        raise ValueError(
+            "LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS must be comma-separated numbers"
+        ) from exc
+    if not allocations:
+        raise ValueError("LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS must not be empty")
+    return allocations

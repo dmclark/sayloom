@@ -1020,7 +1020,7 @@ def test_runtime_environment_rejects_state_overrides(tmp_path: Path) -> None:
     assert "invalid environment entry" in rejected.stderr
 
 
-def test_runtime_environment_passes_evaluation_data_directory(
+def test_runtime_environment_passes_supported_runtime_configuration(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     state_root = tmp_path / "states"
@@ -1032,6 +1032,7 @@ def test_runtime_environment_passes_evaluation_data_directory(
     evaluation_data_directory = tmp_path / "synthetic-evaluation-data"
     environment_path.write_text(
         f"LOCAL_TEXT_EVALUATION_DATA_DIRECTORY={evaluation_data_directory}\n"
+        "LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS=18,12\n"
     )
     environment_path.chmod(0o600)
 
@@ -1081,6 +1082,7 @@ def test_runtime_environment_passes_evaluation_data_directory(
     assert captured_environment["LOCAL_TEXT_EVALUATION_DATA_DIRECTORY"] == str(
         evaluation_data_directory
     )
+    assert captured_environment["LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS"] == "18,12"
     assert captured_environment["LOCAL_TEXT_PROVIDER_TRAFFIC_DIAGNOSTICS_FILE"] == str(
         state_root / "selected/.provider-traffic-diagnostics"
     )

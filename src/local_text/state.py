@@ -103,11 +103,20 @@ class OutgoingStateStore:
             self._state = OutgoingState(**update.model_dump(), revision=self._state.revision + 1)
             return self._state
 
-    def clear(self, *, correction_mode: CorrectionMode | None = None) -> OutgoingState:
+    def clear(
+        self,
+        *,
+        cleanup_enabled: bool | None = None,
+        correction_mode: CorrectionMode | None = None,
+    ) -> OutgoingState:
         with self._lock:
             self._state = replace(
                 OutgoingState(
-                    cleanup_enabled=self._state.cleanup_enabled,
+                    cleanup_enabled=(
+                        self._state.cleanup_enabled
+                        if cleanup_enabled is None
+                        else cleanup_enabled
+                    ),
                     correction_mode=correction_mode or self._state.correction_mode,
                 ),
                 revision=self._state.revision + 1,

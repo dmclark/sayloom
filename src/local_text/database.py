@@ -11,7 +11,7 @@ from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.engine import URL
 from sqlalchemy.orm import Session, sessionmaker
 
-SCHEMA_REVISION = "0002_target_management"
+SCHEMA_REVISION = "0003_unified_preparation_default"
 
 
 class SchemaState(StrEnum):

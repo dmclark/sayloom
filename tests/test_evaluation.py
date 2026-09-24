@@ -358,7 +358,6 @@ def test_api_issues_proof_and_evaluation_operations_never_call_provider(tmp_path
     safe_attempts = []
     for attempt in cleanup["attempts"]:
         safe_attempt = dict(attempt)
-        safe_attempt.pop("quota_group_id", None)
         safe_attempts.append(safe_attempt)
 
     payload = {

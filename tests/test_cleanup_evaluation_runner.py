@@ -52,7 +52,10 @@ def text_for(stratum: str, index: int) -> tuple[str, str]:
             f"Whitespace example {index}",
             f"Whitespace  example {index}",
         ),
-        "leading_filler_only": (f"Um filler example {index}", f"filler example {index}"),
+        "filler_presentation_only": (
+            f"Um filler example {index}",
+            f"Um, filler example {index}.",
+        ),
         "mixed_permitted_transformations": (
             f"mixed example {index}",
             f"Mixed example {index}.",
@@ -355,7 +358,7 @@ def test_conflicting_duplicate_group_is_excluded_and_infeasible_quota_blocks_reg
         ("Unchanged example", "impermissible_word_or_symbol_operation"),
     ],
 )
-def test_word_addition_substitution_reordering_and_nonleading_removal_are_ineligible(
+def test_word_addition_substitution_reordering_and_removal_are_ineligible(
     expected: str, reason: str
 ) -> None:
     corpus = snapshot(extras_per_stratum=1)
@@ -374,6 +377,32 @@ def test_word_addition_substitution_reordering_and_nonleading_removal_are_inelig
 
     decisions = registration["manifest"]["corpus"]["eligibility_decisions"]
     assert {"case_id": "rejected-case", "decision": reason} in decisions
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("Um send the synthetic report", "Send the synthetic report"),
+        ("Send um the synthetic report", "Send the synthetic report"),
+    ],
+)
+def test_leading_and_mid_sentence_filler_removal_are_ineligible(source: str, expected: str) -> None:
+    corpus = snapshot(extras_per_stratum=1)
+    rejected = case("filler_presentation_only", 903, case_id="rejected-filler-removal")
+    rejected["source_text"] = source
+    rejected["expected_cleanup"] = expected
+    rejected["source_sha256"] = digest(source.encode())
+    rejected["expected_cleanup_sha256"] = digest(expected.encode())
+    rehash_record(rejected)
+    corpus["cases"].append(rejected)
+
+    registration = register_cleanup_benchmark(corpus, registration_inputs())
+
+    decisions = registration["manifest"]["corpus"]["eligibility_decisions"]
+    assert {
+        "case_id": "rejected-filler-removal",
+        "decision": "impermissible_word_or_symbol_operation",
+    } in decisions
 
 
 def test_unchanged_symbols_are_eligible_but_symbol_changes_are_not() -> None:

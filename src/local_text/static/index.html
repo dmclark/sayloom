@@ -20,12 +20,27 @@
     </header>
 
     <main>
-      <section id="workspace-controls" class="control-rail" aria-label="Cleanup controls">
-        <label class="switch-control" for="cleanup-enabled">
-          <input id="cleanup-enabled" type="checkbox" checked>
-          <span class="switch-track" aria-hidden="true"><span></span></span>
-          <span>Clean automatically</span>
+      <section id="workspace-controls" class="control-rail" aria-label="Preparation controls">
+        <label class="draft-preparation-control" for="draft-preparation-mode">
+          <span>Current draft</span>
+          <select id="draft-preparation-mode">
+            <option value="off">Off — Keep Original</option>
+            <option value="conservative">Conservative — Preserve my words</option>
+            <option value="smart">Smart — Repair likely wrong words</option>
+          </select>
         </label>
+        <div id="smart-mode-disclosure" class="smart-mode-disclosure" hidden>
+          <strong>Experimental — not yet evidence-backed</strong>
+          <details>
+            <summary>Learn about the pilot</summary>
+            <div>
+              <p>The pilot will test whether Smart more often repairs likely Voiceitt recognition errors without changing intended meaning.</p>
+              <p>Participation may require reviewing corrections and confirming intended wording. Ordinary Smart use is not participation.</p>
+              <p>Pilot evidence would require separate consent, enrollment, and visibly armed Evidence Collection. Ordinary text is not retained as pilot evidence.</p>
+              <p>Enrollment is not currently open.</p>
+            </div>
+          </details>
+        </div>
         <div class="evidence-collection-control">
           <button id="evidence-collection-toggle" class="button button-quiet" type="button" disabled>
             Evidence Collection unavailable
@@ -158,10 +173,6 @@
                     Retry cleanup
                   </button>
                 </div>
-                <span id="smart-correction-state" class="smart-correction-state" role="status" aria-live="polite" hidden></span>
-                <button id="run-smart-correction" class="button button-quiet" type="button" hidden>
-                  Run Smart correction
-                </button>
                 <button
                   id="maximize-prepared"
                   class="panel-maximize"
@@ -172,6 +183,13 @@
               </div>
             </header>
             <div class="prepared-body">
+              <div id="cleanup-result" class="cleanup-result" hidden>
+                <span id="cleanup-result-status" class="cleanup-result-status" hidden></span>
+                <details id="cleanup-attempt-details" class="cleanup-attempt-details">
+                  <summary>Attempt details</summary>
+                  <ol id="cleanup-attempt-list" aria-label="Cleanup attempt details"></ol>
+                </details>
+              </div>
               <details id="cleanup-disclosure" class="cleanup-disclosure">
                 <summary>
                   <span class="cleanup-disclosure-label">Cleanup route</span>
@@ -246,11 +264,12 @@
                   <h3 id="correction-settings-title">Correction</h3>
                   <p>The saved default applies when the next Original begins. It does not change the active draft.</p>
                 </div>
-                <label for="default-correction-mode">
-                  Default
-                  <select id="default-correction-mode">
-                    <option value="conservative">Conservative</option>
-                    <option value="smart">Smart</option>
+                <label for="default-preparation-mode">
+                  Default for future drafts
+                  <select id="default-preparation-mode">
+                    <option value="off">Off — Keep Original</option>
+                    <option value="conservative">Conservative — Preserve my words</option>
+                    <option value="smart">Smart — Repair likely wrong words</option>
                   </select>
                 </label>
               </div>

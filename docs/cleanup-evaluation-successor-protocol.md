@@ -66,12 +66,11 @@ Every difference from Original to expected cleanup must be one or more of:
 - capitalization;
 - punctuation;
 - apostrophes;
-- whitespace or paragraph structure; or
-- removal of a leading filler.
+- whitespace or paragraph structure.
 
-Any addition, substitution, or reordering of a word, or removal of a word that is not a leading
-filler, makes the case ineligible. Ambiguity or dependence on transcript truth also makes it
-ineligible.
+Every lexical word, including a filler such as “erm,” “hmm,” “uh,” or “um,” must remain in its
+original order. Any addition, removal, substitution, duplication, or reordering of a word makes the
+case ineligible. Ambiguity or dependence on transcript truth also makes it ineligible.
 
 The exact mutually exclusive primary composition is:
 
@@ -82,7 +81,7 @@ The exact mutually exclusive primary composition is:
 | Punctuation only | 8 |
 | Apostrophe only | 8 |
 | Whitespace/paragraph only | 8 |
-| Leading-filler only | 8 |
+| Filler presentation only | 8 |
 | Mixed permitted transformations | 10 |
 
 The same set must meet all overlapping minima:

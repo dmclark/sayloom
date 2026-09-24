@@ -6,7 +6,7 @@ from conftest import initialize_database
 from sqlalchemy import text
 from sqlalchemy.exc import DatabaseError
 
-from local_text.cleanup import CorrectionMode
+from local_text.cleanup import PreparationMode
 from local_text.database import ApplicationDatabase, SchemaState
 from local_text.prompt_store import PromptNotFoundError, PromptStore
 from local_text.prompts import DEFAULT_SYSTEM_PROMPT
@@ -44,7 +44,7 @@ def test_seed_is_deterministic_and_idempotent(tmp_path: Path) -> None:
     assert history[0].version == 1
     assert history[0].source == "seed"
     assert history[0].system_text == DEFAULT_SYSTEM_PROMPT
-    assert store.cleanup_enabled_by_default() is True
+    assert store.preparation_default() is PreparationMode.CONSERVATIVE
 
 
 def test_prompt_versions_are_immutable_and_activation_selects_an_exact_version(
@@ -80,22 +80,11 @@ def test_prompt_versions_are_immutable_and_activation_selects_an_exact_version(
         store.get(9999)
 
 
-def test_cleanup_setting_is_typed_and_durable(tmp_path: Path) -> None:
+def test_preparation_default_is_typed_and_durable(tmp_path: Path) -> None:
     database = initialize_database(tmp_path / "local-text.sqlite3")
     store = PromptStore(database)
 
-    store.set_cleanup_enabled_by_default(False)
-
-    assert PromptStore(ApplicationDatabase(database.path)).cleanup_enabled_by_default() is False
-
-
-def test_correction_mode_defaults_compatibly_and_is_durable(tmp_path: Path) -> None:
-    database = initialize_database(tmp_path / "local-text.sqlite3")
-    store = PromptStore(database)
-
-    assert store.default_correction_mode() is CorrectionMode.CONSERVATIVE
-
-    store.set_default_correction_mode(CorrectionMode.SMART)
+    store.set_preparation_default(PreparationMode.OFF)
 
     restarted = PromptStore(ApplicationDatabase(database.path))
-    assert restarted.default_correction_mode() is CorrectionMode.SMART
+    assert restarted.preparation_default() is PreparationMode.OFF

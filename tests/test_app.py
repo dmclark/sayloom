@@ -40,8 +40,8 @@ def test_health_reports_development_profile(initialized_settings: Settings) -> N
         "development_state": None,
         "database": {
             "state": "current",
-            "current_revision": "0002_target_management",
-            "expected_revision": "0002_target_management",
+            "current_revision": "0003_unified_preparation_default",
+            "expected_revision": "0003_unified_preparation_default",
         },
         "configuration_error": None,
     }
@@ -88,7 +88,7 @@ def test_health_reports_schema_mismatch(tmp_path: Path) -> None:
     assert response.json()["database"] == {
         "state": "mismatch",
         "current_revision": "obsolete_revision",
-        "expected_revision": "0002_target_management",
+        "expected_revision": "0003_unified_preparation_default",
     }
 
 
@@ -155,10 +155,22 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="maximize-original"' in response.text
     assert 'id="maximize-prepared"' in response.text
     assert 'id="toggle-sidebar"' in response.text
-    assert 'id="default-correction-mode"' in response.text
-    assert 'id="current-correction-mode"' not in response.text
-    assert 'id="active-correction-mode"' not in response.text
-    assert 'id="run-smart-correction"' in response.text
+    assert 'id="draft-preparation-mode"' in response.text
+    assert 'id="default-preparation-mode"' in response.text
+    assert '<option value="off">Off — Keep Original</option>' in response.text
+    assert (
+        '<option value="conservative">Conservative — Preserve my words</option>'
+        in response.text
+    )
+    assert (
+        '<option value="smart">Smart — Repair likely wrong words</option>' in response.text
+    )
+    assert 'id="cleanup-enabled"' not in response.text
+    assert "Clean automatically" not in response.text
+    assert "Experimental — not yet evidence-backed" in response.text
+    assert "Learn about the pilot" in response.text
+    assert "Enrollment is not currently open." in response.text
+    assert 'id="run-smart-correction"' not in response.text
     assert 'id="nav-settings"' in response.text
     assert response.text.index('id="correction-settings-title"') < response.text.index(
         'id="targets-title"'
@@ -262,11 +274,36 @@ def test_status_errors_use_one_accessible_privacy_safe_dialog(
 
     retry_handler = script.split(
         'elements.retryCleanup.addEventListener("click"', maxsplit=1
-    )[1].split(";", maxsplit=1)[0]
+    )[1].split("});", maxsplit=1)[0]
     assert "runCleanup()" in retry_handler
+    assert 'failedCorrectionMode === "smart"' in retry_handler
+    assert 'applyDraftPreparationMode("conservative")' in retry_handler
     assert "copyOutgoing" not in retry_handler
     assert "requestEvidenceJudgment" not in retry_handler
     assert "publishNow" not in retry_handler
+
+    assert 'id="cleanup-result"' in page
+    assert "Prepared with backup model" in script
+    attempt_renderer = script.split("function renderCleanupAttempts", maxsplit=1)[1].split(
+        "function validateSmartRepairs", maxsplit=1
+    )[0]
+    assert all(
+        field in attempt_renderer
+        for field in ("provider", "model", "route_index", "outcome")
+    )
+    assert all(
+        private_field not in attempt_renderer
+        for private_field in (
+            "original_text",
+            "prepared_text",
+            "task_context",
+            "prompt",
+            "credential",
+            "payload",
+            "provider_code",
+            "http_status",
+        )
+    )
 
     feedback = script.split("function showCopyFeedback", maxsplit=1)[1].split(
         "async function copyOutgoing", maxsplit=1
@@ -332,6 +369,7 @@ def test_config_reports_cleanup_without_exposing_key(initialized_settings: Setti
     settings = Settings(
         Profile.DEVELOPMENT,
         gemini_api_key="not-a-real-key",
+        cleanup_route_attempt_seconds=(18.0, 12.0),
         database_path=initialized_settings.database_path,
     )
     client = TestClient(create_app(settings))
@@ -346,8 +384,7 @@ def test_config_reports_cleanup_without_exposing_key(initialized_settings: Setti
         "display_name": "Sayloom Development",
         "profile": "development",
         "development_state": None,
-        "cleanup_enabled_by_default": True,
-        "default_correction_mode": "conservative",
+        "preparation_default": "conservative",
         "cleanup_available": True,
         "cleanup_model": "gemini-3.5-flash",
     }
@@ -373,14 +410,16 @@ def cross_provider_settings(initialized_settings: Settings, **overrides) -> Sett
         "gemini_quota_group_id": "gemini-paid-project",
         "openai_quota_group_id": "openai-paid-project",
         "paid_data_acknowledgement": PAID_DATA_ACKNOWLEDGEMENT,
+        "cleanup_route_attempt_seconds": (18.0, 12.0),
         "database_path": initialized_settings.database_path,
     }
     values.update(overrides)
     return Settings(**values)
 
 
+@pytest.mark.parametrize("mode", ["conservative", "smart"])
 def test_acknowledged_cross_provider_route_is_exact_sanitized_and_falls_back_once(
-    initialized_settings: Settings, monkeypatch
+    initialized_settings: Settings, monkeypatch, mode: str
 ) -> None:
     requests: list[httpx.Request] = []
 
@@ -421,7 +460,12 @@ def test_acknowledged_cross_provider_route_is_exact_sanitized_and_falls_back_onc
         configuration_response = client.get("/api/config")
         health_response = client.get("/health")
         result = client.post(
-            "/api/cleanup", json={"original_text": "synthetic source", "enabled": True}
+            "/api/cleanup",
+            json={
+                "original_text": "synthetic source",
+                "enabled": True,
+                "correction_mode": mode,
+            },
         )
         provider = client.app.state.cleanup_service.provider
         assert isinstance(provider, SequentialCleanupProvider)
@@ -430,7 +474,7 @@ def test_acknowledged_cross_provider_route_is_exact_sanitized_and_falls_back_onc
             "openai-paid-project",
         ]
         assert provider.total_budget_seconds == 30
-        assert [route.attempt_budget_seconds for route in provider.routes] == [30, 30]
+        assert provider.partition_schedule.route_allocations_seconds == (18.0, 12.0)
 
     cleanup_configuration = configuration_response.json()["cleanup_configuration"]
     assert cleanup_configuration == health_response.json()["cleanup_configuration"]
@@ -453,6 +497,33 @@ def test_acknowledged_cross_provider_route_is_exact_sanitized_and_falls_back_onc
     assert "synthetic-openai-key" not in serialized
     assert len(provider_clients) == 2
     assert all(provider_client.is_closed for provider_client in provider_clients)
+
+
+def test_configured_routes_without_a_partition_schedule_fail_configuration(
+    initialized_settings: Settings, monkeypatch
+) -> None:
+    calls = 0
+
+    def unexpected_client(_timeout: float):
+        nonlocal calls
+        calls += 1
+        raise AssertionError("missing allocation must not create a provider client")
+
+    monkeypatch.setattr(app_module, "_new_provider_client", unexpected_client)
+    settings = Settings(
+        Profile.DEVELOPMENT,
+        gemini_api_key="synthetic-key",
+        database_path=initialized_settings.database_path,
+    )
+
+    with TestClient(create_app(settings)) as client:
+        configuration = client.get("/health").json()["cleanup_configuration"]
+
+    assert configuration["status"] == "invalid"
+    assert configuration["available"] is False
+    assert configuration["routes"] == []
+    assert configuration["validation_error"] == "route_attempt_allocations_required"
+    assert calls == 0
 
 
 def test_unacknowledged_cross_provider_configuration_creates_no_client_and_fails_open(
@@ -535,6 +606,7 @@ def test_generic_openai_key_never_activates_openai(
         "LOCAL_TEXT_GEMINI_QUOTA_GROUP_ID",
         "LOCAL_TEXT_OPENAI_QUOTA_GROUP_ID",
         "LOCAL_TEXT_CLEANUP_PAID_DATA_ACKNOWLEDGEMENT",
+        "LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS",
     )
     for key in provider_keys:
         monkeypatch.delenv(key, raising=False)
@@ -561,10 +633,12 @@ def test_ambient_gemini_remains_legacy_compatible_without_activating_ambient_ope
         "LOCAL_TEXT_GEMINI_QUOTA_GROUP_ID",
         "LOCAL_TEXT_OPENAI_QUOTA_GROUP_ID",
         "LOCAL_TEXT_CLEANUP_PAID_DATA_ACKNOWLEDGEMENT",
+        "LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS",
     ):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("GEMINI_API_KEY", "ambient-gemini-key")
     monkeypatch.setenv("OPENAI_API_KEY", "ambient-openai-key")
+    monkeypatch.setenv("LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS", "18,12")
     monkeypatch.setenv("LOCAL_TEXT_DATABASE_PATH", str(initialized_settings.database_path))
 
     settings = load_settings()
@@ -611,6 +685,7 @@ def test_app_lifespan_reuses_and_closes_the_gemini_client(
     settings = Settings(
         Profile.DEVELOPMENT,
         gemini_api_key="synthetic-key",
+        cleanup_route_attempt_seconds=(18.0, 12.0),
         database_path=initialized_settings.database_path,
     )
 
@@ -622,7 +697,7 @@ def test_app_lifespan_reuses_and_closes_the_gemini_client(
             "gemini-3.5-flash",
             "gemini-2.5-flash",
         ]
-        assert [route.attempt_budget_seconds for route in provider.routes] == [30, 30]
+        assert provider.partition_schedule.route_allocations_seconds == (18.0, 12.0)
         assert {route.quota_group_id for route in provider.routes} == {"gemini-default"}
         for source in ("synthetic source one", "synthetic source two"):
             response = client.post(
@@ -660,6 +735,7 @@ def test_active_gemini_router_falls_back_once_on_route_transient_failure(
     settings = Settings(
         Profile.DEVELOPMENT,
         gemini_api_key="synthetic-key",
+        cleanup_route_attempt_seconds=(18.0, 12.0),
         database_path=initialized_settings.database_path,
     )
 
@@ -696,6 +772,7 @@ def test_active_gemini_shared_quota_failure_fails_open_without_replayed_call(
     settings = Settings(
         Profile.DEVELOPMENT,
         gemini_api_key="synthetic-key",
+        cleanup_route_attempt_seconds=(18.0, 12.0),
         database_path=initialized_settings.database_path,
     )
 
@@ -782,7 +859,6 @@ def test_cleanup_endpoint_returns_provider_result(initialized_settings: Settings
             "provider_code": None,
             "http_status": None,
             "retry_after_seconds": None,
-            "quota_group_id": None,
         }
     ]
 
@@ -1101,7 +1177,9 @@ def test_cleanup_can_use_a_session_prompt_without_changing_the_durable_default(
     assert missing.json()["detail"]["code"] == "prompt_version_not_found"
 
 
-def test_cleanup_toggle_is_durable_configuration(initialized_settings: Settings) -> None:
+def test_active_draft_does_not_change_saved_preparation_default(
+    initialized_settings: Settings,
+) -> None:
     client = TestClient(create_app(initialized_settings))
     update = {
         "cleanup_enabled": False,
@@ -1115,21 +1193,21 @@ def test_cleanup_toggle_is_durable_configuration(initialized_settings: Settings)
     assert client.put("/api/outgoing-state", json=update).status_code == 200
 
     restarted = TestClient(create_app(initialized_settings))
-    assert restarted.get("/api/config").json()["cleanup_enabled_by_default"] is False
-    assert restarted.get("/api/outgoing-state").json()["cleanup_enabled"] is False
+    assert restarted.get("/api/config").json()["preparation_default"] == "conservative"
+    assert restarted.get("/api/outgoing-state").json()["cleanup_enabled"] is True
 
 
-def test_correction_mode_preference_is_durable_and_separate_from_workspace_state(
+def test_preparation_default_is_durable_and_new_draft_snapshots_it(
     initialized_settings: Settings,
 ) -> None:
     client = TestClient(create_app(initialized_settings))
 
     saved = client.put(
-        "/api/preferences/correction-mode",
-        json={"correction_mode": "smart"},
+        "/api/preferences/preparation-default",
+        json={"preparation_default": "smart"},
     )
     assert saved.status_code == 200
-    assert saved.json() == {"default_correction_mode": "smart"}
+    assert saved.json() == {"preparation_default": "smart"}
 
     workspace_override = client.put(
         "/api/outgoing-state",
@@ -1146,15 +1224,30 @@ def test_correction_mode_preference_is_durable_and_separate_from_workspace_state
     assert workspace_override.status_code == 200
     assert workspace_override.json()["correction_mode"] == "conservative"
 
+    assert client.get("/api/outgoing-state").json()["correction_mode"] == "conservative"
+
+    new_draft = client.delete("/api/outgoing-state")
+    assert new_draft.json()["cleanup_enabled"] is True
+    assert new_draft.json()["correction_mode"] == "smart"
+
     restarted = TestClient(create_app(initialized_settings))
-    assert restarted.get("/api/config").json()["default_correction_mode"] == "smart"
+    assert restarted.get("/api/config").json()["preparation_default"] == "smart"
     assert restarted.get("/api/outgoing-state").json()["correction_mode"] == "smart"
 
     invalid = client.put(
-        "/api/preferences/correction-mode",
-        json={"correction_mode": "polished"},
+        "/api/preferences/preparation-default",
+        json={"preparation_default": "polished"},
     )
     assert invalid.status_code == 422
+
+    off = client.put(
+        "/api/preferences/preparation-default",
+        json={"preparation_default": "off"},
+    )
+    assert off.status_code == 200
+    off_draft = client.delete("/api/outgoing-state").json()
+    assert off_draft["cleanup_enabled"] is False
+    assert off_draft["correction_mode"] == "conservative"
 
 
 def test_outgoing_state_is_published_and_cleared_in_memory(
@@ -1387,8 +1480,10 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     assert 'window.matchMedia("(max-width: 980px)")' in script.text
     assert "correction_mode: correctionMode" in script.text
     assert "task_context: taskContext" in script.text
-    assert 'fetch("/api/preferences/correction-mode"' in script.text
-    assert "draftCorrectionMode = null" in script.text
+    assert 'fetch("/api/preferences/preparation-default"' in script.text
+    assert 'elements.draftPreparationMode.addEventListener("change"' in script.text
+    assert "requestDraftRevision !== draftRevision" in script.text
+    assert "correctionMode !== effectiveCorrectionMode()" in script.text
     assert "renderCorrectionMode();" in script.text
     assert 'elements.prepared.addEventListener("input"' not in script.text
     run_cleanup = script.text.split("async function runCleanup(", maxsplit=1)[1].split(
@@ -1397,8 +1492,8 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     scheduled_cleanup = script.text.split("function scheduleCleanup()", maxsplit=1)[1].split(
         "function originalIsFullySelected", maxsplit=1
     )[0]
-    assert 'elements.prepared.value = "";' not in run_cleanup
-    assert 'elements.prepared.value = "";' not in scheduled_cleanup
+    assert 'if (draftPreparationMode === "off")' in run_cleanup
+    assert 'if (draftPreparationMode === "off")' in scheduled_cleanup
     assert '(status === "prepared" || status === "unchanged")' in script.text
     initialization = script.text.split("async function initialize()", maxsplit=1)[1].split(
         "initialize();", maxsplit=1
@@ -1461,8 +1556,7 @@ const cleanupResolvers = [];
 const response = (body) => ({ ok: true, status: 200, json: async () => body });
 const fetch = (url, options = {}) => {
   if (url === "/api/config") return Promise.resolve(response({
-    cleanup_enabled_by_default: true,
-    default_correction_mode: "smart",
+    preparation_default: "smart",
     cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
     correction_benchmark_configuration: { available: false },
     evaluation_configuration: { available: false },
@@ -1544,7 +1638,7 @@ async function settle() {
     assert observed["taskContextHidden"] is False
 
 
-def test_browser_snapshots_default_per_original_and_runs_explicit_smart_once(
+def test_browser_applies_active_preparation_mode_independently_of_saved_default(
     initialized_settings: Settings,
 ) -> None:
     script = TestClient(create_app(initialized_settings)).get("/static/app.js").text
@@ -1595,12 +1689,12 @@ const fetch = async (url, options = {}) => {
   const body = options.body ? JSON.parse(options.body) : null;
   requests.push({ url, method: options.method || "GET", body });
   if (url === "/api/config") return response({
-    cleanup_enabled_by_default: true, default_correction_mode: "conservative",
+    preparation_default: "conservative",
     cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
     evidence_collection: { ready: false }, evaluation_configuration: { available: false },
   });
-  if (url === "/api/preferences/correction-mode") {
-    return response({ default_correction_mode: body.correction_mode });
+  if (url === "/api/preferences/preparation-default") {
+    return response({ preparation_default: body.preparation_default });
   }
   if (url === "/api/cleanup") return response({
     prepared_text: body.original_text, status: "unchanged", lexical_repairs: [],
@@ -1625,9 +1719,9 @@ const settle = async () => {
 (async () => {
   vm.runInNewContext(process.argv[1], context); await settle();
   const original = elements["#original-text"];
-  const defaultMode = elements["#default-correction-mode"];
+  const defaultMode = elements["#default-preparation-mode"];
+  const draftMode = elements["#draft-preparation-mode"];
   const runCleanup = elements["#run-cleanup"];
-  const runSmart = elements["#run-smart-correction"];
 
   original.value = "First draft";
   await original.dispatch("input", { isTrusted: true });
@@ -1640,18 +1734,21 @@ const settle = async () => {
   original.value = "First draft edited";
   await original.dispatch("input", { isTrusted: true });
   await runCleanup.dispatch("click"); await settle();
-  const actionAfterConservative = { hidden: runSmart.hidden, label: runSmart.textContent };
 
-  await runSmart.dispatch("click"); await settle();
-  const explicitResult = {
-    hidden: runSmart.hidden,
-    status: elements["#smart-correction-state"].textContent,
+  draftMode.value = "smart";
+  await draftMode.dispatch("change"); await settle();
+  const smartMode = {
+    selected: draftMode.value,
+    disclosureHidden: elements["#smart-mode-disclosure"].hidden,
+    taskContextHidden: elements["#smart-task-context-field"].hidden,
   };
 
-  original.value = "First draft edited again";
-  await original.dispatch("input", { isTrusted: true });
-  await runCleanup.dispatch("click"); await settle();
-  const actionAfterEdit = { hidden: runSmart.hidden, label: runSmart.textContent };
+  draftMode.value = "off";
+  await draftMode.dispatch("change"); await settle();
+  const offMode = {
+    prepared: elements["#prepared-text"].value,
+    outgoing: elements["#outgoing-kind"].textContent,
+  };
 
   elements["#smart-task-context"].value = "Stale context from the previous Original";
   original.selectionStart = 0; original.selectionEnd = original.value.length;
@@ -1671,8 +1768,9 @@ const settle = async () => {
       requests.filter((item) => item.url === "/api/cleanup").at(-1).body,
       "task_context",
     ),
-    actionAfterConservative, explicitResult, actionAfterEdit,
-    automaticSmartActionHidden: runSmart.hidden,
+    smartMode, offMode,
+    replacementMode: draftMode.value,
+    savedDefault: defaultMode.value,
   }));
 })().catch((error) => { process.stderr.write(error.stack); process.exit(1); });
 """
@@ -1684,14 +1782,266 @@ const settle = async () => {
 
     assert observed == {
         "cleanupCountAfterSave": 1,
-        "modes": ["conservative", "conservative", "smart", "conservative", "smart"],
-        "promptOverrides": [False, False, False, False, False],
+        "modes": ["conservative", "conservative", "smart", "smart"],
+        "promptOverrides": [False, False, False, False],
         "promptHistoryRequested": False,
         "replacementCarriedTaskContext": False,
-        "actionAfterConservative": {"hidden": False, "label": "Run Smart correction"},
-        "explicitResult": {"hidden": True, "status": "Smart correction unchanged."},
-        "actionAfterEdit": {"hidden": False, "label": "Run Smart correction"},
-        "automaticSmartActionHidden": True,
+        "smartMode": {
+            "selected": "smart",
+            "disclosureHidden": False,
+            "taskContextHidden": False,
+        },
+        "offMode": {
+            "prepared": "",
+            "outgoing": "Using Original — Cleanup disabled",
+        },
+        "replacementMode": "smart",
+        "savedDefault": "smart",
+    }
+
+
+def test_browser_failed_smart_recovery_uses_latest_original_and_safe_attempt_details(
+    initialized_settings: Settings,
+) -> None:
+    script = TestClient(create_app(initialized_settings)).get("/static/app.js").text
+    harness = r"""
+const vm = require("vm");
+
+class Element {
+  constructor() {
+    this.value = ""; this.checked = true; this.disabled = false; this.hidden = false;
+    this.open = false; this.dataset = {}; this.listeners = {}; this.children = [];
+    this.attributes = {}; this.textContent = ""; this.selectionStart = 0; this.selectionEnd = 0;
+    this.lastElementChild = { textContent: "" }; this.style = { setProperty() {} };
+    this.classList = { add() {}, remove() {}, toggle() {}, contains() { return false; } };
+  }
+  addEventListener(type, callback) { (this.listeners[type] ||= []).push(callback); }
+  async dispatch(type, event = {}) {
+    event.target ||= this; event.preventDefault ||= () => {};
+    for (const callback of this.listeners[type] || []) await callback(event);
+  }
+  setAttribute(name, value) { this.attributes[name] = String(value); }
+  getAttribute(name) { return this.attributes[name] || (name === "aria-valuenow" ? "55" : null); }
+  removeAttribute(name) { delete this.attributes[name]; }
+  toggleAttribute() {}
+  append(...children) { this.children.push(...children); }
+  setPointerCapture() {}
+  setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
+  getBoundingClientRect() { return { top: 0, left: 0, width: 100, height: 100 }; }
+  focus() { document.activeElement = this; }
+  close() { this.open = false; }
+  showModal() { this.open = true; }
+  reportValidity() { return true; }
+  querySelectorAll() { return []; }
+  querySelector() { return null; }
+}
+const elements = {};
+const document = {
+  activeElement: null,
+  querySelector(selector) { return elements[selector] ||= new Element(); },
+  createElement() { return new Element(); },
+  addEventListener() {},
+};
+const cleanupRequests = [];
+const publications = [];
+let holdConservative = false;
+let resolveConservative;
+let primarySuccess = false;
+const response = (body) => ({ ok: true, status: 200, json: async () => body });
+const fetch = async (url, options = {}) => {
+  if (url === "/api/config") return response({
+    preparation_default: "smart",
+    cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
+    evidence_collection: { ready: false }, evaluation_configuration: { available: false },
+  });
+  if (url === "/api/cleanup") {
+    const body = JSON.parse(options.body);
+    cleanupRequests.push(body);
+    if (body.correction_mode === "smart") return response({
+      prepared_text: body.original_text, status: "provider_error",
+      provider: "test", model: "model-a",
+      lexical_repairs: [], attempts: [{
+        provider: "provider-a", model: "model-a", route_index: 0, outcome: "failure",
+        unsafe_provider_text: "PRIVATE PROVIDER PAYLOAD",
+      }], error: {
+        code: "cleanup_provider_error", message: "The provider failed.",
+        retry_action: "Retry correction or continue with Original.", http_status: 503,
+      },
+    });
+    if (holdConservative) {
+      return await new Promise((resolve) => { resolveConservative = () => resolve(response({
+        prepared_text: `${body.original_text} stale`, status: "prepared",
+        provider: "provider-b", model: "model-b", attempts: [{
+          provider: "provider-b", model: "model-b", route_index: 0, outcome: "success",
+        }],
+      })); });
+    }
+    if (primarySuccess) return response({
+      prepared_text: `${body.original_text} primary`, status: "prepared",
+      provider: "provider-a", model: "model-a", attempts: [{
+        provider: "provider-a", model: "model-a", route_index: 0, outcome: "success",
+      }],
+    });
+    return response({
+      prepared_text: `${body.original_text} recovered`, status: "prepared",
+      provider: "provider-b", model: "model-b", attempts: [
+        { provider: "provider-a", model: "model-a", route_index: 0, outcome: "failure" },
+        { provider: "provider-b", model: "model-b", route_index: 1, outcome: "success" },
+      ],
+    });
+  }
+  if (url === "/api/outgoing-state") {
+    if ((options.method || "GET") === "PUT") publications.push(JSON.parse(options.body));
+    return response({ revision: publications.length + 1 });
+  }
+  throw new Error(`Unexpected request: ${url}`);
+};
+const window = {
+  clearTimeout() {}, setTimeout() { return 1; },
+  requestAnimationFrame(callback) { callback(); }, addEventListener() {},
+  matchMedia() { return { matches: false, addEventListener() {} }; },
+};
+const context = {
+  document, window, fetch, AbortController, Promise, console,
+  navigator: { clipboard: {} },
+};
+const settle = async () => {
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+};
+
+(async () => {
+  vm.runInNewContext(process.argv[1], context); await settle();
+  elements["#original-text"].value = "Original one";
+  await elements["#original-text"].dispatch("input", { isTrusted: true });
+  await elements["#run-cleanup"].dispatch("click"); await settle();
+
+  const smartFailure = {
+    cleanupDetailsVisible: !elements["#cleanup-recovery"].hidden,
+    recoveryLabel: elements["#retry-cleanup"].textContent,
+    prepared: elements["#prepared-text"].value,
+    outgoing: elements["#outgoing-kind"].textContent,
+    details: elements["#cleanup-attempt-list"].children.map((item) => item.textContent),
+  };
+
+  holdConservative = true;
+  await elements["#retry-cleanup"].dispatch("click"); await settle();
+  elements["#original-text"].value = "Original two";
+  await elements["#original-text"].dispatch("input", { isTrusted: true });
+  resolveConservative(); await settle();
+  const stale = {
+    prepared: elements["#prepared-text"].value,
+    outgoing: elements["#outgoing-kind"].textContent,
+    attemptsHidden: elements["#cleanup-result"].hidden,
+  };
+
+  holdConservative = false;
+  elements["#draft-preparation-mode"].value = "smart";
+  await elements["#draft-preparation-mode"].dispatch("change"); await settle();
+  await elements["#retry-cleanup"].dispatch("click"); await settle();
+  const backup = {
+    mode: elements["#draft-preparation-mode"].value,
+    prepared: elements["#prepared-text"].value,
+    outgoing: elements["#outgoing-kind"].textContent,
+    status: elements["#cleanup-result-status"].textContent,
+    details: elements["#cleanup-attempt-list"].children.slice(-2).map((item) => item.textContent),
+  };
+  await elements["#select-prepared"].dispatch("click"); await settle();
+
+  primarySuccess = true;
+  await elements["#run-cleanup"].dispatch("click"); await settle();
+  await elements["#select-prepared"].dispatch("click"); await settle();
+  const primary = {
+    prepared: elements["#prepared-text"].value,
+    outgoing: elements["#outgoing-kind"].textContent,
+    backupStatusHidden: elements["#cleanup-result-status"].hidden,
+    details: elements["#cleanup-attempt-list"].children.slice(-1).map((item) => item.textContent),
+  };
+
+  process.stdout.write(JSON.stringify({
+    smartFailure, stale, backup, primary, cleanupRequests,
+    publishedOutgoing: publications.slice(-2).map((item) => ({
+      original_text: item.original_text,
+      prepared_text: item.prepared_text,
+      outgoing_text: item.outgoing_text,
+      outgoing_kind: item.outgoing_kind,
+      status: item.status,
+      correction_mode: item.correction_mode,
+    })),
+  }));
+})().catch((error) => { process.stderr.write(error.stack); process.exit(1); });
+"""
+
+    result = subprocess.run(
+        ["node", "-e", harness, script], check=True, capture_output=True, text=True
+    )
+
+    assert json.loads(result.stdout) == {
+        "smartFailure": {
+            "cleanupDetailsVisible": True,
+            "recoveryLabel": "Try Conservative",
+            "prepared": "Original one",
+            "outgoing": "Using Original",
+            "details": ["Route 1: provider-a · model-a — Failed"],
+        },
+        "stale": {
+            "prepared": "",
+            "outgoing": "Using Original — Replacement Prepared pending",
+            "attemptsHidden": True,
+        },
+        "backup": {
+            "mode": "conservative",
+            "prepared": "Original two recovered",
+            "outgoing": "Using Prepared",
+            "status": "Prepared with backup model",
+            "details": [
+                "Route 1: provider-a · model-a — Failed",
+                "Route 2: provider-b · model-b — Succeeded",
+            ],
+        },
+        "primary": {
+            "prepared": "Original two primary",
+            "outgoing": "Using Prepared",
+            "backupStatusHidden": True,
+            "details": ["Route 1: provider-a · model-a — Succeeded"],
+        },
+        "cleanupRequests": [
+            {"original_text": "Original one", "enabled": True, "correction_mode": "smart"},
+            {
+                "original_text": "Original one",
+                "enabled": True,
+                "correction_mode": "conservative",
+            },
+            {"original_text": "Original two", "enabled": True, "correction_mode": "smart"},
+            {
+                "original_text": "Original two",
+                "enabled": True,
+                "correction_mode": "conservative",
+            },
+            {
+                "original_text": "Original two",
+                "enabled": True,
+                "correction_mode": "conservative",
+            },
+        ],
+        "publishedOutgoing": [
+            {
+                "original_text": "Original two",
+                "prepared_text": "Original two recovered",
+                "outgoing_text": "Original two recovered",
+                "outgoing_kind": "prepared",
+                "status": "prepared",
+                "correction_mode": "conservative",
+            },
+            {
+                "original_text": "Original two",
+                "prepared_text": "Original two primary",
+                "outgoing_text": "Original two primary",
+                "outgoing_kind": "prepared",
+                "status": "prepared",
+                "correction_mode": "conservative",
+            },
+        ],
     }
 
 
@@ -1770,7 +2120,7 @@ let cleanupRequests = 0;
 const response = (body) => ({ ok: true, status: 200, json: async () => body });
 const fetch = async (url, options = {}) => {
   if (url === "/api/config") return response({
-    cleanup_enabled_by_default: true, default_correction_mode: "smart",
+    preparation_default: "smart",
     cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
     correction_benchmark_configuration: { available: false },
     evaluation_configuration: { available: false },
@@ -1959,7 +2309,7 @@ async function run(originalValue) {
     "#cleanup-disclosure": new Element(), "#cleanup-disclosure-summary": new Element(),
     "#cleanup-route-list": new Element(), "#cleanup-processing-disclosure": new Element(),
     "#cleanup-fallback-disclosure": new Element(), "#cleanup-corpus-disclosure": new Element(),
-    "#cleanup-validation-detail": new Element(), "#default-correction-mode": new Element(),
+    "#cleanup-validation-detail": new Element(), "#default-preparation-mode": new Element(),
     "#run-smart-correction": new Element(), "#smart-correction-state": new Element(),
     ".workspace": new Element(), "#workspace-resizer": new Element(),
     "#error-details-dialog": new Element(),
@@ -1976,8 +2326,7 @@ async function run(originalValue) {
   const window = { clearTimeout, setTimeout, requestAnimationFrame, addEventListener };
   const fetch = (url) => {
     const configBody = {
-      cleanup_enabled_by_default: true,
-      default_correction_mode: "conservative",
+      preparation_default: "conservative",
       cleanup_available: false,
     };
     const body = url === "/api/config" ? configBody : { revision: 1 };
@@ -2088,8 +2437,7 @@ async function run({
   const fetch = async (url, options = {}) => {
     const method = options.method || "GET";
     if (url === "/api/config") return response(200, {
-      cleanup_enabled_by_default: true,
-      default_correction_mode: "conservative",
+      preparation_default: "conservative",
       cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
       correction_benchmark_configuration: { available: true },
       evaluation_configuration: { available: false },

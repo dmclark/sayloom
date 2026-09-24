@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field, field_validator
 from local_text.cleanup import (
     GEMINI_37_FLASH,
     OPENAI_GPT_56_LUNA,
+    CleanupPartitionSchedule,
     CleanupRequest,
     CleanupResult,
     CleanupRoute,
@@ -30,6 +31,7 @@ from local_text.cleanup import (
     EvaluationCaptureContext,
     GeminiAdapter,
     OpenAIAdapter,
+    PreparationMode,
     SequentialCleanupProvider,
 )
 from local_text.config import Profile, Settings, load_settings
@@ -71,6 +73,7 @@ SAFE_CONFIGURATION_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 class CleanupRuntimeConfiguration:
     status: str
     routes: tuple[tuple[str, str, str], ...] = ()
+    partition_schedule: CleanupPartitionSchedule | None = None
     validation_error: str | None = None
 
     @property
@@ -146,9 +149,10 @@ def _cleanup_runtime_configuration(runtime: Settings) -> CleanupRuntimeConfigura
     if not cross_provider_requested:
         if not runtime.gemini_api_key:
             return CleanupRuntimeConfiguration("unavailable")
-        return CleanupRuntimeConfiguration(
+        return _configured_cleanup_routes(
+            runtime,
             "gemini_only",
-            routes=(
+            (
                 ("gemini", runtime.gemini_model, "gemini-default"),
                 ("gemini", "gemini-2.5-flash", "gemini-default"),
             ),
@@ -157,13 +161,37 @@ def _cleanup_runtime_configuration(runtime: Settings) -> CleanupRuntimeConfigura
     validation_error = _cross_provider_validation_error(runtime)
     if validation_error is not None:
         return CleanupRuntimeConfiguration("invalid", validation_error=validation_error)
-    return CleanupRuntimeConfiguration(
+    return _configured_cleanup_routes(
+        runtime,
         "cross_provider",
-        routes=(
+        (
             ("gemini", GEMINI_37_FLASH, runtime.gemini_quota_group_id or ""),
             ("openai", OPENAI_GPT_56_LUNA, runtime.openai_quota_group_id or ""),
         ),
     )
+
+
+def _configured_cleanup_routes(
+    runtime: Settings,
+    status: str,
+    routes: tuple[tuple[str, str, str], ...],
+) -> CleanupRuntimeConfiguration:
+    allocations = runtime.cleanup_route_attempt_seconds
+    if allocations is None:
+        return CleanupRuntimeConfiguration(
+            "invalid", validation_error="route_attempt_allocations_required"
+        )
+    try:
+        schedule = CleanupPartitionSchedule(runtime.cleanup_timeout_seconds, allocations)
+    except ValueError:
+        return CleanupRuntimeConfiguration(
+            "invalid", validation_error="route_attempt_allocations_invalid"
+        )
+    if len(allocations) != len(routes):
+        return CleanupRuntimeConfiguration(
+            "invalid", validation_error="route_attempt_allocation_count_mismatch"
+        )
+    return CleanupRuntimeConfiguration(status, routes, schedule)
 
 
 def _cross_provider_validation_error(runtime: Settings) -> str | None:
@@ -206,8 +234,8 @@ class PromptCreateRequest(BaseModel):
         return value
 
 
-class CorrectionModePreferenceRequest(BaseModel):
-    correction_mode: CorrectionMode
+class PreparationDefaultRequest(BaseModel):
+    preparation_default: PreparationMode
 
 
 class EvidenceArmRequest(BaseModel):
@@ -287,15 +315,19 @@ def create_app(
     targets = TargetStore(database)
     adapter = target_adapter or TargetAdapter(runtime.resolved_raycast_directory)
     configuration_error: str | None = None
-    cleanup_enabled = True
-    default_correction_mode = CorrectionMode.CONSERVATIVE
+    preparation_default = PreparationMode.CONSERVATIVE
     if schema.ready:
         try:
-            cleanup_enabled = prompts.cleanup_enabled_by_default()
-            default_correction_mode = prompts.default_correction_mode()
+            preparation_default = prompts.preparation_default()
             prompts.active()
         except SeedStateError as exc:
             configuration_error = str(exc)
+    cleanup_enabled = preparation_default is not PreparationMode.OFF
+    default_correction_mode = (
+        CorrectionMode.SMART
+        if preparation_default is PreparationMode.SMART
+        else CorrectionMode.CONSERVATIVE
+    )
     state = OutgoingStateStore(
         cleanup_enabled=cleanup_enabled,
         correction_mode=default_correction_mode,
@@ -347,15 +379,13 @@ def create_app(
                 adapters.append(
                     CleanupRoute(
                         adapter=adapter,
-                        # Preserve the active 30-second product deadline. Each later route
-                        # receives only the time left after the preceding qualifying failure.
-                        attempt_budget_seconds=runtime.cleanup_timeout_seconds,
                         quota_group_id=quota_group_id,
                     )
                 )
+            assert cleanup_configuration.partition_schedule is not None
             provider = SequentialCleanupProvider(
                 tuple(adapters),
-                total_budget_seconds=runtime.cleanup_timeout_seconds,
+                partition_schedule=cleanup_configuration.partition_schedule,
             )
             application.state.cleanup_service = CleanupService(
                 provider=provider,
@@ -469,8 +499,7 @@ def create_app(
             "display_name": runtime.display_name,
             "profile": runtime.profile,
             "development_state": runtime.development_state_name,
-            "cleanup_enabled_by_default": prompts.cleanup_enabled_by_default(),
-            "default_correction_mode": prompts.default_correction_mode(),
+            "preparation_default": prompts.preparation_default(),
             "cleanup_available": cleanup_available,
             "cleanup_model": cleanup_configuration.routes[0][1]
             if cleanup_configuration.routes
@@ -597,13 +626,13 @@ def create_app(
             evidence_failure(exc)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    @application.put("/api/preferences/correction-mode")
-    def update_correction_mode_preference(
-        request: CorrectionModePreferenceRequest,
-    ) -> dict[str, CorrectionMode]:
+    @application.put("/api/preferences/preparation-default")
+    def update_preparation_default(
+        request: PreparationDefaultRequest,
+    ) -> dict[str, PreparationMode]:
         require_configuration()
-        prompts.set_default_correction_mode(request.correction_mode)
-        return {"default_correction_mode": request.correction_mode}
+        prompts.set_preparation_default(request.preparation_default)
+        return {"preparation_default": request.preparation_default}
 
     @application.post("/api/cleanup", response_model=CleanupResult)
     async def clean_text(request: CleanupRequest) -> CleanupResult:
@@ -637,8 +666,7 @@ def create_app(
                 provider=result.provider,
                 model=result.model,
                 attempts=[
-                    attempt.model_dump(mode="json", exclude={"quota_group_id"})
-                    for attempt in result.attempts
+                    attempt.model_dump(mode="json") for attempt in result.attempts
                 ],
                 prompt_version_id=prompt.id,
                 prompt_content_sha256=prompt.content_sha256,
@@ -705,14 +733,20 @@ def create_app(
     @application.put("/api/outgoing-state")
     def publish_outgoing_state(update: OutgoingStateUpdate) -> dict[str, object]:
         require_configuration()
-        if update.cleanup_enabled != prompts.cleanup_enabled_by_default():
-            prompts.set_cleanup_enabled_by_default(update.cleanup_enabled)
         return state.update(update).public()
 
     @application.delete("/api/outgoing-state")
     def clear_outgoing_state() -> dict[str, object]:
         require_configuration()
-        return state.clear(correction_mode=prompts.default_correction_mode()).public()
+        saved_default = prompts.preparation_default()
+        return state.clear(
+            cleanup_enabled=saved_default is not PreparationMode.OFF,
+            correction_mode=(
+                CorrectionMode.SMART
+                if saved_default is PreparationMode.SMART
+                else CorrectionMode.CONSERVATIVE
+            ),
+        ).public()
 
     def require_evaluation() -> EvaluationStore:
         require_configuration()

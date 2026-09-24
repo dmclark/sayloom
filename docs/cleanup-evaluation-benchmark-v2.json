@@ -42,14 +42,14 @@
         "capitalization",
         "punctuation",
         "apostrophes",
-        "whitespace_or_paragraph_structure",
-        "leading_filler_removal"
+        "whitespace_or_paragraph_structure"
       ],
       "ineligible_word_operations": [
         "addition",
+        "removal",
         "substitution",
-        "reordering",
-        "non_leading_filler_removal"
+        "duplication",
+        "reordering"
       ],
       "requires_complete_revision_consent_retention_prompt_provenance_and_checksums": true,
       "ambiguous_or_transcript_truth_dependent_is_ineligible": true,
@@ -62,7 +62,7 @@
       "punctuation_only": 8,
       "apostrophe_only": 8,
       "whitespace_or_paragraph_only": 8,
-      "leading_filler_only": 8,
+      "filler_presentation_only": 8,
       "mixed_permitted_transformations": 10
     },
     "overlapping_minima": {

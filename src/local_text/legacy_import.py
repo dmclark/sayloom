@@ -5,9 +5,11 @@ import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from local_text.cleanup import PreparationMode
+
 PROMPT_FILENAME = "cleanup-prompt.txt"
 PREFERENCES_FILENAME = "preferences.json"
-ALLOWED_PREFERENCES = {"cleanup_enabled_by_default"}
+ALLOWED_PREFERENCES = {"cleanup_enabled_by_default", "default_correction_mode"}
 
 
 class LegacyImportError(ValueError):
@@ -18,7 +20,7 @@ class LegacyImportError(ValueError):
 class LegacyImportPreview:
     source_fingerprint: str
     prompt_text: str | None
-    cleanup_enabled_by_default: bool | None
+    preparation_default: PreparationMode | None
     preview_digest: str
 
     def to_dict(self) -> dict[str, object]:
@@ -44,6 +46,7 @@ def preview_legacy_configuration(source: Path) -> LegacyImportPreview:
     source_parts: list[bytes] = []
     prompt_text: str | None = None
     cleanup_enabled: bool | None = None
+    correction_mode: PreparationMode | None = None
 
     if prompt_path.exists() or prompt_path.is_symlink():
         prompt_bytes = _read_regular_file(prompt_path, 100_000)
@@ -71,18 +74,36 @@ def preview_legacy_configuration(source: Path) -> LegacyImportPreview:
             cleanup_enabled = preferences["cleanup_enabled_by_default"]
             if not isinstance(cleanup_enabled, bool):
                 raise LegacyImportError("cleanup_enabled_by_default must be a boolean")
+        if "default_correction_mode" in preferences:
+            try:
+                correction_mode = PreparationMode(preferences["default_correction_mode"])
+            except (ValueError, TypeError) as exc:
+                raise LegacyImportError(
+                    "default_correction_mode must be conservative or smart"
+                ) from exc
+            if correction_mode is PreparationMode.OFF:
+                raise LegacyImportError(
+                    "default_correction_mode must be conservative or smart"
+                )
         source_parts.extend(
             [PREFERENCES_FILENAME.encode(), b"\0", preferences_bytes, b"\0"]
         )
 
-    if prompt_text is None and cleanup_enabled is None:
+    if prompt_text is None and cleanup_enabled is None and correction_mode is None:
         raise LegacyImportError(
             f"no importable {PROMPT_FILENAME} or {PREFERENCES_FILENAME} configuration found"
         )
 
     source_fingerprint = hashlib.sha256(b"".join(source_parts)).hexdigest()
+    preparation_default = (
+        PreparationMode.OFF
+        if cleanup_enabled is False
+        else correction_mode or PreparationMode.CONSERVATIVE
+        if cleanup_enabled is True
+        else correction_mode
+    )
     preview_content = {
-        "cleanup_enabled_by_default": cleanup_enabled,
+        "preparation_default": preparation_default,
         "prompt_text": prompt_text,
         "source_fingerprint": source_fingerprint,
     }
@@ -92,6 +113,6 @@ def preview_legacy_configuration(source: Path) -> LegacyImportPreview:
     return LegacyImportPreview(
         source_fingerprint=source_fingerprint,
         prompt_text=prompt_text,
-        cleanup_enabled_by_default=cleanup_enabled,
+        preparation_default=preparation_default,
         preview_digest=preview_digest,
     )
