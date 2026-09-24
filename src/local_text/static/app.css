@@ -831,7 +831,37 @@ main { padding-top: 8px; }
 }
 
 .prepared-body > .editor-wrap { min-width: 0; }
+.prepared-body > .cleanup-result,
 .prepared-body > .cleanup-disclosure { grid-column: 1 / -1; }
+
+.cleanup-result {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 30px;
+  padding: 4px 12px;
+  border-bottom: 1px solid rgba(75, 99, 119, 0.24);
+  color: var(--blue-dark);
+  background: rgba(255, 255, 255, 0.48);
+  font-size: 0.7rem;
+}
+
+.cleanup-result[hidden] { display: none; }
+.cleanup-result-status { font-weight: 750; }
+.cleanup-attempt-details { margin-left: auto; }
+.cleanup-attempt-details summary {
+  cursor: pointer;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.cleanup-attempt-details ol {
+  display: grid;
+  gap: 3px;
+  margin: 6px 0 2px;
+  padding-left: 18px;
+  color: var(--ink);
+}
 
 .smart-repair-review {
   display: grid;

@@ -274,11 +274,36 @@ def test_status_errors_use_one_accessible_privacy_safe_dialog(
 
     retry_handler = script.split(
         'elements.retryCleanup.addEventListener("click"', maxsplit=1
-    )[1].split(";", maxsplit=1)[0]
+    )[1].split("});", maxsplit=1)[0]
     assert "runCleanup()" in retry_handler
+    assert 'failedCorrectionMode === "smart"' in retry_handler
+    assert 'applyDraftPreparationMode("conservative")' in retry_handler
     assert "copyOutgoing" not in retry_handler
     assert "requestEvidenceJudgment" not in retry_handler
     assert "publishNow" not in retry_handler
+
+    assert 'id="cleanup-result"' in page
+    assert "Prepared with backup model" in script
+    attempt_renderer = script.split("function renderCleanupAttempts", maxsplit=1)[1].split(
+        "function validateSmartRepairs", maxsplit=1
+    )[0]
+    assert all(
+        field in attempt_renderer
+        for field in ("provider", "model", "route_index", "outcome")
+    )
+    assert all(
+        private_field not in attempt_renderer
+        for private_field in (
+            "original_text",
+            "prepared_text",
+            "task_context",
+            "prompt",
+            "credential",
+            "payload",
+            "provider_code",
+            "http_status",
+        )
+    )
 
     feedback = script.split("function showCopyFeedback", maxsplit=1)[1].split(
         "async function copyOutgoing", maxsplit=1
@@ -1775,7 +1800,7 @@ const settle = async () => {
     }
 
 
-def test_browser_active_mode_failure_keeps_generic_retry_without_legacy_smart_action(
+def test_browser_failed_smart_recovery_uses_latest_original_and_safe_attempt_details(
     initialized_settings: Settings,
 ) -> None:
     script = TestClient(create_app(initialized_settings)).get("/static/app.js").text
@@ -1817,29 +1842,58 @@ const document = {
   createElement() { return new Element(); },
   addEventListener() {},
 };
-let failConservative = false;
+const cleanupRequests = [];
+const publications = [];
+let holdConservative = false;
+let resolveConservative;
+let primarySuccess = false;
 const response = (body) => ({ ok: true, status: 200, json: async () => body });
 const fetch = async (url, options = {}) => {
   if (url === "/api/config") return response({
-    preparation_default: "conservative",
+    preparation_default: "smart",
     cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
     evidence_collection: { ready: false }, evaluation_configuration: { available: false },
   });
   if (url === "/api/cleanup") {
     const body = JSON.parse(options.body);
-    if (body.correction_mode === "smart" || failConservative) return response({
+    cleanupRequests.push(body);
+    if (body.correction_mode === "smart") return response({
       prepared_text: body.original_text, status: "provider_error",
       provider: "test", model: "model-a",
-      lexical_repairs: [], attempts: [], error: {
+      lexical_repairs: [], attempts: [{
+        provider: "provider-a", model: "model-a", route_index: 0, outcome: "failure",
+        unsafe_provider_text: "PRIVATE PROVIDER PAYLOAD",
+      }], error: {
         code: "cleanup_provider_error", message: "The provider failed.",
         retry_action: "Retry correction or continue with Original.", http_status: 503,
       },
     });
+    if (holdConservative) {
+      return await new Promise((resolve) => { resolveConservative = () => resolve(response({
+        prepared_text: `${body.original_text} stale`, status: "prepared",
+        provider: "provider-b", model: "model-b", attempts: [{
+          provider: "provider-b", model: "model-b", route_index: 0, outcome: "success",
+        }],
+      })); });
+    }
+    if (primarySuccess) return response({
+      prepared_text: `${body.original_text} primary`, status: "prepared",
+      provider: "provider-a", model: "model-a", attempts: [{
+        provider: "provider-a", model: "model-a", route_index: 0, outcome: "success",
+      }],
+    });
     return response({
-      prepared_text: body.original_text, status: "unchanged", lexical_repairs: [],
+      prepared_text: `${body.original_text} recovered`, status: "prepared",
+      provider: "provider-b", model: "model-b", attempts: [
+        { provider: "provider-a", model: "model-a", route_index: 0, outcome: "failure" },
+        { provider: "provider-b", model: "model-b", route_index: 1, outcome: "success" },
+      ],
     });
   }
-  if (url === "/api/outgoing-state") return response({ revision: 1 });
+  if (url === "/api/outgoing-state") {
+    if ((options.method || "GET") === "PUT") publications.push(JSON.parse(options.body));
+    return response({ revision: publications.length + 1 });
+  }
   throw new Error(`Unexpected request: ${url}`);
 };
 const window = {
@@ -1858,31 +1912,62 @@ const settle = async () => {
 
 (async () => {
   vm.runInNewContext(process.argv[1], context); await settle();
-  elements["#original-text"].value = "Send teh report";
+  elements["#original-text"].value = "Original one";
   await elements["#original-text"].dispatch("input", { isTrusted: true });
   await elements["#run-cleanup"].dispatch("click"); await settle();
-  elements["#draft-preparation-mode"].value = "smart";
-  await elements["#draft-preparation-mode"].dispatch("change"); await settle();
 
   const smartFailure = {
     cleanupDetailsVisible: !elements["#cleanup-recovery"].hidden,
-    cleanupRetryVisible: !elements["#cleanup-recovery"].hidden
-      && !elements["#retry-cleanup"].hidden,
+    recoveryLabel: elements["#retry-cleanup"].textContent,
+    prepared: elements["#prepared-text"].value,
+    outgoing: elements["#outgoing-kind"].textContent,
+    details: elements["#cleanup-attempt-list"].children.map((item) => item.textContent),
   };
 
-  failConservative = true;
-  elements["#draft-preparation-mode"].value = "conservative";
-  await elements["#draft-preparation-mode"].dispatch("change"); await settle();
-  elements["#original-text"].value = "Send the report";
+  holdConservative = true;
+  await elements["#retry-cleanup"].dispatch("click"); await settle();
+  elements["#original-text"].value = "Original two";
   await elements["#original-text"].dispatch("input", { isTrusted: true });
+  resolveConservative(); await settle();
+  const stale = {
+    prepared: elements["#prepared-text"].value,
+    outgoing: elements["#outgoing-kind"].textContent,
+    attemptsHidden: elements["#cleanup-result"].hidden,
+  };
+
+  holdConservative = false;
+  elements["#draft-preparation-mode"].value = "smart";
+  await elements["#draft-preparation-mode"].dispatch("change"); await settle();
+  await elements["#retry-cleanup"].dispatch("click"); await settle();
+  const backup = {
+    mode: elements["#draft-preparation-mode"].value,
+    prepared: elements["#prepared-text"].value,
+    outgoing: elements["#outgoing-kind"].textContent,
+    status: elements["#cleanup-result-status"].textContent,
+    details: elements["#cleanup-attempt-list"].children.slice(-2).map((item) => item.textContent),
+  };
+  await elements["#select-prepared"].dispatch("click"); await settle();
+
+  primarySuccess = true;
   await elements["#run-cleanup"].dispatch("click"); await settle();
+  await elements["#select-prepared"].dispatch("click"); await settle();
+  const primary = {
+    prepared: elements["#prepared-text"].value,
+    outgoing: elements["#outgoing-kind"].textContent,
+    backupStatusHidden: elements["#cleanup-result-status"].hidden,
+    details: elements["#cleanup-attempt-list"].children.slice(-1).map((item) => item.textContent),
+  };
 
   process.stdout.write(JSON.stringify({
-    smartFailure,
-    conservativeFailure: {
-      cleanupRetryVisible: !elements["#cleanup-recovery"].hidden
-        && !elements["#retry-cleanup"].hidden,
-    },
+    smartFailure, stale, backup, primary, cleanupRequests,
+    publishedOutgoing: publications.slice(-2).map((item) => ({
+      original_text: item.original_text,
+      prepared_text: item.prepared_text,
+      outgoing_text: item.outgoing_text,
+      outgoing_kind: item.outgoing_kind,
+      status: item.status,
+      correction_mode: item.correction_mode,
+    })),
   }));
 })().catch((error) => { process.stderr.write(error.stack); process.exit(1); });
 """
@@ -1894,11 +1979,69 @@ const settle = async () => {
     assert json.loads(result.stdout) == {
         "smartFailure": {
             "cleanupDetailsVisible": True,
-            "cleanupRetryVisible": True,
+            "recoveryLabel": "Try Conservative",
+            "prepared": "Original one",
+            "outgoing": "Using Original",
+            "details": ["Route 1: provider-a · model-a — Failed"],
         },
-        "conservativeFailure": {
-            "cleanupRetryVisible": True,
+        "stale": {
+            "prepared": "",
+            "outgoing": "Using Original — Replacement Prepared pending",
+            "attemptsHidden": True,
         },
+        "backup": {
+            "mode": "conservative",
+            "prepared": "Original two recovered",
+            "outgoing": "Using Prepared",
+            "status": "Prepared with backup model",
+            "details": [
+                "Route 1: provider-a · model-a — Failed",
+                "Route 2: provider-b · model-b — Succeeded",
+            ],
+        },
+        "primary": {
+            "prepared": "Original two primary",
+            "outgoing": "Using Prepared",
+            "backupStatusHidden": True,
+            "details": ["Route 1: provider-a · model-a — Succeeded"],
+        },
+        "cleanupRequests": [
+            {"original_text": "Original one", "enabled": True, "correction_mode": "smart"},
+            {
+                "original_text": "Original one",
+                "enabled": True,
+                "correction_mode": "conservative",
+            },
+            {"original_text": "Original two", "enabled": True, "correction_mode": "smart"},
+            {
+                "original_text": "Original two",
+                "enabled": True,
+                "correction_mode": "conservative",
+            },
+            {
+                "original_text": "Original two",
+                "enabled": True,
+                "correction_mode": "conservative",
+            },
+        ],
+        "publishedOutgoing": [
+            {
+                "original_text": "Original two",
+                "prepared_text": "Original two recovered",
+                "outgoing_text": "Original two recovered",
+                "outgoing_kind": "prepared",
+                "status": "prepared",
+                "correction_mode": "conservative",
+            },
+            {
+                "original_text": "Original two",
+                "prepared_text": "Original two primary",
+                "outgoing_text": "Original two primary",
+                "outgoing_kind": "prepared",
+                "status": "prepared",
+                "correction_mode": "conservative",
+            },
+        ],
     }
 
 

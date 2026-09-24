@@ -46,6 +46,10 @@
     cleanupRecovery: document.querySelector("#cleanup-recovery"),
     cleanupStatus: document.querySelector("#cleanup-status"),
     retryCleanup: document.querySelector("#retry-cleanup"),
+    cleanupResult: document.querySelector("#cleanup-result"),
+    cleanupResultStatus: document.querySelector("#cleanup-result-status"),
+    cleanupAttemptDetails: document.querySelector("#cleanup-attempt-details"),
+    cleanupAttemptList: document.querySelector("#cleanup-attempt-list"),
     modelLabel: document.querySelector("#model-label"),
     cleanupDisclosure: document.querySelector("#cleanup-disclosure"),
     cleanupDisclosureSummary: document.querySelector("#cleanup-disclosure-summary"),
@@ -187,6 +191,7 @@
   let draftRevision = 0;
   let draftModeOverridden = false;
   let currentOriginalText = elements.original.value;
+  let failedCorrectionMode = null;
   let smartRepairs = [];
   let selectedSmartRepair = null;
   let smartRepairResultCurrent = false;
@@ -250,11 +255,47 @@
   }
 
   function renderExplicitSmartAction() {
-    elements.retryCleanup.hidden = false;
+    elements.retryCleanup.textContent = failedCorrectionMode === "smart"
+      ? "Try Conservative"
+      : "Retry cleanup";
   }
 
   function setExplicitSmartState() {
     renderExplicitSmartAction();
+  }
+
+  function clearCleanupAttempts() {
+    elements.cleanupResult.hidden = true;
+    elements.cleanupResultStatus.hidden = true;
+    elements.cleanupResultStatus.textContent = "";
+    elements.cleanupAttemptDetails.open = false;
+    elements.cleanupAttemptList.textContent = "";
+  }
+
+  function renderCleanupAttempts(result) {
+    const attempts = Array.isArray(result?.attempts)
+      ? result.attempts.filter((attempt) => (
+          typeof attempt?.provider === "string"
+          && typeof attempt?.model === "string"
+          && Number.isInteger(attempt?.route_index)
+          && attempt.route_index >= 0
+          && ["success", "failure"].includes(attempt?.outcome)
+        ))
+      : [];
+    clearCleanupAttempts();
+    if (!attempts.length) return;
+    attempts.forEach((attempt) => {
+      const item = document.createElement("li");
+      const outcome = attempt.outcome === "success" ? "Succeeded" : "Failed";
+      item.textContent = `Route ${attempt.route_index + 1}: ${attempt.provider} · ${attempt.model} — ${outcome}`;
+      elements.cleanupAttemptList.append(item);
+    });
+    const backupSuccess = attempts.some(
+      (attempt) => attempt.outcome === "success" && attempt.route_index > 0,
+    );
+    elements.cleanupResultStatus.hidden = !backupSuccess;
+    elements.cleanupResultStatus.textContent = backupSuccess ? "Prepared with backup model" : "";
+    elements.cleanupResult.hidden = false;
   }
 
   function validateSmartRepairs(repairs, originalText, preparedText) {
@@ -674,7 +715,9 @@
     trigger.setAttribute("aria-label", `${statusText}. View ${kind} error details`);
   }
 
-  function setCleanupError(error) {
+  function setCleanupError(error, correctionMode = null) {
+    failedCorrectionMode = error === null ? null : correctionMode;
+    renderExplicitSmartAction();
     setError("cleanup", error);
   }
 
@@ -934,6 +977,7 @@
     cleanupTimer = null;
     abortActiveRequest();
     setCleanupError(null);
+    clearCleanupAttempts();
     invalidateSmartRepairReview();
     invalidateEvaluationCapture();
 
@@ -1007,7 +1051,7 @@
         ) return;
         elements.prepared.value = originalText;
         setStatus("error");
-        setCleanupError(error);
+        setCleanupError(error, correctionMode);
         if (explicitSmart) setExplicitSmartState("retry", "Smart correction failed.");
         restoreOriginalSelection(selection);
         return;
@@ -1029,13 +1073,14 @@
       ) {
         elements.prepared.value = originalText;
         setStatus("error");
-        setCleanupError(malformedResponseError("Cleanup", response.status));
+        setCleanupError(malformedResponseError("Cleanup", response.status), correctionMode);
         if (explicitSmart) setExplicitSmartState("retry", "Smart correction failed.");
         restoreOriginalSelection(selection);
         return;
       }
 
       elements.prepared.value = result.prepared_text;
+      renderCleanupAttempts(result);
       const statusMap = {
         prepared: "prepared",
         unchanged: "unchanged",
@@ -1075,7 +1120,7 @@
           retryAction: typeof safe?.retry_action === "string"
             ? safe.retry_action
             : "Retry cleanup or continue with Original.",
-        }));
+        }), correctionMode);
       } else {
         setCleanupError(null);
       }
@@ -1113,7 +1158,7 @@
       elements.prepared.value = originalText;
       setStatus("error");
       if (error.name !== "AbortError") {
-        setCleanupError(error?.code ? error : networkError("Cleanup"));
+        setCleanupError(error?.code ? error : networkError("Cleanup"), correctionMode);
         if (explicitSmart) setExplicitSmartState("retry", "Smart correction failed.");
       }
       restoreOriginalSelection(selection);
@@ -1129,6 +1174,7 @@
     window.clearTimeout(cleanupTimer);
     setExplicitSmartState("hidden");
     setCleanupError(null);
+    clearCleanupAttempts();
     invalidateSmartRepairReview();
     invalidateEvaluationCapture();
     if (evidenceLease && evidenceReceipt?.originalText !== elements.original.value) {
@@ -1199,9 +1245,10 @@
   });
   elements.original.addEventListener("input", handleOriginalInput);
 
-  elements.draftPreparationMode.addEventListener("change", () => {
+  function applyDraftPreparationMode(nextMode) {
     cancelEvidenceJudgment();
-    draftPreparationMode = elements.draftPreparationMode.value;
+    draftPreparationMode = nextMode;
+    elements.draftPreparationMode.value = nextMode;
     draftRevision += 1;
     draftModeOverridden = true;
     invalidateSmartRepairReview();
@@ -1219,6 +1266,10 @@
     } else {
       runCleanup();
     }
+  }
+
+  elements.draftPreparationMode.addEventListener("change", () => {
+    applyDraftPreparationMode(elements.draftPreparationMode.value);
   });
 
   elements.defaultPreparationMode.addEventListener("change", async () => {
@@ -1265,7 +1316,10 @@
     saveWorkspacePreferences();
   });
   elements.runCleanup.addEventListener("click", () => runCleanup());
-  elements.retryCleanup.addEventListener("click", () => runCleanup());
+  elements.retryCleanup.addEventListener("click", () => {
+    if (failedCorrectionMode === "smart") applyDraftPreparationMode("conservative");
+    else runCleanup();
+  });
   elements.selectOriginal.addEventListener("click", () => {
     originalOutgoingOverride = true;
     publishNow();
@@ -1295,6 +1349,7 @@
     elements.prepared.dataset.repairCount = "0";
     elements.smartTaskContext.value = "";
     setCleanupError(null);
+    clearCleanupAttempts();
     setStatus("unchanged");
     renderCorrectionMode();
     renderCountsAndSelection();
@@ -1627,6 +1682,7 @@
         const correctionLabel = snapshot.correctionMode === "smart"
           ? "Smart correction"
           : "Conservative preparation";
+        renderCleanupAttempts(result);
         setCleanupError(makeError({
           operation: correctionLabel,
           summary: result.status === "timeout"
@@ -1641,13 +1697,14 @@
           retryAction: typeof safe?.retry_action === "string"
             ? safe.retry_action
             : "Retry Smart correction or continue with Original.",
-        }));
+        }), snapshot.correctionMode);
         if (snapshot.explicitSmart) setExplicitSmartState("retry", "Smart correction failed.");
         else if (snapshot.correctionMode === "conservative") setExplicitSmartState("available");
         await publishNow();
         return;
       }
       elements.prepared.value = result.prepared_text;
+      renderCleanupAttempts(result);
       setStatus(result.status);
       setCleanupError(null);
       if (snapshot.correctionMode === "smart") {

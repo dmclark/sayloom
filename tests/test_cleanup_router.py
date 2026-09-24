@@ -1,4 +1,5 @@
 import asyncio
+import json
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
@@ -383,6 +384,31 @@ def test_programming_exception_is_terminal_and_does_not_mutate_breakers() -> Non
     assert recovered.status is CleanupStatus.PREPARED
     assert primary.calls == 2
     assert fallback.calls == 0
+
+
+def test_attempt_serialization_and_logs_exclude_private_provider_detail(caplog) -> None:
+    private_original = "PRIVATE ORIGINAL SENTINEL"
+    private_provider_detail = "PRIVATE PROVIDER PAYLOAD"
+    provider = FakeAdapter(
+        "primary",
+        ProviderError(private_provider_detail, provider_code=private_provider_detail),
+    )
+    service = CleanupService(provider, provider.model, timeout_seconds=1)
+    caplog.set_level("INFO", logger="local_text.cleanup")
+
+    result = asyncio.run(
+        service.clean(CleanupRequest(original_text=private_original), "PRIVATE PROMPT SENTINEL")
+    )
+
+    serialized_attempts = json.dumps(
+        [attempt.model_dump(mode="json") for attempt in result.attempts]
+    )
+    assert private_original not in serialized_attempts
+    assert private_provider_detail not in serialized_attempts
+    assert "PRIVATE PROMPT SENTINEL" not in serialized_attempts
+    assert private_original not in caplog.text
+    assert private_provider_detail not in caplog.text
+    assert "PRIVATE PROMPT SENTINEL" not in caplog.text
 
 
 def test_shared_semantic_validation_advances_and_preserves_failed_attempt_usage() -> None:
