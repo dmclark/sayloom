@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Architecture review for Sayloom</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
+    </script>
+    <style>
+      .seam { border-style: dashed; }
+      .deep { background: linear-gradient(135deg, #0f172a, #1e293b); }
+      .leak { color: #dc2626; }
+      .diagram-grid { background-image: radial-gradient(#cbd5e1 0.7px, transparent 0.7px); background-size: 14px 14px; }
+      .arrow { color: #64748b; font-size: 1.35rem; line-height: 1; }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans">
+    <main class="max-w-6xl mx-auto px-6 py-12 space-y-12">
+      <header class="border-b border-slate-300 pb-8">
+        <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Architecture review · 24 September 2026</p>
+        <h1 class="mt-2 text-4xl font-serif font-semibold">Sayloom deepening opportunities</h1>
+        <div class="mt-6 flex flex-wrap gap-4 text-xs text-slate-600">
+          <span class="inline-flex items-center gap-2"><span class="h-4 w-6 rounded border border-slate-500 bg-white"></span> module</span>
+          <span class="inline-flex items-center gap-2"><span class="h-4 w-6 rounded border-2 border-dashed border-indigo-500 bg-white"></span> seam</span>
+          <span class="inline-flex items-center gap-2"><span class="text-red-600 font-bold">→</span> leakage</span>
+          <span class="inline-flex items-center gap-2"><span class="h-4 w-6 rounded bg-slate-900"></span> deep module</span>
+        </div>
+      </header>
+
+      <section id="candidates" class="space-y-12">
+        <article id="automatic-strategy" class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div class="p-7 border-b border-slate-200">
+            <div class="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p class="text-xs uppercase tracking-widest text-indigo-600">Candidate 01</p>
+                <h2 class="mt-1 text-2xl font-serif font-semibold">Deepen Automatic correction strategy assembly</h2>
+              </div>
+              <div class="flex gap-2">
+                <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">Strong</span>
+                <span class="rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">ports &amp; adapters</span>
+              </div>
+            </div>
+            <p class="mt-4 font-mono text-xs leading-5 text-slate-600">src/local_text/config.py · src/local_text/app.py · src/local_text/cleanup.py<br>tests/test_app.py · tests/test_cleanup_router.py · tests/test_cleanup.py</p>
+          </div>
+          <div class="p-7 space-y-7">
+            <div class="grid gap-5 lg:grid-cols-2">
+              <figure class="rounded-xl border border-red-200 bg-red-50/40 p-5 diagram-grid">
+                <figcaption class="text-xs uppercase tracking-widest font-semibold text-red-700">Before · assembly leaks into the app module</figcaption>
+                <div class="mt-5 flex items-center justify-center gap-2 text-center text-[11px] font-semibold">
+                  <div class="rounded border bg-white p-3">Settings<br><span class="font-normal text-slate-500">keys · budget</span></div>
+                  <span class="arrow">→</span>
+                  <div class="rounded border-2 border-red-400 bg-white p-3">app.py<br><span class="font-normal text-red-600">validate · disclose<br>construct · order</span></div>
+                  <span class="arrow">→</span>
+                  <div class="space-y-2">
+                    <div class="rounded border bg-white p-2">Gemini adapter</div>
+                    <div class="rounded border bg-white p-2">OpenAI adapter</div>
+                  </div>
+                </div>
+                <div class="mt-5 rounded border border-slate-400 bg-white p-3 text-center text-xs">Sequential routing → correction authority</div>
+              </figure>
+              <figure class="rounded-xl border border-indigo-200 bg-indigo-50/40 p-5 diagram-grid">
+                <figcaption class="text-xs uppercase tracking-widest font-semibold text-indigo-700">After · one deep strategy module</figcaption>
+                <div class="mt-5 flex items-center justify-center gap-3 text-center text-[11px] font-semibold">
+                  <div class="rounded border bg-white p-3">Settings</div>
+                  <span class="arrow">→</span>
+                  <div class="deep min-w-64 rounded-xl p-5 text-white shadow-lg">
+                    <div class="border-b border-slate-500 pb-2 text-xs uppercase tracking-widest">Small interface</div>
+                    <div class="pt-4 space-y-2 text-slate-300 font-normal">
+                      <div>validation · disclosure</div>
+                      <div>adapter assembly · route policy</div>
+                    </div>
+                  </div>
+                  <span class="arrow">→</span>
+                  <div class="rounded border bg-white p-3">Cleanup</div>
+                </div>
+              </figure>
+            </div>
+            <div class="grid gap-5 md:grid-cols-3 text-sm">
+              <div><h3 class="text-xs uppercase tracking-widest font-semibold text-slate-500">Problem</h3><p class="mt-2">One Automatic correction strategy spans configuration parsing, app-local validation and disclosure, adapter construction, route policy, and correction authority.</p></div>
+              <div><h3 class="text-xs uppercase tracking-widest font-semibold text-slate-500">Solution</h3><p class="mt-2">Consolidate strategy validation, disclosure, adapter assembly, and routing construction in one deep module; keep correction authority separate inside Cleanup.</p></div>
+              <div><h3 class="text-xs uppercase tracking-widest font-semibold text-slate-500">Benefits</h3><ul class="mt-2 space-y-1 list-disc pl-4"><li>locality: assembly in one module</li><li>leverage: one strategy interface</li><li>tests stop inspecting app state</li></ul></div>
+            </div>
+            <div class="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900"><strong>ADR-0001:</strong> compatible only while correction authority and routing remain independent. A per-mode route chain would contradict the decision.</div>
+            <p class="text-xs text-slate-500"><strong>Deletion test:</strong> removing the app-local configuration helpers merely spreads their conditionals into app construction; removing sequential routing spreads deadlines and failure policy across callers. Deepen the former around the latter.</p>
+          </div>
+        </article>
+
+        <article id="evidence-transaction" class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div class="p-7 border-b border-slate-200">
+            <div class="flex flex-wrap items-start justify-between gap-4">
+              <div><p class="text-xs uppercase tracking-widest text-indigo-600">Candidate 02</p><h2 class="mt-1 text-2xl font-serif font-semibold">Deepen the Evidence Collection transaction</h2></div>
+              <div class="flex gap-2"><span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">Strong</span><span class="rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">ports &amp; adapters</span></div>
+            </div>
+            <p class="mt-4 font-mono text-xs leading-5 text-slate-600">src/local_text/static/app.js · src/local_text/app.py<br>src/local_text/evidence_collection.py · src/local_text/evidence_package.py<br>tests/test_evidence_collection_tracer.py · tests/test_evidence_package.py</p>
+          </div>
+          <div class="p-7 space-y-7">
+            <div class="grid gap-5 lg:grid-cols-2">
+              <figure class="rounded-xl border border-red-200 bg-red-50/40 p-5">
+                <figcaption class="text-xs uppercase tracking-widest font-semibold text-red-700">Before · one invariant crosses five modules</figcaption>
+                <pre class="mermaid">
+flowchart LR
+  B[Browser] --> A[app.py]
+  A --> C[Evidence Collection]
+  C --> P[Evidence package]
+  A --> U[Cleanup]
+  B -. receipt .-> A
+  A -. reconstructs frozen input .-> U
+  classDef leak stroke:#dc2626,stroke-width:2px,color:#991b1b;
+  class A,B leak
+                </pre>
+              </figure>
+              <figure class="rounded-xl border border-indigo-200 bg-indigo-50/40 p-5">
+                <figcaption class="text-xs uppercase tracking-widest font-semibold text-indigo-700">After · freeze-to-publication locality</figcaption>
+                <div class="mt-5 flex justify-center">
+                  <div class="deep w-full max-w-sm rounded-xl p-5 text-white shadow-lg">
+                    <div class="border-b border-slate-500 pb-2 text-xs uppercase tracking-widest">Evidence Collection transaction</div>
+                    <div class="grid grid-cols-2 gap-2 pt-4 text-center text-[11px] text-slate-300">
+                      <span class="rounded bg-slate-700 p-2">freeze</span><span class="rounded bg-slate-700 p-2">confirm</span>
+                      <span class="rounded bg-slate-700 p-2">verified persist</span><span class="rounded bg-slate-700 p-2">authorize</span>
+                    </div>
+                    <div class="mt-4 seam rounded border-2 border-indigo-300 p-2 text-center text-xs">Evidence package adapter</div>
+                  </div>
+                </div>
+              </figure>
+            </div>
+            <div class="grid gap-5 md:grid-cols-3 text-sm">
+              <div><h3 class="text-xs uppercase tracking-widest font-semibold text-slate-500">Problem</h3><p class="mt-2">The no-exposure-before-judgment invariant spans browser state, app orchestration, frozen observations, package writes, correction input reconstruction, and publication receipts.</p></div>
+              <div><h3 class="text-xs uppercase tracking-widest font-semibold text-slate-500">Solution</h3><p class="mt-2">Let one Evidence Collection transaction own freeze through confirmation, verified persistence, frozen correction input, and publication authorization.</p></div>
+              <div><h3 class="text-xs uppercase tracking-widest font-semibold text-slate-500">Benefits</h3><ul class="mt-2 space-y-1 list-disc pl-4"><li>locality: invariant in one module</li><li>package remains an adapter</li><li>tests follow the transaction</li></ul></div>
+            </div>
+            <div class="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900"><strong>ADR-0001:</strong> keep Evidence Collection independent of ordinary Smart correction and preparation choice.</div>
+            <p class="text-xs text-slate-500"><strong>Deletion test:</strong> EvidenceCollection already concentrates lease and storage rules; deleting it spreads those rules. The shallow part is the app orchestration around confirmation and publication, which should move inward.</p>
+          </div>
+        </article>
+
+        <article id="outgoing-publication" class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div class="p-7 border-b border-slate-200">
+            <div class="flex flex-wrap items-start justify-between gap-4">
+              <div><p class="text-xs uppercase tracking-widest text-indigo-600">Candidate 03</p><h2 class="mt-1 text-2xl font-serif font-semibold">Concentrate outgoing selection and publication</h2></div>
+              <div class="flex gap-2"><span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">Worth exploring</span><span class="rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">in-process</span></div>
+            </div>
+            <p class="mt-4 font-mono text-xs leading-5 text-slate-600">src/local_text/static/app.js · src/local_text/state.py · src/local_text/app.py<br>tests/test_app.py · tests/test_targets.py</p>
+          </div>
+          <div class="p-7 space-y-7">
+            <div class="grid gap-5 lg:grid-cols-2">
+              <figure class="rounded-xl border border-red-200 bg-red-50/40 p-5">
+                <figcaption class="text-xs uppercase tracking-widest font-semibold text-red-700">Before · shallow store, wide interface</figcaption>
+                <div class="mt-5 mx-auto max-w-sm text-center">
+                  <div class="rounded-t-lg bg-red-100 border border-red-300 p-4 text-xs font-semibold">9 coupled fields from browser</div>
+                  <div class="rounded-b-lg border-x border-b border-slate-300 bg-white p-3 text-xs text-slate-500">lock · replace · revision</div>
+                  <div class="mt-3 leak text-sm font-bold">↓ authorization leaks to app.py</div>
+                </div>
+              </figure>
+              <figure class="rounded-xl border border-indigo-200 bg-indigo-50/40 p-5">
+                <figcaption class="text-xs uppercase tracking-widest font-semibold text-indigo-700">After · small publication seam</figcaption>
+                <div class="mt-5 mx-auto max-w-sm text-center">
+                  <div class="rounded-t-lg bg-indigo-100 border border-indigo-300 p-2 text-xs font-semibold">draft facts + user choice</div>
+                  <div class="deep rounded-b-lg p-6 text-white text-xs">
+                    <div>selection · authorization</div>
+                    <div class="mt-2 text-slate-300">revision · publication state</div>
+                  </div>
+                </div>
+              </figure>
+            </div>
+            <div class="grid gap-5 md:grid-cols-3 text-sm">
+              <div><h3 class="text-xs uppercase tracking-widest font-semibold text-slate-500">Problem</h3><p class="mt-2">The browser derives the outgoing snapshot, the state model rechecks only part of it, and the app separately authorizes Evidence Collection publication.</p></div>
+              <div><h3 class="text-xs uppercase tracking-widest font-semibold text-slate-500">Solution</h3><p class="mt-2">Move selection, authorization, and revisioning behind one deeper publication module; callers provide facts rather than a derived state record.</p></div>
+              <div><h3 class="text-xs uppercase tracking-widest font-semibold text-slate-500">Benefits</h3><ul class="mt-2 space-y-1 list-disc pl-4"><li>interface loses derived fields</li><li>locality: selection rules converge</li><li>tests assert publication outcomes</li></ul></div>
+            </div>
+            <div class="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900"><strong>ADR-0001:</strong> preserve explicit Smart failure to Original; never hide a mode change inside publication.</div>
+            <p class="text-xs text-slate-500"><strong>Deletion test:</strong> deleting OutgoingStateStore moves little beyond locking and revisioning into the app module. Most complexity already lives in callers, so the current module is shallow.</p>
+          </div>
+        </article>
+
+        <article id="target-lifecycle" class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div class="p-7 border-b border-slate-200">
+            <div class="flex flex-wrap items-start justify-between gap-4">
+              <div><p class="text-xs uppercase tracking-widest text-indigo-600">Candidate 04</p><h2 class="mt-1 text-2xl font-serif font-semibold">Deepen the Target lifecycle module</h2></div>
+              <div class="flex gap-2"><span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">Worth exploring</span><span class="rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">local-substitutable</span></div>
+            </div>
+            <p class="mt-4 font-mono text-xs leading-5 text-slate-600">src/local_text/targets.py · src/local_text/target_store.py<br>src/local_text/target_adapter.py · src/local_text/app.py · src/local_text/static/app.js<br>tests/test_targets.py</p>
+          </div>
+          <div class="p-7 space-y-7">
+            <div class="grid gap-5 lg:grid-cols-2">
+              <figure class="rounded-xl border border-red-200 bg-red-50/40 p-5">
+                <figcaption class="text-xs uppercase tracking-widest font-semibold text-red-700">Before · lifecycle ordered by app.py</figcaption>
+                <div class="mt-5 grid grid-cols-4 gap-2 text-center text-[10px] font-semibold">
+                  <div class="rounded border bg-white p-3">store</div><div class="rounded border bg-white p-3">generate</div><div class="rounded border bg-white p-3">artifact</div><div class="rounded border bg-white p-3">errors</div>
+                </div>
+                <div class="mt-4 rounded border-2 border-red-400 bg-white p-3 text-center text-xs text-red-700">app.py must order install · disable · enable · remove</div>
+              </figure>
+              <figure class="rounded-xl border border-indigo-200 bg-indigo-50/40 p-5">
+                <figcaption class="text-xs uppercase tracking-widest font-semibold text-indigo-700">After · lifecycle hides its adapters</figcaption>
+                <div class="mt-5 deep rounded-xl p-5 text-white">
+                  <div class="text-center text-xs uppercase tracking-widest">Target lifecycle</div>
+                  <div class="mt-4 grid grid-cols-3 gap-2 text-center text-[10px] text-slate-300">
+                    <div class="seam rounded border border-indigo-300 p-2">durable store adapter</div><div class="rounded bg-slate-700 p-2">generation</div><div class="seam rounded border border-indigo-300 p-2">artifact adapter</div>
+                  </div>
+                </div>
+              </figure>
+            </div>
+            <div class="grid gap-5 md:grid-cols-3 text-sm">
+              <div><h3 class="text-xs uppercase tracking-widest font-semibold text-slate-500">Problem</h3><p class="mt-2">The app module owns operation order, generated previews, artifact observation, durable errors, and synthesized Target state.</p></div>
+              <div><h3 class="text-xs uppercase tracking-widest font-semibold text-slate-500">Solution</h3><p class="mt-2">Consolidate Target lifecycle operations and state synthesis in one deep module while retaining storage and filesystem adapters.</p></div>
+              <div><h3 class="text-xs uppercase tracking-widest font-semibold text-slate-500">Benefits</h3><ul class="mt-2 space-y-1 list-disc pl-4"><li>locality: lifecycle order converges</li><li>adapters keep real seams</li><li>route tests stay caller-facing</li></ul></div>
+            </div>
+            <p class="text-xs text-slate-500"><strong>Deletion test:</strong> deleting TargetStore merely moves persistence into app.py; deleting generation or the artifact adapter spreads safety rules. Deepen lifecycle orchestration without erasing the real adapter seams.</p>
+          </div>
+        </article>
+      </section>
+
+      <section id="top-recommendation" class="rounded-2xl bg-slate-900 px-8 py-9 text-white shadow-xl">
+        <p class="text-xs uppercase tracking-[0.22em] text-emerald-300">Top recommendation</p>
+        <h2 class="mt-2 text-3xl font-serif font-semibold"><a class="underline decoration-emerald-400 underline-offset-4" href="#automatic-strategy">Deepen Automatic correction strategy assembly</a></h2>
+        <p class="mt-3 max-w-3xl text-slate-300">It is the hottest recent path, offers the highest leverage, and creates locality around ADR-0001’s separation of correction authority from fallback routing.</p>
+      </section>
+    </main>
+  </body>
+</html>
