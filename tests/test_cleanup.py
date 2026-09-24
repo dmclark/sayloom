@@ -501,7 +501,6 @@ def test_every_normalized_failure_class_has_safe_public_attribution(
         "provider_code": "safe_code",
         "http_status": 429,
         "retry_after_seconds": 12,
-        "quota_group_id": "alternate-quota",
     }
     assert "provider response" not in result.model_dump_json()
     assert "/Users/" not in result.model_dump_json()
@@ -542,7 +541,6 @@ def test_provider_neutral_success_attribution_includes_optional_usage() -> None:
         "provider_code": None,
         "http_status": None,
         "retry_after_seconds": None,
-        "quota_group_id": None,
     }
 
 
@@ -660,7 +658,6 @@ def test_cleanup_log_contains_only_allowlisted_diagnostics(monkeypatch) -> None:
             "output_tokens": None,
             "provider": "gemini",
             "provider_code": "http_429",
-            "quota_group_id": None,
             "retry_after_seconds": None,
             "route_index": 0,
         }

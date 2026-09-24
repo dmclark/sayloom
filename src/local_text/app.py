@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field, field_validator
 from local_text.cleanup import (
     GEMINI_37_FLASH,
     OPENAI_GPT_56_LUNA,
+    CleanupPartitionSchedule,
     CleanupRequest,
     CleanupResult,
     CleanupRoute,
@@ -72,6 +73,7 @@ SAFE_CONFIGURATION_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 class CleanupRuntimeConfiguration:
     status: str
     routes: tuple[tuple[str, str, str], ...] = ()
+    partition_schedule: CleanupPartitionSchedule | None = None
     validation_error: str | None = None
 
     @property
@@ -147,9 +149,10 @@ def _cleanup_runtime_configuration(runtime: Settings) -> CleanupRuntimeConfigura
     if not cross_provider_requested:
         if not runtime.gemini_api_key:
             return CleanupRuntimeConfiguration("unavailable")
-        return CleanupRuntimeConfiguration(
+        return _configured_cleanup_routes(
+            runtime,
             "gemini_only",
-            routes=(
+            (
                 ("gemini", runtime.gemini_model, "gemini-default"),
                 ("gemini", "gemini-2.5-flash", "gemini-default"),
             ),
@@ -158,13 +161,37 @@ def _cleanup_runtime_configuration(runtime: Settings) -> CleanupRuntimeConfigura
     validation_error = _cross_provider_validation_error(runtime)
     if validation_error is not None:
         return CleanupRuntimeConfiguration("invalid", validation_error=validation_error)
-    return CleanupRuntimeConfiguration(
+    return _configured_cleanup_routes(
+        runtime,
         "cross_provider",
-        routes=(
+        (
             ("gemini", GEMINI_37_FLASH, runtime.gemini_quota_group_id or ""),
             ("openai", OPENAI_GPT_56_LUNA, runtime.openai_quota_group_id or ""),
         ),
     )
+
+
+def _configured_cleanup_routes(
+    runtime: Settings,
+    status: str,
+    routes: tuple[tuple[str, str, str], ...],
+) -> CleanupRuntimeConfiguration:
+    allocations = runtime.cleanup_route_attempt_seconds
+    if allocations is None:
+        return CleanupRuntimeConfiguration(
+            "invalid", validation_error="route_attempt_allocations_required"
+        )
+    try:
+        schedule = CleanupPartitionSchedule(runtime.cleanup_timeout_seconds, allocations)
+    except ValueError:
+        return CleanupRuntimeConfiguration(
+            "invalid", validation_error="route_attempt_allocations_invalid"
+        )
+    if len(allocations) != len(routes):
+        return CleanupRuntimeConfiguration(
+            "invalid", validation_error="route_attempt_allocation_count_mismatch"
+        )
+    return CleanupRuntimeConfiguration(status, routes, schedule)
 
 
 def _cross_provider_validation_error(runtime: Settings) -> str | None:
@@ -352,15 +379,13 @@ def create_app(
                 adapters.append(
                     CleanupRoute(
                         adapter=adapter,
-                        # Preserve the active 30-second product deadline. Each later route
-                        # receives only the time left after the preceding qualifying failure.
-                        attempt_budget_seconds=runtime.cleanup_timeout_seconds,
                         quota_group_id=quota_group_id,
                     )
                 )
+            assert cleanup_configuration.partition_schedule is not None
             provider = SequentialCleanupProvider(
                 tuple(adapters),
-                total_budget_seconds=runtime.cleanup_timeout_seconds,
+                partition_schedule=cleanup_configuration.partition_schedule,
             )
             application.state.cleanup_service = CleanupService(
                 provider=provider,
@@ -641,8 +666,7 @@ def create_app(
                 provider=result.provider,
                 model=result.model,
                 attempts=[
-                    attempt.model_dump(mode="json", exclude={"quota_group_id"})
-                    for attempt in result.attempts
+                    attempt.model_dump(mode="json") for attempt in result.attempts
                 ],
                 prompt_version_id=prompt.id,
                 prompt_content_sha256=prompt.content_sha256,

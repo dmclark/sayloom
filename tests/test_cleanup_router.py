@@ -6,12 +6,10 @@ from typing import Any
 import pytest
 
 from local_text.cleanup import (
-    EVALUATION_FALLBACK_ATTEMPT_SECONDS,
-    EVALUATION_PRIMARY_ATTEMPT_SECONDS,
-    EVALUATION_TOTAL_BUDGET_SECONDS,
     QUOTA_BREAKER_MAX_SECONDS,
     ROUTE_BREAKER_MAX_SECONDS,
     ROUTE_FAILURE_ACTIONS,
+    CleanupPartitionSchedule,
     CleanupRequest,
     CleanupRoute,
     CleanupService,
@@ -115,10 +113,9 @@ class FakeTimeoutRunner:
         return await awaitable
 
 
-def route(adapter: FakeAdapter, budget: float = 12.0) -> CleanupRoute:
+def route(adapter: FakeAdapter) -> CleanupRoute:
     return CleanupRoute(
         adapter=adapter,
-        attempt_budget_seconds=budget,
         quota_group_id=adapter.quota_group_id,
     )
 
@@ -131,16 +128,13 @@ def router(
     timeout_runner=None,
 ) -> SequentialCleanupProvider:
     selected_clock = clock or FakeClock()
-    selected_budgets = budgets or tuple(12.0 for _adapter in adapters)
+    selected_budgets = budgets or tuple(total / len(adapters) for _adapter in adapters)
     kwargs = {}
     if timeout_runner is not None:
         kwargs["timeout_runner"] = timeout_runner
     return SequentialCleanupProvider(
-        tuple(
-            route(adapter, budget)
-            for adapter, budget in zip(adapters, selected_budgets, strict=True)
-        ),
-        total_budget_seconds=total,
+        tuple(route(adapter) for adapter in adapters),
+        partition_schedule=CleanupPartitionSchedule(total, selected_budgets),
         clock=selected_clock,
         jitter=lambda delay: delay,
         **kwargs,
@@ -204,7 +198,7 @@ def test_selected_correction_mode_reaches_route_output_validation() -> None:
     adapter = FakeAdapter("primary")
     provider = SequentialCleanupProvider(
         (route(adapter),),
-        total_budget_seconds=20,
+        partition_schedule=CleanupPartitionSchedule(20, (12,)),
         clock=FakeClock(),
         jitter=lambda delay: delay,
         output_validator=validate,
@@ -260,7 +254,6 @@ def test_eligible_failure_advances_once_with_ordered_safe_attribution() -> None:
             "provider_code": "http_503",
             "http_status": 503,
             "retry_after_seconds": None,
-            "quota_group_id": "quota-a",
         },
         {
             "provider": "provider-b",
@@ -274,15 +267,17 @@ def test_eligible_failure_advances_once_with_ordered_safe_attribution() -> None:
             "provider_code": None,
             "http_status": None,
             "retry_after_seconds": None,
-            "quota_group_id": None,
         },
     ]
     serialized = result.model_dump_json()
     assert "synthetic source" not in serialized
     assert "Synthetic instruction" not in serialized
+    assert "quota-a" not in serialized
+    assert "quota-b" not in serialized
 
 
-def test_smart_failure_does_not_make_a_paid_fallback_attempt() -> None:
+@pytest.mark.parametrize("mode", [CorrectionMode.CONSERVATIVE, CorrectionMode.SMART])
+def test_both_modes_receive_the_same_ordered_eligible_routes(mode: CorrectionMode) -> None:
     primary = FakeAdapter("primary", transient_http(503), quota_group_id="quota-a")
     fallback = FakeAdapter(
         "fallback",
@@ -294,40 +289,39 @@ def test_smart_failure_does_not_make_a_paid_fallback_attempt() -> None:
 
     result = asyncio.run(
         service.clean(
-            CleanupRequest(original_text="synthetic source", correction_mode="smart"),
+            CleanupRequest(original_text="synthetic source", correction_mode=mode),
             "Synthetic instruction",
         )
     )
 
-    assert result.status is CleanupStatus.PROVIDER_ERROR
-    assert result.prepared_text == "synthetic source"
-    assert result.lexical_repairs == []
+    assert result.status is CleanupStatus.PREPARED
+    assert result.model == "fallback"
     assert primary.calls == 1
-    assert fallback.calls == 0
-    assert len(result.attempts) == 1
+    assert fallback.calls == 1
+    assert [(attempt.route_index, attempt.outcome) for attempt in result.attempts] == [
+        (0, "failure"),
+        (1, "success"),
+    ]
 
 
-def test_smart_cooldown_is_attributed_to_its_only_selected_route() -> None:
+def test_smart_skips_a_cooling_primary_and_uses_the_next_eligible_route() -> None:
     primary = FakeAdapter("primary", transient_http(503), quota_group_id="quota-a")
     fallback = FakeAdapter("fallback", provider_id="provider-b", quota_group_id="quota-b")
     provider = router(primary, fallback)
     assert run_service(provider).model == "fallback"
 
-    async def smart_attempt() -> ProviderCoolingDownError:
-        with pytest.raises(ProviderCoolingDownError) as caught:
-            await provider.clean(
-                "synthetic source",
-                "Synthetic instruction",
-                CorrectionMode.SMART,
-            )
-        return caught.value
+    output = asyncio.run(
+        provider.clean(
+            "synthetic source",
+            "Synthetic instruction",
+            CorrectionMode.SMART,
+        )
+    )
 
-    error = asyncio.run(smart_attempt())
-
-    assert error.provider_id == "provider-a"
-    assert error.model == "primary"
-    assert error.route_index == 0
-    assert fallback.calls == 1
+    assert output.model_id == "fallback"
+    assert output.route_index == 1
+    assert primary.calls == 1
+    assert fallback.calls == 2
 
 
 @pytest.mark.parametrize(
@@ -409,7 +403,7 @@ def test_shared_semantic_validation_advances_and_preserves_failed_attempt_usage(
     assert result.attempts[1].outcome == "success"
 
 
-def test_evaluation_policy_enforces_20_second_total_and_12_8_attempt_budgets() -> None:
+def test_asymmetric_partition_reserves_the_supplied_backup_opportunity() -> None:
     clock = FakeClock()
     timeout_runner = FakeTimeoutRunner(clock, "timeout", "run")
     primary = FakeAdapter("primary")
@@ -418,8 +412,8 @@ def test_evaluation_policy_enforces_20_second_total_and_12_8_attempt_budgets() -
         primary,
         fallback,
         clock=clock,
-        budgets=(EVALUATION_PRIMARY_ATTEMPT_SECONDS, EVALUATION_FALLBACK_ATTEMPT_SECONDS),
-        total=EVALUATION_TOTAL_BUDGET_SECONDS,
+        budgets=(12.0, 8.0),
+        total=20.0,
         timeout_runner=timeout_runner,
     )
 
@@ -431,6 +425,40 @@ def test_evaluation_policy_enforces_20_second_total_and_12_8_attempt_budgets() -
     assert fallback.calls == 1
 
 
+def test_adding_a_route_does_not_extend_the_supplied_total_deadline() -> None:
+    elapsed: list[float] = []
+    observed_budgets: list[list[float]] = []
+
+    for budgets in ((6.0, 4.0), (6.0, 3.0, 1.0)):
+        clock = FakeClock()
+        timeout_runner = FakeTimeoutRunner(clock, *("timeout" for _ in budgets))
+        adapters = tuple(
+            FakeAdapter(
+                f"route-{index}",
+                provider_id=f"provider-{index}",
+                quota_group_id=f"quota-{index}",
+            )
+            for index in range(len(budgets))
+        )
+
+        result = run_service(
+            router(
+                *adapters,
+                clock=clock,
+                budgets=budgets,
+                total=10.0,
+                timeout_runner=timeout_runner,
+            )
+        )
+
+        assert result.status is CleanupStatus.TIMEOUT
+        elapsed.append(clock.value - 100.0)
+        observed_budgets.append(timeout_runner.budgets)
+
+    assert elapsed == [10.0, 10.0]
+    assert observed_budgets == [[6.0, 4.0], [6.0, 3.0, 1.0]]
+
+
 def test_total_deadline_exhaustion_does_not_start_a_short_fallback() -> None:
     clock = FakeClock()
     timeout_runner = FakeTimeoutRunner(clock, "timeout")
@@ -440,7 +468,7 @@ def test_total_deadline_exhaustion_does_not_start_a_short_fallback() -> None:
         primary,
         fallback,
         clock=clock,
-        budgets=(12.0, 8.0),
+        budgets=(12.0, 0.4),
         total=12.4,
         timeout_runner=timeout_runner,
     )
@@ -457,7 +485,7 @@ def test_total_deadline_exhaustion_does_not_start_a_short_fallback() -> None:
 
 @pytest.mark.parametrize(
     ("total", "attempt_budget"),
-    [(0.499, 1.0), (20.0, 0.499)],
+    [(0.499, 0.499), (20.0, 0.499)],
 )
 def test_attempt_never_starts_with_less_than_500ms(total: float, attempt_budget: float) -> None:
     adapter = FakeAdapter("primary")
@@ -957,7 +985,7 @@ def test_route_rejects_mismatched_explicit_quota_identity() -> None:
     adapter = FakeAdapter("primary", quota_group_id="adapter-group")
 
     with pytest.raises(ValueError, match="quota groups must match"):
-        CleanupRoute(adapter, 12, "different-group")
+        CleanupRoute(adapter, "different-group")
 
 
 def test_bulkhead_failure_type_is_normalized_without_being_an_attempt() -> None:

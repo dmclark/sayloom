@@ -32,9 +32,6 @@ SOURCE_TEXT_FRAME = "<SOURCE_TEXT>\n{original_text}\n</SOURCE_TEXT>"
 MAX_PREPARED_TEXT_CHARACTERS = 100_000
 GEMINI_MAX_OUTPUT_TOKENS = 65_536
 OPENAI_MAX_OUTPUT_TOKENS = 128_000
-EVALUATION_TOTAL_BUDGET_SECONDS = 20.0
-EVALUATION_PRIMARY_ATTEMPT_SECONDS = 12.0
-EVALUATION_FALLBACK_ATTEMPT_SECONDS = 8.0
 SMART_UNREVIEWED_LEADING_FILLERS = frozenset({"erm", "hmm", "uh", "um"})
 LEXICAL_WORD = re.compile(r"\w+(?:['’]\w+)*['’]?")
 MINIMUM_ATTEMPT_SECONDS = 0.5
@@ -153,7 +150,6 @@ class CleanupAttempt(BaseModel):
     provider_code: str | None = None
     http_status: int | None = None
     retry_after_seconds: int | None = None
-    quota_group_id: str | None = None
 
 
 class EvaluationCaptureContext(BaseModel):
@@ -714,12 +710,9 @@ class CleanupRoute:
     """One configured adapter/model attempt in a sequential route."""
 
     adapter: CleanupProvider
-    attempt_budget_seconds: float
     quota_group_id: str
 
     def __post_init__(self) -> None:
-        if not math.isfinite(self.attempt_budget_seconds) or self.attempt_budget_seconds <= 0:
-            raise ValueError("route attempt budget must be positive and finite")
         if not SAFE_IDENTIFIER.fullmatch(self.quota_group_id):
             raise ValueError("provider quota group identifier is invalid")
         if not SAFE_IDENTIFIER.fullmatch(self.adapter.provider_id):
@@ -739,6 +732,27 @@ class CleanupRoute:
         return self.adapter.model
 
 
+@dataclass(frozen=True)
+class CleanupPartitionSchedule:
+    """A supplied total deadline partitioned into one allocation per eligible route."""
+
+    total_budget_seconds: float
+    route_allocations_seconds: tuple[float, ...]
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.total_budget_seconds) or self.total_budget_seconds <= 0:
+            raise ValueError("total budget must be positive and finite")
+        if not self.route_allocations_seconds:
+            raise ValueError("at least one route allocation is required")
+        if any(
+            not math.isfinite(allocation) or allocation <= 0
+            for allocation in self.route_allocations_seconds
+        ):
+            raise ValueError("route allocations must be positive and finite")
+        if sum(self.route_allocations_seconds) > self.total_budget_seconds:
+            raise ValueError("route allocations must not exceed the total budget")
+
+
 @dataclass
 class _BreakerState:
     open_until: float = 0.0
@@ -755,7 +769,7 @@ class SequentialCleanupProvider:
         self,
         routes: tuple[CleanupRoute, ...],
         *,
-        total_budget_seconds: float,
+        partition_schedule: CleanupPartitionSchedule,
         minimum_attempt_seconds: float = MINIMUM_ATTEMPT_SECONDS,
         max_active_cleanups: int = 2,
         clock: Callable[[], float] = time.monotonic,
@@ -767,8 +781,8 @@ class SequentialCleanupProvider:
     ) -> None:
         if not routes:
             raise ValueError("at least one cleanup route is required")
-        if not math.isfinite(total_budget_seconds) or total_budget_seconds <= 0:
-            raise ValueError("total budget must be positive and finite")
+        if len(partition_schedule.route_allocations_seconds) != len(routes):
+            raise ValueError("partition schedule must allocate every cleanup route")
         if not math.isfinite(minimum_attempt_seconds) or minimum_attempt_seconds <= 0:
             raise ValueError("minimum attempt budget must be positive and finite")
         if max_active_cleanups < 1:
@@ -776,7 +790,8 @@ class SequentialCleanupProvider:
         self.routes = routes
         self.provider_id = routes[0].provider_id
         self.model = routes[0].model
-        self.total_budget_seconds = total_budget_seconds
+        self.partition_schedule = partition_schedule
+        self.total_budget_seconds = partition_schedule.total_budget_seconds
         self.minimum_attempt_seconds = minimum_attempt_seconds
         self.max_active_cleanups = max_active_cleanups
         self._clock = clock
@@ -825,15 +840,13 @@ class SequentialCleanupProvider:
         deadline = self._clock() + self.total_budget_seconds
         failures: list[ProviderFailure] = []
         last_failure: ProviderFailure | None = None
-        selected_routes = (
-            self.routes[:1]
-            if correction_mode is CorrectionMode.SMART
-            else self.routes
-        )
+        selected_routes = self.routes
         for route_index, route in enumerate(selected_routes):
             now = self._clock()
             remaining = deadline - now
-            attempt_budget = min(route.attempt_budget_seconds, remaining)
+            attempt_budget = min(
+                self.partition_schedule.route_allocations_seconds[route_index], remaining
+            )
             if attempt_budget < self.minimum_attempt_seconds:
                 raise self._deadline_failure(route, route_index, failures)
 
@@ -1800,9 +1813,6 @@ def _failure_attempt(error: ProviderFailure) -> CleanupAttempt:
         provider_code=_safe_identifier(error.provider_code),
         http_status=error.http_status,
         retry_after_seconds=error.retry_after_seconds,
-        quota_group_id=(
-            _safe_identifier(error.quota_group_id) if error.quota_group_id is not None else None
-        ),
     )
 
 

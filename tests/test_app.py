@@ -344,6 +344,7 @@ def test_config_reports_cleanup_without_exposing_key(initialized_settings: Setti
     settings = Settings(
         Profile.DEVELOPMENT,
         gemini_api_key="not-a-real-key",
+        cleanup_route_attempt_seconds=(18.0, 12.0),
         database_path=initialized_settings.database_path,
     )
     client = TestClient(create_app(settings))
@@ -384,14 +385,16 @@ def cross_provider_settings(initialized_settings: Settings, **overrides) -> Sett
         "gemini_quota_group_id": "gemini-paid-project",
         "openai_quota_group_id": "openai-paid-project",
         "paid_data_acknowledgement": PAID_DATA_ACKNOWLEDGEMENT,
+        "cleanup_route_attempt_seconds": (18.0, 12.0),
         "database_path": initialized_settings.database_path,
     }
     values.update(overrides)
     return Settings(**values)
 
 
+@pytest.mark.parametrize("mode", ["conservative", "smart"])
 def test_acknowledged_cross_provider_route_is_exact_sanitized_and_falls_back_once(
-    initialized_settings: Settings, monkeypatch
+    initialized_settings: Settings, monkeypatch, mode: str
 ) -> None:
     requests: list[httpx.Request] = []
 
@@ -432,7 +435,12 @@ def test_acknowledged_cross_provider_route_is_exact_sanitized_and_falls_back_onc
         configuration_response = client.get("/api/config")
         health_response = client.get("/health")
         result = client.post(
-            "/api/cleanup", json={"original_text": "synthetic source", "enabled": True}
+            "/api/cleanup",
+            json={
+                "original_text": "synthetic source",
+                "enabled": True,
+                "correction_mode": mode,
+            },
         )
         provider = client.app.state.cleanup_service.provider
         assert isinstance(provider, SequentialCleanupProvider)
@@ -441,7 +449,7 @@ def test_acknowledged_cross_provider_route_is_exact_sanitized_and_falls_back_onc
             "openai-paid-project",
         ]
         assert provider.total_budget_seconds == 30
-        assert [route.attempt_budget_seconds for route in provider.routes] == [30, 30]
+        assert provider.partition_schedule.route_allocations_seconds == (18.0, 12.0)
 
     cleanup_configuration = configuration_response.json()["cleanup_configuration"]
     assert cleanup_configuration == health_response.json()["cleanup_configuration"]
@@ -464,6 +472,33 @@ def test_acknowledged_cross_provider_route_is_exact_sanitized_and_falls_back_onc
     assert "synthetic-openai-key" not in serialized
     assert len(provider_clients) == 2
     assert all(provider_client.is_closed for provider_client in provider_clients)
+
+
+def test_configured_routes_without_a_partition_schedule_fail_configuration(
+    initialized_settings: Settings, monkeypatch
+) -> None:
+    calls = 0
+
+    def unexpected_client(_timeout: float):
+        nonlocal calls
+        calls += 1
+        raise AssertionError("missing allocation must not create a provider client")
+
+    monkeypatch.setattr(app_module, "_new_provider_client", unexpected_client)
+    settings = Settings(
+        Profile.DEVELOPMENT,
+        gemini_api_key="synthetic-key",
+        database_path=initialized_settings.database_path,
+    )
+
+    with TestClient(create_app(settings)) as client:
+        configuration = client.get("/health").json()["cleanup_configuration"]
+
+    assert configuration["status"] == "invalid"
+    assert configuration["available"] is False
+    assert configuration["routes"] == []
+    assert configuration["validation_error"] == "route_attempt_allocations_required"
+    assert calls == 0
 
 
 def test_unacknowledged_cross_provider_configuration_creates_no_client_and_fails_open(
@@ -546,6 +581,7 @@ def test_generic_openai_key_never_activates_openai(
         "LOCAL_TEXT_GEMINI_QUOTA_GROUP_ID",
         "LOCAL_TEXT_OPENAI_QUOTA_GROUP_ID",
         "LOCAL_TEXT_CLEANUP_PAID_DATA_ACKNOWLEDGEMENT",
+        "LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS",
     )
     for key in provider_keys:
         monkeypatch.delenv(key, raising=False)
@@ -572,10 +608,12 @@ def test_ambient_gemini_remains_legacy_compatible_without_activating_ambient_ope
         "LOCAL_TEXT_GEMINI_QUOTA_GROUP_ID",
         "LOCAL_TEXT_OPENAI_QUOTA_GROUP_ID",
         "LOCAL_TEXT_CLEANUP_PAID_DATA_ACKNOWLEDGEMENT",
+        "LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS",
     ):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("GEMINI_API_KEY", "ambient-gemini-key")
     monkeypatch.setenv("OPENAI_API_KEY", "ambient-openai-key")
+    monkeypatch.setenv("LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS", "18,12")
     monkeypatch.setenv("LOCAL_TEXT_DATABASE_PATH", str(initialized_settings.database_path))
 
     settings = load_settings()
@@ -622,6 +660,7 @@ def test_app_lifespan_reuses_and_closes_the_gemini_client(
     settings = Settings(
         Profile.DEVELOPMENT,
         gemini_api_key="synthetic-key",
+        cleanup_route_attempt_seconds=(18.0, 12.0),
         database_path=initialized_settings.database_path,
     )
 
@@ -633,7 +672,7 @@ def test_app_lifespan_reuses_and_closes_the_gemini_client(
             "gemini-3.5-flash",
             "gemini-2.5-flash",
         ]
-        assert [route.attempt_budget_seconds for route in provider.routes] == [30, 30]
+        assert provider.partition_schedule.route_allocations_seconds == (18.0, 12.0)
         assert {route.quota_group_id for route in provider.routes} == {"gemini-default"}
         for source in ("synthetic source one", "synthetic source two"):
             response = client.post(
@@ -671,6 +710,7 @@ def test_active_gemini_router_falls_back_once_on_route_transient_failure(
     settings = Settings(
         Profile.DEVELOPMENT,
         gemini_api_key="synthetic-key",
+        cleanup_route_attempt_seconds=(18.0, 12.0),
         database_path=initialized_settings.database_path,
     )
 
@@ -707,6 +747,7 @@ def test_active_gemini_shared_quota_failure_fails_open_without_replayed_call(
     settings = Settings(
         Profile.DEVELOPMENT,
         gemini_api_key="synthetic-key",
+        cleanup_route_attempt_seconds=(18.0, 12.0),
         database_path=initialized_settings.database_path,
     )
 
@@ -793,7 +834,6 @@ def test_cleanup_endpoint_returns_provider_result(initialized_settings: Settings
             "provider_code": None,
             "http_status": None,
             "retry_after_seconds": None,
-            "quota_group_id": None,
         }
     ]
 
