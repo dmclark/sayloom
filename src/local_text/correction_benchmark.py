@@ -11,7 +11,6 @@ from collections.abc import Sequence
 from itertools import product
 from pathlib import Path
 from typing import Literal
-from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
@@ -167,43 +166,6 @@ def _validate_case_records(value: object) -> list[BenchmarkCase]:
     if len(case_ids) != len(set(case_ids)):
         raise BenchmarkError("benchmark case IDs must be unique")
     return cases
-
-
-def capture_example(
-    *,
-    cases_path: Path,
-    application_database_path: Path,
-    source_text: str,
-    intended_text: str,
-) -> None:
-    """Append one user-confirmed pair as an ineligible practice candidate."""
-    cases_path = _external_path(cases_path, application_database_path)
-    try:
-        cases_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        cases_path.parent.chmod(0o700)
-        existing = _validate_case_records(_read_json(cases_path)) if cases_path.exists() else []
-        captured = BenchmarkCase(
-            case_id=f"captured-{uuid4().hex}",
-            set="practice",
-            eligible=False,
-            source_text=source_text,
-            intended_text=intended_text,
-            authorized_task_context="",
-            curated_knowledge=[],
-        )
-        value = [case.model_dump(mode="json") for case in (*existing, captured)]
-        temporary_path = cases_path.with_name(f".{cases_path.name}.{uuid4().hex}.tmp")
-        with temporary_path.open("x") as output:
-            json.dump(value, output, ensure_ascii=False, indent=2, sort_keys=True)
-            output.write("\n")
-        temporary_path.chmod(0o600)
-        temporary_path.replace(cases_path)
-    except (OSError, ValidationError) as exc:
-        if "temporary_path" in locals():
-            temporary_path.unlink(missing_ok=True)
-        if isinstance(exc, ValidationError):
-            raise BenchmarkError("benchmark example does not match the pipeline schema") from exc
-        raise BenchmarkError("benchmark example could not be written") from exc
 
 
 def _condition_order(seed: str, case_id: str) -> list[str]:

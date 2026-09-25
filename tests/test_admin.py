@@ -897,6 +897,12 @@ def test_help_lists_checkout_service_database_and_cleanup_commands() -> None:
         normalized_help
     )
 
+    package_help = run_dev(Path("unused"), "evidence-package", "--help")
+    assert package_help.returncode == 0
+    for command_name in ("create", "approve", "ready"):
+        assert command_name in package_help.stdout
+    assert "import" not in package_help.stdout.lower()
+
 
 def test_provider_traffic_diagnostics_marker_is_temporary_and_exclusively_locked(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]

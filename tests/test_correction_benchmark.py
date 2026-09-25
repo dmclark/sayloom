@@ -9,7 +9,6 @@ from local_text.correction_benchmark import (
     PIPELINE_VERSION,
     BenchmarkError,
     build_report,
-    capture_example,
     import_outputs,
     import_scores,
     register_run,
@@ -285,49 +284,3 @@ def test_pipeline_rejects_repository_and_application_state_paths(tmp_path: Path)
             runs_directory=private / "other-runs",
             application_database_path=app_database,
         )
-
-
-def test_capture_example_writes_exact_pair_through_benchmark_schema(tmp_path: Path) -> None:
-    app_database = tmp_path / "application-state" / "local-text.sqlite3"
-    cases_path = tmp_path / "private" / "candidate-cases.json"
-
-    capture_example(
-        cases_path=cases_path,
-        application_database_path=app_database,
-        source_text="Synthetic source wording.",
-        intended_text="Synthetic intended wording.",
-    )
-
-    assert stat.S_IMODE(cases_path.parent.stat().st_mode) == 0o700
-    assert stat.S_IMODE(cases_path.stat().st_mode) == 0o600
-    saved = json.loads(cases_path.read_text())
-    assert len(saved) == 1
-    assert saved[0].pop("case_id").startswith("captured-")
-    assert saved == [{
-        "authorized_task_context": "",
-        "curated_knowledge": [],
-        "eligible": False,
-        "intended_text": "Synthetic intended wording.",
-        "set": "practice",
-        "source_text": "Synthetic source wording.",
-    }]
-
-
-@pytest.mark.parametrize("path_kind", ["repository", "application-state"])
-def test_capture_example_rejects_non_external_paths(tmp_path: Path, path_kind: str) -> None:
-    app_database = tmp_path / "application-state" / "local-text.sqlite3"
-    cases_path = (
-        Path(__file__).parent / "candidate-cases.json"
-        if path_kind == "repository"
-        else app_database.parent / "candidate-cases.json"
-    )
-
-    with pytest.raises(BenchmarkError, match="repository|operating data"):
-        capture_example(
-            cases_path=cases_path,
-            application_database_path=app_database,
-            source_text="Synthetic source wording.",
-            intended_text="Synthetic intended wording.",
-        )
-
-    assert not cases_path.exists()

@@ -589,7 +589,7 @@ const fetch = async (url, options = {}) => {
   if (url === "/api/config") return response({
     preparation_default: process.argv[2],
     cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
-    evidence_collection: { ready: true }, evaluation_configuration: { available: false },
+    evidence_collection: { ready: true }, evaluation_configuration: { available: true },
   });
   if (url === "/api/outgoing-state") {
     if (options.method === "PUT") return response({ revision: 1 });
@@ -646,7 +646,18 @@ const fetch = async (url, options = {}) => {
     });
   }
   if (url === "/api/cleanup" && body.correction_mode === "conservative") {
-    return response({ prepared_text: body.original_text, status: "unchanged" });
+    return response({
+      prepared_text: body.original_text, status: "unchanged",
+      provider: "synthetic", model: "synthetic-model",
+      attempts: [{
+        provider: "synthetic", model: "synthetic-model", route_index: 0, outcome: "success",
+      }],
+      evaluation: {
+        capture_proof: "synthetic-proof", completed_at: "2026-01-01T00:00:00Z",
+        prompt_version_id: 1, prompt_content_sha256: "synthetic-prompt-hash",
+        cleanup_schema_version: "synthetic-cleanup-schema",
+      },
+    });
   }
   if (url === "/api/cleanup") throw new Error("Smart candidate requested before confirmation");
   throw new Error(`Unexpected request: ${url}`);
@@ -674,9 +685,18 @@ const settle = async () => {
 };
 (async () => {
   vm.runInNewContext(process.argv[1], context); await settle();
+  let ordinaryEvaluationEnabled = false;
+  if (process.argv[2] === "conservative") {
+    elements["#original-text"].value = "Ordinary synthetic source.";
+    await elements["#original-text"].dispatch("input", { isTrusted: true });
+    await elements["#run-cleanup"].dispatch("click"); await settle();
+    ordinaryEvaluationEnabled = !elements["#save-evaluation-case"].disabled;
+  }
   await elements["#evidence-collection-toggle"].dispatch("click");
   elements["#evidence-source-attestation"].checked = true;
   await elements["#evidence-attestation-form"].dispatch("submit"); await settle();
+  const armedEvaluationDisabled = elements["#save-evaluation-case"].disabled;
+  const evidenceRequestStart = requests.length;
   elements["#original-text"].value = "Send teh report.";
   await elements["#original-text"].dispatch("input", { isTrusted: true });
   if (process.argv[2] === "smart") {
@@ -690,7 +710,7 @@ const settle = async () => {
     prepared: elements["#prepared-text"].value,
     dialogOpen: elements["#evidence-judgment-dialog"].open,
     preparedSelectionDisabled: elements["#select-prepared"].disabled,
-    candidateRequests: requests.filter(
+    candidateRequests: requests.slice(evidenceRequestStart).filter(
       (item) => (item.url === "/api/cleanup" && item.body.correction_mode === "smart")
         || item.url.endsWith("/confirm"),
     ).length,
@@ -714,6 +734,8 @@ const settle = async () => {
   }
   process.stdout.write(JSON.stringify({
     before,
+    ordinaryEvaluationEnabled,
+    armedEvaluationDisabled,
     copyConflict,
     dialogOpenAfter: elements["#evidence-judgment-dialog"].open,
     armedLabel: elements["#evidence-collection-state"].textContent,
@@ -752,6 +774,8 @@ const settle = async () => {
         "preparedSelectionDisabled": True,
         "candidateRequests": 0,
     }
+    assert observed["ordinaryEvaluationEnabled"] is (default_mode == "conservative")
+    assert observed["armedEvaluationDisabled"] is True
     assert observed["dialogOpenAfter"] is False
     assert observed["armedLabel"] == "Armed · Voiceitt source attested for this session"
     if result_status == "prepared":

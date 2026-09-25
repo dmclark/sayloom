@@ -4,7 +4,6 @@ import json
 import os
 import sqlite3
 import subprocess
-from dataclasses import replace
 from pathlib import Path
 
 import httpx
@@ -20,7 +19,6 @@ from local_text.cleanup import (
     SequentialCleanupProvider,
 )
 from local_text.config import Profile, Settings, load_settings
-from local_text.correction_benchmark import BenchmarkError
 from local_text.prompts import effective_system_prompt
 
 
@@ -231,6 +229,31 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="cleanup-disclosure"' not in response.text.split(
         'class="outgoing-strip"', maxsplit=1
     )[1]
+
+
+def test_superseded_smart_capture_is_absent_but_cleanup_evaluation_remains(
+    initialized_settings: Settings,
+) -> None:
+    client = TestClient(create_app(initialized_settings))
+
+    page = client.get("/")
+    script = client.get("/static/app.js")
+    configuration = client.get("/api/config")
+    removed_endpoint = client.post(
+        "/api/correction-benchmark/examples",
+        json={
+            "original_text": "Synthetic original wording.",
+            "intended_text": "Synthetic intended wording.",
+        },
+    )
+
+    assert page.status_code == 200
+    assert 'id="correct-and-add-example"' not in page.text
+    assert 'id="benchmark-capture-dialog"' not in page.text
+    assert 'id="save-evaluation-case"' in page.text
+    assert "/api/correction-benchmark/examples" not in script.text
+    assert "correction_benchmark_configuration" not in configuration.json()
+    assert removed_endpoint.status_code == 404
 
 
 def test_status_errors_use_one_accessible_privacy_safe_dialog(
@@ -1365,79 +1388,6 @@ def test_outgoing_state_rejects_text_not_present_in_either_editor(
     assert mismatched_source.status_code == 422
 
 
-@pytest.mark.skip(reason="superseded browser benchmark capture removed by Evidence Collection")
-def test_benchmark_example_api_writes_exact_synthetic_pair(
-    initialized_settings: Settings, tmp_path: Path
-) -> None:
-    cases_path = tmp_path.parent / f"{tmp_path.name}-private-benchmark" / "cases.json"
-    settings = replace(
-        initialized_settings,
-        correction_benchmark_cases_path=cases_path,
-    )
-    client = TestClient(create_app(settings))
-
-    response = client.post(
-        "/api/correction-benchmark/examples",
-        json={
-            "original_text": "Synthetic original wording.",
-            "intended_text": "Synthetic intended wording.",
-        },
-    )
-
-    assert response.status_code == 201
-    assert response.json() == {
-        "status": "saved",
-        "destination": "configured private benchmark corpus",
-    }
-    saved = json.loads(cases_path.read_text())
-    assert saved[0]["source_text"] == "Synthetic original wording."
-    assert saved[0]["intended_text"] == "Synthetic intended wording."
-
-
-@pytest.mark.skip(reason="superseded browser benchmark capture removed by Evidence Collection")
-def test_benchmark_example_api_fails_safely_without_mutating_storage(
-    initialized_settings: Settings, tmp_path: Path, monkeypatch
-) -> None:
-    cases_path = tmp_path / "private-benchmark" / "cases.json"
-    settings = replace(
-        initialized_settings,
-        correction_benchmark_cases_path=cases_path,
-    )
-
-    def fail_capture(**_kwargs: object) -> None:
-        raise BenchmarkError("synthetic path detail must stay private")
-
-    monkeypatch.setattr(app_module, "capture_example", fail_capture)
-    response = TestClient(create_app(settings)).post(
-        "/api/correction-benchmark/examples",
-        json={
-            "original_text": "Synthetic original wording.",
-            "intended_text": "Synthetic intended wording.",
-        },
-    )
-
-    assert response.status_code == 503
-    assert response.json()["detail"]["code"] == "benchmark_write_failed"
-    assert "path detail" not in response.text
-    assert not cases_path.exists()
-
-
-@pytest.mark.skip(reason="superseded browser benchmark capture removed by Evidence Collection")
-def test_benchmark_example_api_requires_configured_external_storage(
-    initialized_settings: Settings,
-) -> None:
-    response = TestClient(create_app(initialized_settings)).post(
-        "/api/correction-benchmark/examples",
-        json={
-            "original_text": "Synthetic original wording.",
-            "intended_text": "Synthetic intended wording.",
-        },
-    )
-
-    assert response.status_code == 503
-    assert response.json()["detail"]["code"] == "benchmark_storage_unavailable"
-
-
 def test_browser_script_supports_generic_input_and_dictation_compatibility(
     initialized_settings: Settings,
 ) -> None:
@@ -1558,7 +1508,6 @@ const fetch = (url, options = {}) => {
   if (url === "/api/config") return Promise.resolve(response({
     preparation_default: "smart",
     cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
-    correction_benchmark_configuration: { available: false },
     evaluation_configuration: { available: false },
   }));
   if (url === "/api/prompts") return Promise.resolve(response({
@@ -2122,7 +2071,6 @@ const fetch = async (url, options = {}) => {
   if (url === "/api/config") return response({
     preparation_default: "smart",
     cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
-    correction_benchmark_configuration: { available: false },
     evaluation_configuration: { available: false },
   });
   if (url === "/api/prompts") return response({ versions: [], active_prompt_version_id: null });
@@ -2359,259 +2307,6 @@ Promise.all(runs).then(
         '{"focusCalls":0,'
         '"originalValue":"synthetic existing entry"}]'
     )
-
-
-@pytest.mark.skip(reason="superseded browser benchmark capture removed by Evidence Collection")
-def test_browser_benchmark_dialog_cancel_success_selection_and_failure(
-    initialized_settings: Settings,
-) -> None:
-    script = TestClient(create_app(initialized_settings)).get("/static/app.js").text
-    harness = r"""
-const vm = require("vm");
-
-class Element {
-  constructor() {
-    this.value = "";
-    this.checked = true;
-    this.disabled = false;
-    this.dataset = {};
-    this.open = false;
-    this.options = [{ textContent: "" }];
-    this.style = { setProperty() {} };
-    this.classList = { add() {}, remove() {}, toggle() {}, contains() { return false; } };
-    this.lastElementChild = { textContent: "" };
-    this.listeners = {};
-    this.textContent = "";
-    this.title = "";
-    this.selectionStart = 0;
-    this.selectionEnd = 0;
-    this.focused = false;
-    this.selected = false;
-    this.attributes = {};
-  }
-  addEventListener(type, callback) { (this.listeners[type] ||= []).push(callback); }
-  async dispatch(type, event = {}) {
-    event.target ||= this;
-    event.preventDefault ||= () => {};
-    for (const callback of this.listeners[type] || []) await callback(event);
-  }
-  setAttribute(name, value) { this.attributes[name] = String(value); }
-  getAttribute(name) { return this.attributes[name] || (name === "aria-valuenow" ? "65" : null); }
-  removeAttribute(name) { delete this.attributes[name]; }
-  append() {}
-  querySelectorAll() { return []; }
-  setPointerCapture() {}
-  setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
-  getBoundingClientRect() { return { top: 0, height: 100 }; }
-  reportValidity() { return this.value !== "" || !this.required; }
-  focus() { document.activeElement = this; this.focused = true; }
-  select() { this.selected = true; }
-  showModal() { this.open = true; }
-  close() {
-    this.open = false;
-    for (const callback of this.listeners.close || []) callback({ target: this });
-  }
-}
-
-const elements = {};
-const document = {
-  activeElement: null,
-  querySelector(selector) { return elements[selector] ||= new Element(); },
-  createElement() { return new Element(); },
-  addEventListener() {},
-};
-
-function response(status, body) {
-  return { ok: status >= 200 && status < 300, status, json: async () => body };
-}
-
-async function settle() {
-  await new Promise((resolve) => setImmediate(resolve));
-  await new Promise((resolve) => setImmediate(resolve));
-}
-
-async function run({
-  cancel = false, originalSelected = false, fail = false, newPrepared = false,
-}) {
-  const requests = [];
-  const fetch = async (url, options = {}) => {
-    const method = options.method || "GET";
-    if (url === "/api/config") return response(200, {
-      preparation_default: "conservative",
-      cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
-      correction_benchmark_configuration: { available: true },
-      evaluation_configuration: { available: false },
-    });
-    if (url === "/api/prompts") return response(200, {
-      versions: [], active_prompt_version_id: null,
-    });
-    if (url === "/api/outgoing-state" && method === "DELETE") return response(200, { revision: 1 });
-    if (url === "/api/outgoing-state" && method === "PUT") {
-      requests.push({ url, body: JSON.parse(options.body) });
-      return response(200, { revision: requests.length + 1 });
-    }
-    if (url === "/api/correction-benchmark/examples") {
-      requests.push({ url, body: JSON.parse(options.body) });
-      return fail
-        ? response(503, { detail: {
-            code: "benchmark_write_failed",
-            message: "The example was not added to the private benchmark corpus.",
-            retry_action: "Check the configured private destination and retry.",
-          } })
-        : response(201, { status: "saved", destination: "configured private benchmark corpus" });
-    }
-    if (url === "/api/cleanup") return response(200, {
-      prepared_text: "Synthetic new prepared wording.", status: "prepared",
-    });
-    throw new Error(`Unexpected request: ${method} ${url}`);
-  };
-  const window = {
-    clearTimeout,
-    setTimeout,
-    requestAnimationFrame(callback) { callback(); },
-    addEventListener() {},
-    confirm() { return true; },
-  };
-  const context = {
-    document, window, fetch, AbortController, Promise, console,
-    navigator: { clipboard: {} }, Blob, URL,
-  };
-  vm.runInNewContext(process.argv[1], context);
-  await settle();
-
-  const original = elements["#original-text"];
-  const prepared = elements["#prepared-text"];
-  const dialog = elements["#benchmark-capture-dialog"];
-  const intended = elements["#benchmark-intended-text"];
-  original.value = "Synthetic original wording.";
-  prepared.value = "Synthetic prepared wording.";
-  await elements["#select-prepared"].dispatch("click");
-  if (originalSelected) await elements["#select-original"].dispatch("click");
-  await elements["#correct-and-add-example"].dispatch("click");
-  const opened = {
-    open: dialog.open, prefill: intended.value,
-    focused: intended.focused, selected: intended.selected,
-  };
-
-  if (cancel) {
-    await elements["#cancel-benchmark-capture-secondary"].dispatch("click");
-    return {
-      opened, open: dialog.open, original: original.value,
-      prepared: prepared.value,
-      buttonDisabledAfterSuccess: elements["#correct-and-add-example"].disabled,
-      requests,
-    };
-  }
-
-  intended.value = "Synthetic corrected wording.";
-  await elements["#benchmark-capture-form"].dispatch("submit");
-  await settle();
-  const buttonDisabledAfterSuccess = elements["#correct-and-add-example"].disabled;
-  const capturedPrepared = prepared.value;
-  const outgoingAfterSuccess = requests.at(-1).body.outgoing_text;
-  const outgoingLabelAfterSuccess = elements["#outgoing-kind"].textContent;
-  let buttonDisabledAfterNewPrepared = null;
-  if (newPrepared) {
-    original.value = "Synthetic new original wording.";
-    await elements["#run-cleanup"].dispatch("click");
-    await settle();
-    buttonDisabledAfterNewPrepared = elements["#correct-and-add-example"].disabled;
-  }
-  return {
-    opened,
-    open: dialog.open,
-    original: original.value,
-    prepared: prepared.value,
-    capturedPrepared,
-    outgoingAfterSuccess,
-    outgoingLabelAfterSuccess,
-    feedback: elements["#benchmark-capture-status"].textContent,
-    outgoingLabel: elements["#outgoing-kind"].textContent,
-    buttonDisabledAfterSuccess,
-    buttonDisabledAfterNewPrepared,
-    requests,
-  };
-}
-
-(async () => {
-  const cancel = await run({ cancel: true });
-  Object.keys(elements).forEach((key) => delete elements[key]);
-  const prepared = await run({ newPrepared: true });
-  Object.keys(elements).forEach((key) => delete elements[key]);
-  const original = await run({ originalSelected: true });
-  Object.keys(elements).forEach((key) => delete elements[key]);
-  const failure = await run({ fail: true });
-  process.stdout.write(JSON.stringify({ cancel, prepared, original, failure }));
-})().catch((error) => { process.stderr.write(error.stack); process.exit(1); });
-"""
-
-    result = subprocess.run(
-        ["node", "-e", harness, script],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    observed = json.loads(result.stdout)
-
-    for scenario in (observed["cancel"], observed["original"], observed["failure"]):
-        assert scenario["opened"] == {
-            "open": True,
-            "prefill": "Synthetic prepared wording.",
-            "focused": True,
-            "selected": True,
-        }
-        assert scenario["original"] == "Synthetic original wording."
-
-    assert observed["cancel"]["prepared"] == "Synthetic prepared wording."
-    assert not any(
-        request["url"] == "/api/correction-benchmark/examples"
-        for request in observed["cancel"]["requests"]
-    )
-    assert observed["prepared"]["opened"] == {
-        "open": True,
-        "prefill": "Synthetic prepared wording.",
-        "focused": True,
-        "selected": True,
-    }
-    assert observed["prepared"]["capturedPrepared"] == "Synthetic corrected wording."
-    assert observed["prepared"]["outgoingAfterSuccess"] == "Synthetic corrected wording."
-    prepared_publication = next(
-        request
-        for request in observed["prepared"]["requests"]
-        if request["body"].get("outgoing_text") == "Synthetic corrected wording."
-    )
-    assert prepared_publication["body"]["outgoing_kind"] == "prepared"
-    assert prepared_publication["body"]["original_text"] == (
-        "Synthetic original wording."
-    )
-    assert prepared_publication["body"]["prepared_text"] == (
-        "Synthetic corrected wording."
-    )
-    assert "raw_text" not in prepared_publication["body"]
-    assert "cleaned_text" not in prepared_publication["body"]
-    benchmark_request = next(
-        request
-        for request in observed["prepared"]["requests"]
-        if request["url"] == "/api/correction-benchmark/examples"
-    )
-    assert benchmark_request["body"] == {
-        "original_text": "Synthetic original wording.",
-        "intended_text": "Synthetic corrected wording.",
-    }
-    assert observed["original"]["prepared"] == "Synthetic corrected wording."
-    assert observed["original"]["requests"][-1]["body"]["outgoing_text"] == (
-        "Synthetic original wording."
-    )
-    assert observed["original"]["requests"][-1]["body"]["outgoing_kind"] == "original"
-    assert observed["failure"]["open"] is True
-    assert observed["failure"]["prepared"] == "Synthetic prepared wording."
-    assert "was not added" in observed["failure"]["feedback"]
-    assert observed["cancel"]["buttonDisabledAfterSuccess"] is False
-    assert observed["prepared"]["buttonDisabledAfterSuccess"] is True
-    assert observed["prepared"]["buttonDisabledAfterNewPrepared"] is False
-    assert observed["original"]["buttonDisabledAfterSuccess"] is True
-    assert observed["failure"]["buttonDisabledAfterSuccess"] is False
-    assert "Example added to private corpus" in observed["prepared"]["outgoingLabelAfterSuccess"]
 
 
 def test_configurable_workspace_uses_native_caret_and_accessible_controls(
