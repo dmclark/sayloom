@@ -369,6 +369,88 @@ def test_confirmed_observation_is_verified_before_smart_receives_only_frozen_inp
     assert record["confirmed_at"].endswith("Z")
 
 
+def test_application_restart_discards_lease_and_receipt_and_requires_fresh_attestation(
+    initialized_settings: Settings, tmp_path: Path
+) -> None:
+    evaluation_directory, _package = configured_package(tmp_path)
+    settings = replace(initialized_settings, evaluation_data_directory=evaluation_directory)
+    browser_session_id = str(uuid4())
+
+    with TestClient(create_app(settings)) as first_client:
+        lease = first_client.post(
+            "/api/evidence-collection/arm",
+            json={
+                "browser_session_id": browser_session_id,
+                "source_attestation_confirmed": True,
+            },
+        ).json()["lease_token"]
+        frozen = first_client.post(
+            "/api/evidence-collection/trigger",
+            json={
+                "lease_token": lease,
+                "original_text": "Synthetic source",
+                "correction_mode": "smart",
+            },
+        ).json()
+        receipt = first_client.post(
+            "/api/evidence-collection/confirm",
+            json={
+                "lease_token": lease,
+                "observation_id": frozen["observation_id"],
+                "disposition": "not_voiceitt",
+                "intended_text": None,
+            },
+        ).json()["evidence_receipt"]
+
+    with TestClient(create_app(settings)) as restarted_client:
+        stale_trigger = restarted_client.post(
+            "/api/evidence-collection/trigger",
+            json={
+                "lease_token": lease,
+                "original_text": "Synthetic source",
+                "correction_mode": "smart",
+            },
+        )
+        outgoing = {
+            "cleanup_enabled": True,
+            "original_text": "Synthetic source",
+            "prepared_text": "",
+            "outgoing_text": "Synthetic source",
+            "outgoing_kind": "original",
+            "status": "waiting",
+            "correction_mode": "smart",
+            "evidence_lease_token": lease,
+            "evidence_receipt": receipt,
+        }
+        assert restarted_client.put("/api/outgoing-state", json=outgoing).status_code == 200
+        stale_outgoing = restarted_client.get("/api/outgoing-state")
+        unattested_arm = restarted_client.post(
+            "/api/evidence-collection/arm",
+            json={
+                "browser_session_id": browser_session_id,
+                "source_attestation_confirmed": False,
+            },
+        )
+        fresh_arm = restarted_client.post(
+            "/api/evidence-collection/arm",
+            json={
+                "browser_session_id": browser_session_id,
+                "source_attestation_confirmed": True,
+            },
+        )
+        outgoing["evidence_lease_token"] = fresh_arm.json()["lease_token"]
+        restarted_client.put("/api/outgoing-state", json=outgoing)
+        stale_receipt = restarted_client.get("/api/outgoing-state")
+
+    assert stale_trigger.status_code == 409
+    assert stale_outgoing.status_code == 409
+    assert unattested_arm.status_code == 409
+    assert unattested_arm.json()["detail"]["message"] == "fresh source attestation is required"
+    assert fresh_arm.status_code == 200
+    assert fresh_arm.json()["lease_token"] != lease
+    assert stale_receipt.status_code == 409
+
+
 def test_outgoing_state_requires_current_receipt_and_never_queues_delivery(
     initialized_settings: Settings, tmp_path: Path
 ) -> None:
