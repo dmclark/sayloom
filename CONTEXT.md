@@ -16,78 +16,97 @@ the authority for correction evaluation: one canonical wording may have addition
 acceptable variants, and neither a model nor an evaluator may substitute its judgment.
 _Avoid_: Ground-truth transcript, inferred intent
 
-**Conservative preparation**:
-Source-preserving preparation that may change presentation but not lexical wording.
-_Avoid_: Smart correction, rewrite
+**Cleanup**:
+The account-independent, proven correction baseline. A Cleanup version freezes determinate
+eligibility and abstention rules for presentation fixes, spelling, and contextually obvious,
+effectively unambiguous misrecognitions.
+_Avoid_: Presentation-only cleanup, Smart frontier, generic rewriting
 
-**Prepared**:
-Sayloom's generated result after the selected correction and preparation path.
-_Avoid_: Cleaned text, output
+**Conservative preparation**:
+The current incomplete Cleanup implementation stage. It may change capitalization, punctuation,
+apostrophes, and whitespace but preserves every lexical word.
+_Avoid_: Permanent correction mode, complete Cleanup contract
 
 **Smart correction**:
-Least-change repair of likely intended words, followed by Conservative preparation. Its
-meaning-bearing changes remain reviewable.
+The versioned moving frontier for less-determinate, contextual, or user-dependent repair, followed
+by Cleanup. Its meaning-bearing changes remain reviewable.
 _Avoid_: Cleanup, rewrite, transcript recovery
 
+**Prepared**:
+Sayloom's generated result after the selected Smart and Cleanup path.
+_Avoid_: Cleaned text, output
+
 **Correction method**:
-A bounded way to propose or abstain from lexical repairs. An Automatic correction strategy selects
-among multiple correction methods; Conservative preparation follows lexical repair and is not a
-correction method.
-_Avoid_: Automatic correction strategy, Conservative preparation
+A bounded way for Smart to propose or abstain from frontier repairs. An Automatic correction
+strategy selects among multiple correction methods; Cleanup follows frontier repair and is not a
+competing correction method.
+_Avoid_: Automatic correction strategy, Cleanup
 
 **Automatic correction strategy**:
-The complete Smart correction arrangement that automatically selects among multiple correction
-methods to produce Prepared.
+The complete Smart arrangement that automatically selects among frontier correction methods before
+Cleanup produces Prepared.
 _Avoid_: Single correction method, manual method selection
 
 **Repair**:
-A reviewable lexical addition, removal, or replacement proposed by Smart correction.
-_Avoid_: Cleanup edit, accepted correction
+A reviewable lexical addition, removal, or replacement. A repair may be proposed by Smart or
+explicitly supplied by the user after either Cleanup or Smart misses intended wording.
+_Avoid_: Accepted correction, evaluation evidence
 
 **Private correction profile**:
-Explicitly enabled, user-owned knowledge that may inform Smart correction.
-_Avoid_: Memory, training data
+Explicitly enabled, user-owned knowledge that may inform Smart correction. It does not affect core
+Cleanup.
+_Avoid_: Cleanup dependency, memory, training data
 
 **Correction memory**:
 Optional retained knowledge derived through a separately approved learning interaction. It is
-outside the Smart MVP.
+outside the Smart MVP and does not affect core Cleanup.
 _Avoid_: Private correction profile, implicit learning
 
 **Cleanup evaluation**:
-The evidence track for Current product source-preserving preparation. It does not establish Smart
-correction quality.
-_Avoid_: Smart benchmark, correction evidence
+Qualification and regression evidence for one frozen, account-independent Cleanup version.
+_Avoid_: Smart discovery, historical source-preserving benchmark
 
 **Smart evaluation**:
-The independent evidence track for Smart correction against user-confirmed intended wording.
-_Avoid_: Cleanup benchmark
+Discovery and acceptance evidence for one frozen Smart frontier version. It measures both the
+frontier's incremental value over Cleanup and the complete Smart-to-Cleanup result against Intended
+text.
+_Avoid_: Cleanup qualification, unversioned experimentation
 
 **Evidence Collection**:
 An optional, visibly armed research interaction that prospectively records actual
 Voiceitt-generated Original and producer-confirmed Intended text before any candidate Prepared text
-is exposed. It is independent of Conservative and Smart correction and is not a correction mode.
+is exposed. It is independent of Cleanup and Smart and is not a correction mode.
 _Avoid_: Evidence mode, automatic learning, correction mode
 
 **Evidence observation**:
-One prospectively frozen Original with its contemporaneous correction evidence and the producer's
+One prospectively frozen Original with its contemporaneously available evidence and the producer's
 pre-exposure Intended-text judgment or content-free exclusion disposition. Observations remain
 distinct even when an exact-repeat relationship is suggested.
 _Avoid_: Training example, transcript, grouped case
 
-**Evidence package**:
-The approved, user-controlled external collection that retains immutable private observations and
-content-free audit records for later Smart evaluation preparation.
-_Avoid_: Application state, practice corpus, Cleanup evaluation corpus
+**Participant package**:
+One approved, user-controlled external collection that retains a single participant's immutable
+private observations and content-free audit records. The initial evaluation uses one package;
+future multi-participant evaluation combines frozen snapshots only through an authorized manifest.
+_Avoid_: Account, application state, mixed-user corpus
+
+**Evaluation view**:
+A task-specific frozen projection of approved evidence. Cleanup and Smart views may reference the
+same observation with different eligibility, targets, and metrics while sharing one global related-
+case partition assignment.
+_Avoid_: Duplicate collection, interchangeable benchmark
 
 **Current product**:
-The product stage that turns Original into Prepared through Conservative preparation.
+The product stage that turns Original into Prepared through Conservative preparation, the current
+incomplete Cleanup implementation.
 
 **Smart MVP candidate**:
-The product stage with Smart correction, reviewable repairs, and an explicitly enabled Private
-correction profile, before the approved private Smart evaluation passes.
+The product stage with a frozen Cleanup baseline, Smart frontier correction, reviewable repairs, and
+an explicitly enabled Private correction profile, before the approved private Smart evaluation
+passes.
 
 **Evidence-backed Smart MVP**:
-A Smart MVP candidate that has passed the separately approved private Smart evaluation.
+A Smart MVP candidate that has passed the separately approved private Cleanup and Smart evaluations.
 
 **Locally proven Smart product**:
 The later product stage that has passed the local self-pilot, including any optional Correction

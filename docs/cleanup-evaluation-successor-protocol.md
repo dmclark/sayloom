@@ -1,7 +1,7 @@
 # Source-preserving cleanup benchmark and canary protocol
 
 - **Protocol:** `cleanup-evaluation-benchmark-v2`
-- **Status:** Approved protocol only; no implementation or operation authorized
+- **Status:** Superseded compatibility input; no collection or operation authorized
 - **Approved:** 2026-09-09
 - **Machine-readable authority:**
   [`cleanup-evaluation-benchmark-v2.json`](cleanup-evaluation-benchmark-v2.json)
@@ -11,7 +11,13 @@
 - **Scope:** Current source-preserving cleanup only; no rewrite, Smart correction, transcript
   fidelity, stable routing, or provider promotion
 
-This protocol defines the prerequisites for one offline 60-case paired benchmark and, only after
+This protocol is not current evaluation authority. It is retained temporarily
+because the obsolete implementation still depends on its machine-readable
+companion, and both are scheduled for removal under the
+[current evaluation map](evaluation-mvp-map.md). Git history will preserve their
+provenance after removal.
+
+The superseded protocol defined the prerequisites for one offline 60-case paired benchmark and, only after
 that benchmark passes, eligibility to request separate authorization for one 10-user-initiated-
 cleanup non-shadow canary. Approval of this document authorizes neither implementation nor
 operation. A runner, private-corpus access, credentials, provider calls, spending, canary, routing

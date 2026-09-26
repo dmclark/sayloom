@@ -6,7 +6,7 @@
 - **Audience:** Product, design, engineering, research, and delivery contributors
 - **Authority:** This document is the sole authority for Sayloom's product
   vision, positioning, roadmap direction, audience, and scope.
-- **Confirmed:** 2026-09-17
+- **Confirmed:** 2026-09-26
 
 ## Authority and supersession
 
@@ -80,29 +80,37 @@ user in control of intended meaning.
 
 ## Correction and polishing modes
 
-The ultimate product supports selectable modes. Each user has a remembered
-default and may override it for the current text.
+The product supports two correction stages. A user may select Cleanup alone or
+Smart followed by Cleanup. A remembered default and per-text override are
+future product behavior.
 
-- **Conservative:** Correct capitalization, punctuation, apostrophes,
-  and whitespace while preserving every lexical word, including fillers.
-- **Smart correction:** May add, remove, or replace words to repair likely
-  Voiceitt recognition errors. Meaning-bearing changes remain reviewable, and
-  uncertain changes receive additional emphasis.
+- **Cleanup:** The account-independent, proven baseline. Each version freezes
+  determinate eligibility and abstention rules for presentation fixes, spelling,
+  and contextually obvious, effectively unambiguous misrecognitions. Cleanup
+  may use a model, but its permitted behavior does not depend on a user account,
+  Private correction profile, or Correction memory.
+- **Smart correction:** The versioned moving frontier for less-determinate,
+  contextual, or user-dependent repair. It may add, remove, or replace words,
+  then passes its result through the same Cleanup baseline. Meaning-bearing
+  changes remain reviewable, and uncertain changes receive additional emphasis.
 - **Broader polishing — Deferred:** Future modes may change grammar, tone, or
   wording beyond recognition-error correction. Their exact boundaries are not
   yet decided.
 
-Version one may provide one combined improved result before the complete mode
-system exists. That simplification is an implementation stage, not the final
-product model.
+The current source-preserving **Conservative preparation** is an incomplete
+implementation stage of Cleanup, not a permanent third mode. A Smart behavior
+may graduate into a new Cleanup version only after a separately frozen rule,
+evidence slice, safety thresholds, and Cleanup regression coverage establish
+that it is determinate and account-independent. Cleanup and Smart versions do
+not change during a registered evaluation or silently inside a released result.
 
 ## Intended-meaning evidence collection
 
 The local application may provide **Evidence Collection**, an optional research
-interaction for one primary user to prospectively record actual
-Voiceitt-generated English text and user-confirmed Intended text. Evidence
-Collection is independent of Conservative and Smart correction; it is not a
-third correction or polishing mode and does not change either mode's contract.
+interaction that prospectively records actual Voiceitt-generated English text
+and producer-confirmed Intended text. Evidence Collection is independent of
+Cleanup and Smart correction; it is not a third correction or polishing mode
+and does not change either stage's contract.
 
 Evidence Collection must be visibly armed for the current browser session and
 must never become a durable default. Arming requires a fresh source attestation
@@ -118,8 +126,11 @@ converting the action into uncollected evidence. Private evidence remains in
 the approved user-controlled external package, outside application operating
 state, routine logs, Git, GitHub, Mandrel, and orbs.
 
-This is bounded, single-producer research instrumentation for the local
-prototype. It does not introduce accounts, roles, multi-user evidence, implicit
+The first approved collection and evaluation claim remains bounded to one
+primary user. Contracts are participant-aware: each future participant uses an
+isolated package, and a separately authorized manifest may combine frozen
+package snapshots for participant-aware evaluation. This does not introduce
+hosted accounts, multi-participant operation, recruitment, implicit
 personalization, provider execution authorization, deployment, or pilot
 operation. The detailed interaction and package boundary is defined by the
 [intended-meaning evidence collection contract](docs/intended-meaning-evidence-collection-contract.md).
@@ -144,6 +155,12 @@ Users choose whether automatic personalization is enabled. They can inspect,
 edit, or delete what Sayloom has learned. With personalization enabled,
 user-approved corrections, edits, vocabulary, spelling, capitalization, and
 similar preferences may improve later results.
+
+Private correction profiles and Correction memory inform Smart only in the
+initial product contract. Core Cleanup remains independently usable and
+evaluable without an account or user-specific state. Any future profile-backed
+Cleanup extension requires its own versioned contract and evaluation and may
+not weaken the anonymous Cleanup baseline.
 
 In the local application, personalization stays in the user's private local
 state. In the hosted service, it is isolated to the authenticated account.
@@ -209,11 +226,13 @@ described above. It provides an editable Original, a generated result named
 **Prepared**, explicit outgoing selection, fail-open behavior, prompt
 versions, inspectable failures, and local target commands.
 
-Current automatic cleanup is conservative and rejects lexical additions,
-removals, substitutions, duplication, or reordering. Smart correction,
-meaning-bearing change review, user-scoped learning, hosted accounts, hosted
-provider management, and the hosted service are not implemented in this
-checkout unless later technical evidence says otherwise.
+Current automatic Cleanup is the Conservative implementation stage and rejects
+lexical additions, removals, substitutions, duplication, or reordering. The
+checkout also contains a single-method experimental Smart path and review
+machinery, but not the evidence-selected automatic Smart strategy described by
+this contract. The expanded Cleanup baseline, user-scoped learning, hosted
+accounts, hosted provider management, and the hosted service are not
+implemented unless later technical evidence says otherwise.
 
 Implementation and product design use **Prepared** for the generated result and
 reserve **Outgoing** for the exact selected delivery value.
@@ -247,8 +266,9 @@ reserve **Outgoing** for the exact selected delivery value.
 
 The following remain open and must not be presented as committed behavior:
 
-- Exact future correction and polishing modes beyond Conservative and Smart
+- Exact future correction and polishing modes beyond Cleanup and Smart
   correction.
+- Exact Cleanup lexical eligibility, abstention, and graduation thresholds.
 - The technical method for detecting and presenting uncertainty.
 - The hosted target-integration mechanism.
 - Optional private text history; initial hosted text remains ephemeral.
@@ -261,6 +281,8 @@ The following remain open and must not be presented as committed behavior:
   https://ampcode.com/threads/T-01a05f4e-9fac-71ec-96dc-2fea35b0d4e4.
 - The confirmed Evidence Collection product and interaction contract in
   https://ampcode.com/threads/T-01a0b132-326f-705b-957f-3c80041999e5.
+- The confirmed Cleanup, Smart, evaluation, and participant-boundary ledger in
+  https://ampcode.com/threads/T-3a6a2274-45b0-4568-ae30-9f2f8845818b.
 - `ref:sayloom-product-contract` in the existing `voiceitt-bridge` Mandrel
   project.
 - The current repository implementation and its technical documentation for

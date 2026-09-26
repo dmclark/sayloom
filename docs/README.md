@@ -40,14 +40,10 @@ itself rather than being duplicated here.
 
 | Document | Authority |
 | --- | --- |
-| [Correction modes and fallback routing decision](adr/0001-correction-modes-and-fallback-routing.md) | Accepted separation of correction authority, automatic preparation, provider fallback, latency, and pre-pilot Smart disclosure. |
 | [Automatic correction prototype specification](automatic-correction-prototype-spec.md) | Focused definition of done for the automatic-correction prototype. |
-| [Intended-meaning evidence collection contract](intended-meaning-evidence-collection-contract.md) | Approved interaction, privacy, and external-package boundary for prospective evidence collection. |
+| [Intended-meaning evidence collection contract](intended-meaning-evidence-collection-contract.md) | Confirmed interaction, privacy, participant-package, and evaluation-view boundary for prospective evidence collection; issue reconciliation is required before further implementation. |
 | [Evaluation and automatic-correction prototype map](evaluation-mvp-map.md) | Current milestone order and separation of Cleanup and Smart evaluation. |
-| [Product implementation plan](product-implementation-plan.md) | Broader capability sequence subordinate to `PRODUCT.md` and the focused prototype specification. |
 | [Automatic strategy evaluation harness](automatic-strategy-evaluation-harness.md) | Frozen harness contract for automatic-strategy evaluation; grants no operational authorization. |
-| [Cleanup evaluation corpus contract](cleanup-evaluation-corpus-contract.md) | Current cleanup-corpus lifecycle and interface contract. |
-| [Cleanup benchmark and canary protocol](cleanup-evaluation-successor-protocol.md) and [machine-readable version 2](cleanup-evaluation-benchmark-v2.json) | Approved Cleanup-only protocol; grants no implementation or operational authorization. The JSON file is the machine-readable authority. |
 | [Agent issue-tracker guidance](agents/issue-tracker.md), [triage labels](agents/triage-labels.md), [domain-doc guidance](agents/domain.md), and [workflow preferences](agents/workflow-preferences.md) | Current repository workflow guidance within each file's scope. |
 
 ## Active references
@@ -55,6 +51,8 @@ itself rather than being duplicated here.
 | Document | Use |
 | --- | --- |
 | [Development screenshot](images/sayloom-development.png) | Supporting image used by the root README, not an authority. |
+| [Correction modes and fallback routing decision](adr/0001-correction-modes-and-fallback-routing.md) | Verified implementation and routing history. Its Conservative/Smart product boundary is superseded and must not authorize new work. |
+| [Product implementation plan](product-implementation-plan.md) | Broader capability history pending reconciliation. Its separate Cleanup/Smart evidence path and permanent Conservative mode are superseded. |
 
 ## Draft collateral
 
@@ -68,8 +66,8 @@ itself rather than being duplicated here.
 | Document | Superseded or completed by |
 | --- | --- |
 | [Correction benchmark pipeline](archive/correction-benchmark-pipeline.md) | Fixed eight-arm Smart scaffold; superseded for prototype acceptance by the automatic-strategy specification, map, and harness. |
-| [Cleanup resilience and local evaluation design](archive/cleanup-resilience-evaluation.md) | Current cleanup corpus contract and version 2 protocol. |
-| [Cleanup benchmark protocol version 1](archive/cleanup-evaluation-benchmark-v1.json) | Version 2 protocol; retained byte-for-byte as historical evidence. |
+| [Cleanup resilience and local evaluation design](archive/cleanup-resilience-evaluation.md) | Abandoned source-preserving corpus and benchmark path; the current evaluation model is defined by the product contract, prototype specification, evidence contract, and evaluation map. |
+| [Cleanup benchmark protocol version 1](archive/cleanup-evaluation-benchmark-v1.json) | Historical machine-readable artifact from the abandoned source-preserving evaluation path. |
 | [Product roadmap](archive/roadmap.md) | `PRODUCT.md` and the current evaluation/prototype map. |
 | [UX shape plan](archive/shape-plan.md) | `PRODUCT.md`; retained as historical UX evidence. |
 | [Transcript fidelity specification](archive/transcript-fidelity-spec.md) | `PRODUCT.md`; retained as historical research evidence. |

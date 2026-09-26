@@ -1,6 +1,7 @@
 # Intended-meaning evidence collection contract
 
-- **Status:** Approved interaction and external-package contract
+- **Status:** Confirmed interaction and participant-package contract; issue
+  reconciliation required before further implementation
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Prototype authority:**
   [`automatic-correction-prototype-spec.md`](automatic-correction-prototype-spec.md)
@@ -9,20 +10,21 @@
 - **Downstream review task:**
   [Freeze and audit intended-meaning evidence partitions](https://github.com/dmclark/sayloom/issues/62)
 
-This contract defines the bounded browser interaction and external-package
-boundary for prospectively collecting intended-meaning evidence. It authorizes
-implementation and synthetic verification of that infrastructure. It does not
-authorize access to private evidence, provider calls, spending, held-out
-execution, deployment, or pilot operation.
+This contract defines the bounded browser interaction and participant-package
+boundary for prospectively collecting evidence used by separate Cleanup and
+Smart evaluation views. Existing issue completion does not authorize the new
+shared evaluation work. This document does not authorize access to private
+evidence, provider calls, spending, held-out execution, deployment, or pilot
+operation.
 
 ## Scope
 
 Evidence Collection is optional, temporary research instrumentation for one
-person who is simultaneously the producer, operator, owner, and
-external-package owner. It is a visibly armed browser-session state independent
-of Conservative and Smart correction, not a third correction mode. It creates
-prospective private test cases only; it does not train Smart, create correction
-memory, or establish multi-user efficacy.
+participant who is initially also the producer, operator, owner, and package
+owner. It is a visibly armed browser-session state independent of Cleanup and
+Smart correction, not a third correction mode. It creates prospective private
+observations only; it does not train either stage, create correction memory, or
+establish multi-user efficacy.
 
 The interaction collects actual Voiceitt-generated English text from the
 primary user and the producer's Intended-text judgment before any candidate
@@ -33,10 +35,12 @@ transcription of the spoken words. Typed, pasted, synthetic, practice,
 provider-generated, or retrospectively reconstructed text cannot become
 acceptance evidence.
 
-Accounts, roles, producer selection, multi-user isolation, live persistent
-collection state, candidate testing during collection, external-data
-inspection, and external-data deletion outside the defined withdrawal workflow
-are outside this contract.
+The initial implementation and claim remain single-participant and need no
+hosted account. The contract nevertheless binds every package and observation
+to opaque participant and package identities. Each future participant requires
+an isolated package, consent, retention, and withdrawal boundary. Recruitment,
+hosted account linkage, multi-participant operation, candidate testing during
+collection, and multi-user efficacy claims are outside this contract.
 
 ## Package administration and readiness
 
@@ -45,7 +49,7 @@ External administration owns those actions. Arming is available only when the
 configured package passes content-free checks for:
 
 - approved package and contract versions;
-- package ownership;
+- opaque participant identity, package identity, and package ownership;
 - restrictive directory and artifact permissions;
 - append-only observation and audit writes; and
 - artifact hashing and reread verification support.
@@ -79,16 +83,17 @@ across multiple armed sessions and exclude withdrawn observations. Raw counts
 are distinct from reviewed eligible cases and must not imply progress toward
 eligibility.
 
-Cleanup evaluation capture remains available during ordinary use but is
-disabled while Evidence Collection is armed.
+The obsolete source-preserving Cleanup evaluation capture must not receive new
+observations and is scheduled for removal. Evidence Collection is the sole
+prospective source for the new task-specific Cleanup and Smart views.
 
 ## Consequential actions and pre-exposure state
 
-Automatic Smart, explicit Smart, Copy, and target send are consequential while
-Evidence Collection is armed. Collection triggers on the first Smart, Copy, or
-target send attempt for the current Original, before any candidate output or
-outgoing use. Before one of those actions can expose or consume a candidate for
-the current Original revision, Sayloom must:
+Automatic preparation, explicit Cleanup or Smart, Copy, and target send are
+consequential while Evidence Collection is armed. Collection triggers on the
+first preparation, Copy, or target send attempt for the current Original,
+before any candidate output or outgoing use. Before one of those actions can
+expose or consume a candidate for the current Original revision, Sayloom must:
 
 1. conceal current and stale Prepared text, repair details, candidate errors,
    and Prepared selection;
@@ -107,8 +112,8 @@ observation and opens no judgment interaction.
 The producer must choose exactly one disposition:
 
 1. **Ready as-is** — Intended equals Original and needs no preparation.
-2. **Meaning right; presentation cleanup needed** — Intended equals Original,
-   but Conservative presentation cleanup remains useful.
+2. **Meaning right; Cleanup needed** — Intended equals Original, but presentation
+   Cleanup remains useful.
 3. **Edit Intended** — edit an Original-initialized copy until every lexical or
    grammatical meaning difference is corrected.
 4. **Not Voiceitt** — exclude because the source attestation does not apply.
@@ -132,6 +137,7 @@ sessions.
 
 At the consequential trigger, Sayloom freezes:
 
+- opaque participant and package identities;
 - Original;
 - contemporaneous request context;
 - the explicitly enabled Private correction profile snapshot;
@@ -157,10 +163,12 @@ written append-only, reread, and hash-verified. After a verified capture or
 exclusion, current-product behavior resumes for the interaction; experimental
 correction candidates run later, offline, against the collected package. If the
 capture session ends before confirmation plus write, reread, and hash
-verification, no case was collected. Candidate input consists of the
-frozen Original plus only the context and profile evidence legitimately
-available at the trigger. Intended text, disposition details, and later evidence
-must never enter candidate input.
+verification, no case was collected. Cleanup candidate input consists only of
+frozen Original and the frozen Cleanup contract; core Cleanup is
+account-independent. Smart candidate input consists of frozen Original plus
+only the context and profile evidence legitimately available at the trigger.
+Intended text, disposition details, derived Cleanup targets, and later evidence
+must never enter either candidate input.
 
 Prepared text, repair details, and provider execution metadata are runtime
 results, not collection artifacts. After verified capture and correction, the
@@ -213,7 +221,7 @@ The collection task owns:
 
 - package administration interfaces, append-only writes, readiness, and hashes;
 - source attestation, session lease, arming, and disarming;
-- pre-exposure judgments for Smart, Copy, and target send;
+- pre-exposure judgments for preparation, Copy, and target send;
 - immutable prospective observations, receipts, exclusions, and withdrawal;
 - provisional exact-repeat suggestions;
 - failure handling;
@@ -224,12 +232,16 @@ The downstream review task owns:
 
 - private batch review and final eligibility or exclusion;
 - additional Intended variants;
+- derivation of a Cleanup target under one frozen account-independent Cleanup
+  contract and producer confirmation wherever judgment is required;
 - situation, difficulty, error, context, profile, and high-stakes
   classifications;
 - exact-repeat confirmation and near-duplicate or related-version grouping;
 - observed-use weights;
-- group-preserving recorded-seed 60/20/20 partitions;
-- the immutable protocol-ready evidence package; and
+- one group-preserving recorded-seed 60/20/20 assignment shared by Cleanup and
+  Smart views;
+- immutable protocol-ready Cleanup and Smart views of the participant package;
+  and
 - the content-free sufficiency audit, including every required stratum and the
   200-case held-out minimum.
 
@@ -245,11 +257,30 @@ be used in development or evaluation. Review, classification, coverage,
 grouping, and partition progress belong to a separate local private-review
 workflow, not the collector page.
 
-The superseded Smart **Correct and add example** browser, API, configuration,
-documentation, and test path is removed during collection implementation. The
-separate Cleanup evaluation system remains; its **Save evaluation case** action
-is only disabled while collection is armed. Historical offline Cleanup
-scaffolding is not part of this removal.
+The superseded Smart **Correct and add example** path and the obsolete
+source-preserving Cleanup evaluation system are separate removal work. No data
+from either path migrates into a participant package. Any disposition of
+external private data requires separate verification and authorization.
+
+## Evaluation views and participant expansion
+
+One reviewed observation may enter both views without duplicate collection.
+The Cleanup view uses only the target permitted by the frozen Cleanup contract;
+user-specific ambiguity requires preservation or abstention. The Smart view
+uses producer-confirmed Intended text and keeps no-change, Cleanup-solvable,
+frontier, profile-dependent, and abstention cases visible. Profile-independent
+and profile-dependent Smart strata are reported separately.
+
+Cleanup freezes before Smart comparison. Related observations keep the same
+global partition in both views. A rule promoted from Smart creates new versioned
+targets and must be evaluated on evidence not used to choose it; existing
+results are never relabelled.
+
+A later multi-participant evaluation combines only explicitly authorized frozen
+package snapshots. It must use participant-aware grouping and confidence
+analysis and report both within-user performance and unseen-user
+generalization. A pooled case-level result alone cannot support a multi-user
+claim.
 
 ## Verification boundary
 
@@ -257,7 +288,8 @@ Automated verification uses synthetic fixtures only and makes no provider calls.
 It must exercise package readiness, restrictive permissions, append-only writes,
 reread and hash verification, lease arming, reconnection, and expiry,
 content-free armed-page counts, every producer disposition, cancellation and
-staleness, failure disarming, withdrawal, exact-repeat normalization, Smart
-pre-exposure behavior, explicit second invocation for Copy and target send,
-correction failure, and cancellation, and absence of Intended
-leakage or text-bearing routine logs.
+staleness, failure disarming, withdrawal, exact-repeat normalization, Cleanup
+and Smart pre-exposure behavior, shared partition identity, task-specific target
+isolation, explicit second invocation for Copy and target send, correction
+failure and cancellation, and absence of Intended leakage or text-bearing
+routine logs.

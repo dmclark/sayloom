@@ -1,6 +1,6 @@
 {
   "protocol_id": "cleanup-evaluation-benchmark-v2",
-  "status": "approved_protocol_only_no_implementation_or_operation_authorized",
+  "status": "superseded_compatibility_input_scheduled_for_removal_no_operation_authorized",
   "approved_on": "2026-09-09",
   "purpose": "current_source_preserving_polished_cleanup_evaluation_only",
   "narrative_protocol": "cleanup-evaluation-successor-protocol.md",

@@ -3,14 +3,20 @@
 - **Contract version:** `cleanup-evaluation-corpus-v1`
 - **Consent version:** `cleanup-evaluation-consent-v1`
 - **Export version:** `cleanup-evaluation-export-v1`
-- **Status:** Contract frozen; Stage 3 lifecycle implementation present
+- **Status:** Superseded; implementation present only until dedicated removal
 - **Canonical benchmark protocol:**
-  [`cleanup-evaluation-benchmark-v2.json`](cleanup-evaluation-benchmark-v2.json) — approved protocol
-  only; no implementation or operation authorized
+  [`cleanup-evaluation-benchmark-v2.json`](cleanup-evaluation-benchmark-v2.json) — superseded compatibility
+  input; no collection or operation authorized
 - **Superseded history:**
   [`cleanup-evaluation-benchmark-v1.json`](archive/cleanup-evaluation-benchmark-v1.json) — preserved unchanged
 
-This contract governs a private corpus of user-confirmed polished cleanups. It does not authorize
+This contract is retained temporarily because the obsolete implementation still
+depends on it. It is not current evaluation authority, accepts no new cases, and
+is scheduled for removal under the
+[current evaluation map](evaluation-mvp-map.md). Git history will preserve its
+provenance after removal.
+
+The superseded contract governed a private corpus of user-confirmed polished cleanups. It did not authorize
 passive collection. The Stage 3 implementation exposes capture only after a successful current
 cleanup supplies a short-lived proof and the user completes the separate confirmation. Ordinary
 startup still creates no evaluation database and retains no dialog draft or operating text. The

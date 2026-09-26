@@ -14,39 +14,39 @@ hosting.
 
 ## Outcome and non-goals
 
-The multi-method strategy is not complete today; the current Smart runtime uses
-one correction method. The prototype will be done only after Sayloom has
-selected, integrated, and verified an **Automatic correction strategy** that
-chooses among multiple **Correction methods** to produce reviewable Prepared
-text and passes the frozen acceptance contract on approved held-out evidence. A
-separately authorized limited pilot may then demonstrate the result to a small
-audience without making a broad efficacy claim. The prototype claim remains one
+The prototype begins by defining, implementing, and qualifying one frozen,
+account-independent **Cleanup** baseline. It then selects, integrates, and
+verifies an **Automatic correction strategy** that chooses among multiple
+frontier **Correction methods**, passes its result through that Cleanup
+baseline, and satisfies the frozen Smart acceptance contract on approved
+held-out evidence. A separately authorized limited pilot may then demonstrate
+the result without making a broad efficacy claim. The initial claim remains one
 primary user across representative unseen cases; multi-user efficacy, automatic
 learning, and durable personalization are deferred, separate research and
 product decisions.
 
-The prototype is a possible implementation of the product's existing **Smart
-correction** mode. It does not add a correction mode. The separately authorized
-**Evidence Collection** interaction is optional, temporary single-primary-user
-research instrumentation layered across Conservative and Smart; it does not
-change either mode's behavior or become a durable product default. It creates
-prospective private test cases only; it does not train Smart, create correction
-memory, or establish multi-user efficacy.
+The prototype implements the product's Cleanup-to-Smart sequence; it does not
+add another correction mode. The separately authorized **Evidence Collection**
+interaction is optional research instrumentation independent of both stages.
+It creates prospective private observations for task-specific Cleanup and Smart
+evaluation views; it does not train either stage, create correction memory, or
+establish multi-user efficacy.
 
 The following are not prototype outcomes:
 
-- changing Conservative preparation or its lexical boundary;
 - production hosting, migrations, account infrastructure, or deployment;
 - durable personalization learning or Correction memory;
 - broader rewriting or polishing;
 - audio ingestion or claims about what was spoken;
-- population-wide or high-stakes safety claims; or
-- treating Cleanup evaluation as Smart-correction evidence.
+- population-wide or high-stakes safety claims;
+- multi-participant operation or efficacy claims; or
+- silently moving a correction between Cleanup and Smart without a versioned
+  contract and new evidence.
 
 ## Verified current baseline
 
-As of 2026-09-16, the repository implements two correction modes. Conservative
-preparation is the default and rejects lexical changes. The current Smart path
+As of 2026-09-26, Conservative preparation is the default, source-preserving,
+incomplete Cleanup implementation and rejects lexical changes. The current Smart path
 uses one provider-backed least-change prompt, permits a bounded lexical edit
 distance, accepts request-scoped context and explicitly enabled curated
 knowledge, computes repair spans on the server, and fails open to Original on
@@ -61,17 +61,25 @@ reporting. It is evaluation-only and is not imported by the application
 runtime. The earlier fixed eight-arm Smart benchmark remains historical
 scaffolding, not the prototype acceptance protocol.
 
-The latest external evidence audit reported zero eligible and zero held-out
-cases, no required-strata coverage, and no observed-use weights. This is an
-evidence blocker. The approved minimum of 200 held-out cases and full required
-strata remains unchanged.
+The repository also implements a separate source-preserving Cleanup corpus,
+benchmark, and canary system. No private evaluation run is documented. Its
+contract and evidence cannot be migrated or reinterpreted for this prototype;
+that system is scheduled for removal before the fresh participant package is
+used.
+
+The latest external Smart evidence audit reported zero eligible and zero
+held-out cases, no required-strata coverage, and no observed-use weights. This
+is an evidence blocker. The approved minimum of 200 held-out cases and full
+required strata remains unchanged.
 
 ## User-visible correction contract
 
 The prototype preserves the product contract:
 
-- The user chooses Conservative or Smart; automatic method selection occurs
-  inside Smart and is not exposed as another mode.
+- The user chooses Cleanup alone or Smart followed by Cleanup; automatic method
+  selection occurs inside Smart and is not exposed as another mode.
+- Cleanup is account-independent. Context, Private correction profiles, and
+  Correction memory cannot expand core Cleanup's authority.
 - Original remains editable and available. A failure, timeout, invalid result,
   or abstention leaves a usable fail-open Original path.
 - Prepared contains the selected strategy's result. Outgoing remains the exact
@@ -83,15 +91,15 @@ The prototype preserves the product contract:
   behavior.
 - Editing or regenerating Original invalidates stale Prepared results, repair
   metadata, and review state.
-- Context is request-scoped. Profile evidence is user-controlled and supplied
-  only when explicitly enabled and relevant. Ordinary correction, review,
-  copying, or inaction stores no learning.
+- Context is request-scoped. Profile evidence is user-controlled, Smart-only,
+  and supplied only when explicitly enabled and relevant. Ordinary correction,
+  review, copying, or inaction stores no learning.
 
 ## Candidate method and automatic-selection boundary
 
-A Correction method is a bounded way to propose or abstain from lexical
-repairs. Conservative preparation follows lexical repair and is not a competing
-method. The initial development slate must represent:
+A Correction method is a bounded way to propose or abstain from a Smart-frontier
+repair. The frozen Cleanup baseline follows frontier repair and is not a
+competing method. The initial development slate must represent:
 
 1. abstention/fail-open to Original;
 2. deterministic lexical matching;
@@ -136,8 +144,10 @@ the current revision has a verified observation or exclusion receipt.
 
 Collection produces distinct observations and may suggest only exact-repeat
 relationships. Private review owns final eligibility and exclusions, additional
-Intended variants, classifications, exact-repeat confirmation,
-near-duplicate/related-version grouping, observed-use weights, and partitioning.
+Intended variants, derivation and required producer confirmation of Cleanup
+targets under the frozen Cleanup contract, classifications, exact-repeat
+confirmation, near-duplicate/related-version grouping, observed-use weights,
+and partitioning.
 Unreviewed observations remain stored but do not count as eligible, cannot be
 partitioned, and cannot be used in development or evaluation.
 
@@ -158,13 +168,21 @@ start once the collector itself passes complete acceptance even while
 private-review tooling is still being built, but evidence cannot open for
 development until that review and partition tooling exists.
 
-The private package must freeze eligibility, exclusions, related-case groups,
-near-duplicates, 60/20/20 development-validation-held-out partitions,
+The participant package must freeze eligibility, exclusions, related-case
+groups, near-duplicates, one global 60/20/20
+development-validation-held-out assignment across both evaluation views,
 time-appropriate context and profile snapshots, all required strata, and
-observed-use weights. The held-out partition must contain at least 200 eligible
-cases and every required stratum. Typed, pasted, synthetic, practice, or
-provider-generated cases may support engineering checks but cannot establish
+observed-use weights. The Smart held-out partition must contain at least 200
+eligible cases and every required stratum. Typed, pasted, synthetic, practice,
+or provider-generated cases may support engineering checks but cannot establish
 prototype acceptance.
+
+The first approved package belongs to one primary user. Contracts include an
+opaque participant and package identity, but do not require hosted accounts.
+Future participants use isolated packages. Combining frozen snapshots requires
+a separately authorized manifest and a new protocol that reports both
+within-user performance and unseen-user generalization with participant-aware
+partitions and confidence analysis.
 
 Original, Intended, Prepared, context, profile data, case identifiers, review
 mappings, databases, and exports remain in approved user-controlled storage
@@ -174,7 +192,21 @@ records may be shared in issues.
 
 ## Evaluation protocol and acceptance gates
 
-Development evidence shapes methods and routing. The exploratory milestone is
+Cleanup and Smart are separate task-specific views of the same prospectively
+collected evidence. Cleanup is evaluated and frozen first against targets
+permitted by its account-independent contract. User-specific ambiguity requires
+preservation or abstention. Failure leaves Conservative as the actual baseline
+and blocks Smart comparison.
+
+Smart evaluation then measures both incremental frontier value over the frozen
+Cleanup baseline and complete Smart-to-Cleanup Prepared quality against
+producer-confirmed Intended text. No-change, Cleanup-solvable,
+profile-independent, profile-dependent, and abstention cases remain visible as
+separate strata. A promoted rule creates new Cleanup and Smart versions and
+must be tested on evidence not used to choose it; prior results are never
+relabelled.
+
+Development evidence shapes Smart methods and routing. The exploratory milestone is
 additive and does not weaken the acceptance protocol: decision-grade evidence
 still requires at least 200 eligible held-out cases, every required stratum,
 observed-use weights, and the frozen protocol gates. Validation evidence selects
@@ -221,7 +253,7 @@ adapts the selected methods and frozen selector behind the existing Smart
 request/result boundary; it must not copy the experimental search framework or
 losing candidates into production.
 
-Integration must preserve Conservative behavior, fail-open Original, exact
+Integration must preserve the frozen Cleanup behavior, fail-open Original, exact
 Outgoing selection, server-derived repair metadata, request-scoped context,
 explicit profile enablement, stale-result invalidation, content-free routine
 logging, and normal startup without migrations. Development cases may inform
@@ -247,14 +279,17 @@ pilot starts.
 
 | Stage | Observable exit criteria |
 | --- | --- |
-| 1. Reconcile planning | This specification and the two coordinating plans agree; the issue graph and existing Project show one executable path. |
-| 2. Accumulate and audit evidence | The armed browser interaction prospectively collects verified observations into the approved external package. Separate private review then freezes eligibility, related-case grouping, classifications, observed-use weights, and 60/20/20 partitions before candidate work. An explicitly exploratory milestone of at least 50 eligible cases with meaningful outcome coverage precedes candidate work and cannot by itself support efficacy claims. A new content-free audit proves all required strata and at least 200 eligible held-out cases; until then the outcome remains insufficient evidence. |
-| 3. Build experimental adapters | Required method families implement the common harness contract, remain outside runtime, and pass synthetic privacy, determinism, repair-trace, fail-open, timeout, and budget tests without provider traffic. |
-| 4. Compare on development evidence | The staged search and one allowed targeted expansion finish; surviving complete strategies, routers, manifests, budgets, and planned ablations are frozen before held-out results open. |
-| 5. Evaluate held out and select | An approved run produces the write-once private evidence package and content-free report; a winner passes every gate, or the recorded outcome is no qualifying strategy. |
-| 6. Integrate the winner | The selected multi-method strategy is the automatic implementation inside Smart; losing experimental families remain outside runtime and Conservative/fail-open contracts still pass. |
-| 7. Verify automatic correction | Automated and browser checks cover routing, repairs, uncertainty, stale results, CART display, failures, privacy, and exact Outgoing; verification records an explicit pass/stop outcome. |
-| 8. Run a limited pilot | Only after separate operational authorization, the bounded pilot completes, retains no participant text by default, records structured feedback, tears down access, and makes no broader claim. |
+| 1. Freeze initial Cleanup | Revised #112 defines account-independent lexical eligibility and abstention, then focused child work implements the smallest viable baseline. |
+| 2. Remove the obsolete evaluation path | The old source-preserving corpus, benchmark, and canary leave the current tree without changing ordinary Cleanup. No legacy observation migrates. |
+| 3. Accumulate and review fresh evidence | Armed collection writes verified observations to the participant package. Private review derives Cleanup targets, freezes shared related-case grouping and partitions, and prepares both evaluation views. |
+| 4. Qualify Cleanup | The expanded Cleanup baseline passes its frozen account-independent qualification; otherwise Conservative remains the baseline and Smart comparison stops. |
+| 5. Audit Smart evidence | An exploratory milestone of at least 50 eligible cases precedes candidate work but supports no efficacy claim. A content-free audit later proves all required Smart strata and at least 200 eligible held-out cases. |
+| 6. Build experimental adapters | Required frontier method families implement the common harness contract, remain outside runtime, and pass synthetic privacy, determinism, repair-trace, fail-open, timeout, and budget tests without provider traffic. |
+| 7. Compare on development evidence | The staged search and one allowed targeted expansion finish against frozen Cleanup; surviving complete strategies, routers, manifests, budgets, and planned ablations freeze before held-out results open. |
+| 8. Evaluate held out and select | An approved run produces the write-once private evidence package and content-free report; a winner passes every gate, or the recorded outcome is no qualifying strategy. |
+| 9. Integrate the winner | The selected multi-method strategy becomes Smart; losing experimental families remain outside runtime and Cleanup/fail-open contracts still pass. |
+| 10. Verify automatic correction | Automated and browser checks cover routing, repairs, uncertainty, stale results, CART display, failures, privacy, and exact Outgoing; verification records an explicit pass/stop outcome. |
+| 11. Run a limited pilot | Only after separate operational authorization, the bounded pilot completes, retains no participant text by default, records structured feedback, tears down access, and makes no broader claim. |
 
 ## Remaining open decisions
 
@@ -267,9 +302,8 @@ pilot starts.
 - Whether to authorize a limited shareable pilot and, if so, its named
   audience, provider posture, budget, duration, and teardown plan.
 
-These decisions do not reopen the frozen evidence boundary, protocol, or gates.
-Any proposal for a user-visible mode beyond Conservative and Smart conflicts
-with the current product contract and must stop for an approved `PRODUCT.md`
-decision rather than changing that contract implicitly. Evidence Collection is
-not such a mode; expanding it beyond the bounded single-producer research
-interaction requires a new product decision.
+These decisions do not reopen the frozen Smart quality gates. Any proposal for
+a user-visible mode beyond Cleanup and Smart conflicts with the current product
+contract and must stop for an approved `PRODUCT.md` decision rather than
+changing that contract implicitly. Evidence Collection is not such a mode;
+multi-participant operation or claims require a new protocol and authorization.
