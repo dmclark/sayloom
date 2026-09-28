@@ -3,7 +3,7 @@
 import re
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import UTC
 from hashlib import sha256
 from html import escape
 from pathlib import Path
@@ -14,7 +14,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
@@ -26,9 +26,7 @@ from local_text.cleanup import (
     CleanupResult,
     CleanupRoute,
     CleanupService,
-    CleanupStatus,
     CorrectionMode,
-    EvaluationCaptureContext,
     GeminiAdapter,
     OpenAIAdapter,
     PreparationMode,
@@ -36,22 +34,6 @@ from local_text.cleanup import (
 )
 from local_text.config import Profile, Settings, load_settings
 from local_text.database import ApplicationDatabase
-from local_text.evaluation import (
-    CLEANUP_SCHEMA_VERSION,
-    EXPORT_FIELDS,
-    EXPORT_WARNING,
-    CaptureProofs,
-    CaseCaptureRequest,
-    CleanupCapture,
-    DeleteCaseRequest,
-    EvaluationError,
-    EvaluationStore,
-    ExportConfirmRequest,
-    ExportPreviewRequest,
-    ExportTokens,
-    RetentionRequest,
-)
-from local_text.evaluation_database import evaluation_configuration
 from local_text.evidence_collection import EvidenceCollection, EvidenceCollectionError
 from local_text.prompt_store import PromptNotFoundError, PromptRecord, PromptStore, SeedStateError
 from local_text.state import OutgoingStateStore, OutgoingStateUpdate
@@ -92,7 +74,9 @@ class CleanupRuntimeConfiguration:
                     "Only after a qualifying Gemini failure, the same current text and cleanup "
                     "instruction may be sent to paid OpenAI."
                 ),
-                "corpus": "This does not save an evaluation corpus.",
+                "corpus": (
+                    "Routine cleanup does not retain Original, Prepared, or provider payloads."
+                ),
             }
         elif self.status == "gemini_only":
             disclosure = {
@@ -102,21 +86,27 @@ class CleanupRuntimeConfiguration:
                     "external processing."
                 ),
                 "fallback": "Fallback stays within the configured Gemini route.",
-                "corpus": "This does not save an evaluation corpus.",
+                "corpus": (
+                    "Routine cleanup does not retain Original, Prepared, or provider payloads."
+                ),
             }
         elif self.status == "invalid":
             disclosure = {
                 "summary": "Cleanup configuration is invalid",
                 "processing": "No cleanup provider client is active.",
                 "fallback": "Cleanup remains available as Original fail-open only.",
-                "corpus": "This does not save an evaluation corpus.",
+                "corpus": (
+                    "Routine cleanup does not retain Original, Prepared, or provider payloads."
+                ),
             }
         else:
             disclosure = {
                 "summary": "Cleanup provider is not configured",
                 "processing": "No cleanup provider client is active.",
                 "fallback": "Cleanup remains available as Original fail-open only.",
-                "corpus": "This does not save an evaluation corpus.",
+                "corpus": (
+                    "Routine cleanup does not retain Original, Prepared, or provider payloads."
+                ),
             }
         return {
             "status": self.status,
@@ -299,14 +289,7 @@ def create_app(
     runtime = settings or load_settings()
     database = ApplicationDatabase(runtime.resolved_database_path)
     schema = database.schema_status()
-    evaluation = evaluation_configuration(
-        runtime.evaluation_data_directory,
-        application_database_path=runtime.resolved_database_path,
-    )
-    evaluation_store = EvaluationStore(evaluation.database) if evaluation.available else None
     evidence = EvidenceCollection(runtime.evidence_package_directory)
-    capture_proofs = CaptureProofs()
-    export_tokens = ExportTokens()
     prompts = PromptStore(database)
     targets = TargetStore(database)
     adapter = target_adapter or TargetAdapter(runtime.resolved_raycast_directory)
@@ -403,22 +386,13 @@ def create_app(
     async def privacy_safe_validation_error(
         request: Request, exc: RequestValidationError
     ) -> Response:
-        if request.url.path.startswith(("/api/evaluation/", "/api/evidence-collection/")):
-            evidence_request = request.url.path.startswith("/api/evidence-collection/")
+        if request.url.path.startswith("/api/evidence-collection/"):
             return JSONResponse(
                 status_code=422,
                 content={
                     "detail": {
-                        "code": (
-                            "invalid_evidence_collection_request"
-                            if evidence_request
-                            else "invalid_evaluation_request"
-                        ),
-                        "message": (
-                            "The request did not match the evidence collection contract."
-                            if evidence_request
-                            else "The evaluation request did not match the private corpus contract."
-                        ),
+                        "code": "invalid_evidence_collection_request",
+                        "message": "The request did not match the evidence collection contract.",
                         "retry_action": "Review the current form values and retry.",
                     }
                 },
@@ -441,7 +415,6 @@ def create_app(
             },
             "configuration_error": configuration_error,
             "cleanup_configuration": cleanup_configuration.public(),
-            "evaluation_configuration": evaluation.public(),
             "evidence_collection": evidence.readiness(),
         }
 
@@ -501,7 +474,6 @@ def create_app(
             if cleanup_configuration.routes
             else runtime.gemini_model,
             "cleanup_configuration": cleanup_configuration.public(),
-            "evaluation_configuration": evaluation.public(),
             "evidence_collection": evidence.readiness(),
         }
 
@@ -649,36 +621,6 @@ def create_app(
                 },
             ) from exc
         result = await application.state.cleanup_service.clean(request, prompt.system_text)
-        successful_attempt = any(attempt.outcome == "success" for attempt in result.attempts)
-        if (
-            evaluation_store is not None
-            and request.correction_mode is CorrectionMode.CONSERVATIVE
-            and successful_attempt
-            and result.status in {CleanupStatus.PREPARED, CleanupStatus.UNCHANGED}
-        ):
-            completed_at = datetime.now(UTC)
-            cleanup = CleanupCapture(
-                completed_at=completed_at,
-                provider=result.provider,
-                model=result.model,
-                attempts=[
-                    attempt.model_dump(mode="json") for attempt in result.attempts
-                ],
-                prompt_version_id=prompt.id,
-                prompt_content_sha256=prompt.content_sha256,
-                prompt_text=prompt.system_text,
-                cleanup_schema_version=CLEANUP_SCHEMA_VERSION,
-            )
-            result.evaluation = EvaluationCaptureContext(
-                capture_proof=capture_proofs.issue(
-                    request.original_text, result.prepared_text, cleanup
-                ),
-                completed_at=completed_at.isoformat().replace("+00:00", "Z"),
-                prompt_version_id=prompt.id,
-                prompt_content_sha256=prompt.content_sha256,
-                prompt_text=prompt.system_text,
-                cleanup_schema_version=CLEANUP_SCHEMA_VERSION,
-            )
         return result
 
     @application.get("/api/prompts")
@@ -743,95 +685,6 @@ def create_app(
                 else CorrectionMode.CONSERVATIVE
             ),
         ).public()
-
-    def require_evaluation() -> EvaluationStore:
-        require_configuration()
-        if evaluation_store is None:
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "code": "evaluation_storage_unavailable",
-                    "message": "Private evaluation storage is not configured and current.",
-                    "retry_action": "Configure and explicitly migrate the evaluation database.",
-                },
-            )
-        return evaluation_store
-
-    def evaluation_failure(exc: EvaluationError) -> None:
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail()) from None
-
-    @application.post("/api/evaluation/cases", status_code=status.HTTP_201_CREATED)
-    def capture_evaluation_case(request: CaseCaptureRequest) -> dict[str, object]:
-        store = require_evaluation()
-        try:
-            capture_proofs.verify_and_consume(request)
-            return store.capture(request)
-        except EvaluationError as exc:
-            evaluation_failure(exc)
-
-    @application.get("/api/evaluation/cases")
-    def list_evaluation_cases() -> dict[str, object]:
-        try:
-            return {"cases": require_evaluation().list_metadata()}
-        except EvaluationError as exc:
-            evaluation_failure(exc)
-
-    @application.get("/api/evaluation/cases/{case_id}")
-    def review_evaluation_case(case_id: UUID) -> dict[str, object]:
-        try:
-            return require_evaluation().review(str(case_id))
-        except EvaluationError as exc:
-            evaluation_failure(exc)
-
-    @application.patch("/api/evaluation/cases/{case_id}/retention")
-    def change_evaluation_retention(
-        case_id: UUID, request: RetentionRequest
-    ) -> dict[str, object]:
-        try:
-            return require_evaluation().change_retention(str(case_id), request)
-        except EvaluationError as exc:
-            evaluation_failure(exc)
-
-    @application.delete("/api/evaluation/cases/{case_id}")
-    def delete_evaluation_case(
-        case_id: UUID, request: DeleteCaseRequest
-    ) -> dict[str, str]:
-        try:
-            return require_evaluation().delete(str(case_id), request.revision)
-        except EvaluationError as exc:
-            evaluation_failure(exc)
-
-    @application.post("/api/evaluation/exports/preview")
-    def preview_evaluation_export(request: ExportPreviewRequest) -> dict[str, object]:
-        try:
-            material = require_evaluation().export_material(request.cases)
-            return {
-                "preview_token": export_tokens.issue(request.cases),
-                "case_count": len(request.cases),
-                "field_names": list(EXPORT_FIELDS),
-                "total_bytes": len(material.content),
-                "minimum_expiry": material.minimum_expiry.isoformat().replace("+00:00", "Z"),
-                "maximum_expiry": material.maximum_expiry.isoformat().replace("+00:00", "Z"),
-                "warning": EXPORT_WARNING,
-            }
-        except EvaluationError as exc:
-            evaluation_failure(exc)
-
-    @application.post("/api/evaluation/exports")
-    def export_evaluation_cases(request: ExportConfirmRequest) -> StreamingResponse:
-        try:
-            selections = export_tokens.verify_and_consume(request.preview_token)
-            content = require_evaluation().export_material(selections).content
-        except EvaluationError as exc:
-            evaluation_failure(exc)
-        return StreamingResponse(
-            iter((content,)),
-            media_type="application/x-ndjson",
-            headers={
-                "Cache-Control": "no-store",
-                "Content-Disposition": 'attachment; filename="cleanup-evaluation.jsonl"',
-            },
-        )
 
     def target_or_404(target_id: str) -> TargetRecord:
         try:

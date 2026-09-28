@@ -54,11 +54,10 @@ are outside this contract.
 
 The browser cannot create, migrate, repair, or approve an evidence package.
 External administration creates the package at the exact absolute external
-directory configured by `LOCAL_TEXT_EVIDENCE_PACKAGE_DIRECTORY`; that setting
-is independent of `LOCAL_TEXT_EVALUATION_DATA_DIRECTORY`. Creation establishes
-opaque participant and package identities, package and collection-contract
-versions, creation time, owner-only permissions, and the participant ownership
-boundary.
+directory configured by `LOCAL_TEXT_EVIDENCE_PACKAGE_DIRECTORY`. Creation
+establishes opaque participant and package identities, package and
+collection-contract versions, creation time, owner-only permissions, and the
+participant ownership boundary.
 
 Approval of the exact manifest is the package owner's informed acceptance of
 the participant binding and the versioned collection, privacy, permitted-use,

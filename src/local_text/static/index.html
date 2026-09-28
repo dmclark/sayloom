@@ -87,11 +87,6 @@
             <span class="utility-rail-icon" aria-hidden="true">◎</span>
             <span class="utility-rail-label">Settings</span>
           </button>
-          <button id="nav-evaluation" class="utility-rail-item" type="button">
-            <span class="utility-rail-index" aria-hidden="true">03</span>
-            <span class="utility-rail-icon" aria-hidden="true">◇</span>
-            <span class="utility-rail-label">Evaluation</span>
-          </button>
         </nav>
 
         <section class="workspace" aria-label="Text cleanup workspace">
@@ -238,15 +233,7 @@
             </div>
             <footer class="panel-footer">
               <span><strong id="prepared-count">0</strong> characters</span>
-              <div class="panel-footer-actions">
-                <span id="model-label">Gemini</span>
-                <button
-                  id="save-evaluation-case"
-                  class="button button-quiet"
-                  type="button"
-                  disabled
-                >Save evaluation case</button>
-              </div>
+              <span id="model-label">Gemini</span>
             </footer>
           </article>
         </section>
@@ -381,32 +368,6 @@
           </dialog>
         </section>
 
-        <section
-          id="evaluation-manager"
-          class="evaluation-manager"
-          aria-labelledby="evaluation-title"
-          hidden
-        >
-          <div class="evaluation-sheet">
-            <header class="setup-heading">
-              <div>
-                <span class="eyebrow">Private local corpus</span>
-                <h2 id="evaluation-title">Cleanup evaluation</h2>
-              </div>
-              <button id="refresh-evaluation" class="button button-quiet" type="button">Refresh</button>
-            </header>
-            <p class="setup-intro">
-              Only cases you explicitly confirm are stored. Cases expire 90 days after saving.
-            </p>
-            <p id="evaluation-status" class="evaluation-status" role="status" aria-live="polite"></p>
-            <div id="evaluation-case-list" class="evaluation-case-list" role="list" aria-label="Evaluation cases"></div>
-            <footer class="evaluation-actions">
-              <button id="preview-evaluation-export" class="button" type="button" disabled>
-                Export selected
-              </button>
-            </footer>
-          </div>
-        </section>
       </div>
 
       <section id="workspace-outgoing" class="outgoing-region" aria-label="Outgoing text state">
@@ -442,8 +403,8 @@
       </div>
     </dialog>
 
-    <dialog id="evidence-attestation-dialog" class="evaluation-dialog" aria-labelledby="evidence-attestation-title">
-      <form id="evidence-attestation-form" class="evaluation-dialog-sheet">
+    <dialog id="evidence-attestation-dialog" class="evidence-dialog" aria-labelledby="evidence-attestation-title">
+      <form id="evidence-attestation-form" class="evidence-dialog-sheet">
         <header class="error-sheet-header">
           <div>
             <span class="eyebrow">Fresh session attestation</span>
@@ -455,16 +416,16 @@
           <input id="evidence-source-attestation" type="checkbox" required>
           <span>I attest that cases collected in this browser session are actual primary-user Voiceitt-generated English.</span>
         </label>
-        <p id="evidence-attestation-status" class="evaluation-status" role="status" aria-live="polite"></p>
-        <div class="evaluation-dialog-actions">
+        <p id="evidence-attestation-status" class="evidence-status" role="status" aria-live="polite"></p>
+        <div class="evidence-dialog-actions">
           <button class="button button-primary" type="submit">Attest and arm</button>
           <button id="cancel-evidence-attestation-secondary" class="button button-quiet" type="button">Cancel</button>
         </div>
       </form>
     </dialog>
 
-    <dialog id="evidence-judgment-dialog" class="evaluation-dialog" aria-labelledby="evidence-judgment-title">
-      <form id="evidence-judgment-form" class="evaluation-dialog-sheet">
+    <dialog id="evidence-judgment-dialog" class="evidence-dialog" aria-labelledby="evidence-judgment-title">
+      <form id="evidence-judgment-form" class="evidence-dialog-sheet">
         <header class="error-sheet-header">
           <div>
             <span class="eyebrow">Before candidate preparation</span>
@@ -490,16 +451,16 @@
           <textarea id="evidence-intended-text" required maxlength="100000" readonly></textarea>
           <p class="evidence-intended-note">Editing Intended records the correct meaning; it does not replace Original or directly determine Prepared.</p>
         </div>
-        <p id="evidence-judgment-status" class="evaluation-status" role="status" aria-live="polite"></p>
-        <div class="evaluation-dialog-actions">
+        <p id="evidence-judgment-status" class="evidence-status" role="status" aria-live="polite"></p>
+        <div class="evidence-dialog-actions">
           <button class="button button-primary" type="submit">Confirm observation and prepare</button>
           <button id="cancel-evidence-judgment-secondary" class="button button-quiet" type="button">Cancel</button>
         </div>
       </form>
     </dialog>
 
-    <dialog id="evidence-failure-dialog" class="evaluation-dialog" aria-labelledby="evidence-failure-title">
-      <div class="evaluation-dialog-sheet">
+    <dialog id="evidence-failure-dialog" class="evidence-dialog" aria-labelledby="evidence-failure-title">
+      <div class="evidence-dialog-sheet">
         <header class="error-sheet-header">
           <div>
             <span class="eyebrow">Collection disarmed</span>
@@ -508,7 +469,7 @@
         </header>
         <p id="evidence-failure-message" role="alert"></p>
         <p>No candidate was exposed. Choose how to continue.</p>
-        <div class="evaluation-dialog-actions">
+        <div class="evidence-dialog-actions">
           <button id="retry-evidence-collection" class="button button-primary" type="button">Retry collection</button>
           <button id="continue-without-evidence" class="button" type="button">Use without collecting</button>
           <button id="cancel-evidence-recovery" class="button button-quiet" type="button">Cancel</button>
@@ -516,101 +477,5 @@
       </div>
     </dialog>
 
-    <dialog id="evaluation-capture-dialog" class="evaluation-dialog" aria-labelledby="evaluation-capture-title">
-      <form id="evaluation-capture-form" class="evaluation-dialog-sheet">
-        <header class="error-sheet-header">
-          <div>
-            <span class="eyebrow">Explicit confirmation</span>
-            <h2 id="evaluation-capture-title">Save evaluation case</h2>
-          </div>
-          <button id="cancel-evaluation-capture" class="dialog-close" type="button" aria-label="Cancel saving evaluation case">×</button>
-        </header>
-        <p>This case is stored in the configured external local evaluation directory for polished-cleanup evaluation only. Default expiry is exactly 90 days after saving.</p>
-        <label for="evaluation-source-category">Source category</label>
-        <select id="evaluation-source-category" required>
-          <option value="">Choose a category</option>
-          <option value="dictation">Dictation</option>
-          <option value="typed">Typed</option>
-          <option value="pasted">Pasted</option>
-          <option value="unknown">Unknown</option>
-        </select>
-        <label for="evaluation-source-text">Source</label>
-        <textarea id="evaluation-source-text" readonly></textarea>
-        <label for="evaluation-provider-output">Provider output</label>
-        <textarea id="evaluation-provider-output" readonly></textarea>
-        <label for="evaluation-expected-cleanup">Expected cleanup</label>
-        <textarea id="evaluation-expected-cleanup" required maxlength="100000"></textarea>
-        <dl class="evaluation-context">
-          <dt>Provider and model</dt><dd id="evaluation-provider-context"></dd>
-          <dt>Prompt context</dt><dd id="evaluation-prompt-context"></dd>
-        </dl>
-        <div class="evaluation-consent">
-          <strong>Saving this case does not consent to model training or personalization.</strong>
-          <p>Confirming saves only this reviewed case with its cleanup context and consent record.</p>
-        </div>
-        <p id="evaluation-capture-status" class="evaluation-status" role="status" aria-live="polite"></p>
-        <div class="evaluation-dialog-actions">
-          <button class="button button-primary" type="submit">Confirm and save</button>
-          <button id="cancel-evaluation-capture-secondary" class="button button-quiet" type="button">Cancel</button>
-        </div>
-      </form>
-    </dialog>
-
-    <dialog id="evaluation-review-dialog" class="evaluation-dialog" aria-labelledby="evaluation-review-title">
-      <div class="evaluation-dialog-sheet">
-        <header class="error-sheet-header">
-          <div>
-            <span class="eyebrow">Explicit review</span>
-            <h2 id="evaluation-review-title">Evaluation case</h2>
-          </div>
-          <button id="close-evaluation-review" class="dialog-close" type="button" aria-label="Close evaluation case review">×</button>
-        </header>
-        <dl id="evaluation-review-metadata" class="evaluation-context"></dl>
-        <label for="evaluation-review-source">Source</label>
-        <textarea id="evaluation-review-source" readonly></textarea>
-        <label for="evaluation-review-provider-output">Provider output</label>
-        <textarea id="evaluation-review-provider-output" readonly></textarea>
-        <label for="evaluation-review-expected">Expected cleanup</label>
-        <textarea id="evaluation-review-expected" readonly></textarea>
-        <section class="evaluation-retention" aria-labelledby="evaluation-retention-title">
-          <h3 id="evaluation-retention-title">Retention</h3>
-          <form id="evaluation-expiry-form">
-            <label for="evaluation-earlier-expiry">Shorten expiry (UTC)</label>
-            <input id="evaluation-earlier-expiry" type="datetime-local" required>
-            <button class="button" type="submit">Shorten expiry</button>
-          </form>
-          <form id="evaluation-hold-form">
-            <label for="evaluation-benchmark-id">One benchmark ID</label>
-            <input id="evaluation-benchmark-id" maxlength="128" pattern="[A-Za-z0-9][A-Za-z0-9._:\-]{0,127}" required>
-            <label for="evaluation-benchmark-release">Fixed release (UTC)</label>
-            <input id="evaluation-benchmark-release" type="datetime-local" required>
-            <button class="button" type="submit">Confirm benchmark hold</button>
-          </form>
-        </section>
-        <p id="evaluation-review-status" class="evaluation-status" role="status" aria-live="polite"></p>
-        <button id="delete-evaluation-case" class="button button-danger" type="button">Delete now</button>
-      </div>
-    </dialog>
-
-    <dialog id="evaluation-export-dialog" class="evaluation-dialog" aria-labelledby="evaluation-export-title">
-      <div class="evaluation-dialog-sheet">
-        <header class="error-sheet-header">
-          <div>
-            <span class="eyebrow">Sensitive local export</span>
-            <h2 id="evaluation-export-title">Export preview</h2>
-          </div>
-          <button id="cancel-evaluation-export" class="dialog-close" type="button" aria-label="Cancel evaluation export">×</button>
-        </header>
-        <p id="evaluation-export-warning" class="evaluation-consent"></p>
-        <dl id="evaluation-export-metadata" class="evaluation-context"></dl>
-        <p id="evaluation-export-status" class="evaluation-status" role="status" aria-live="polite"></p>
-        <div class="evaluation-dialog-actions">
-          <button id="confirm-evaluation-export" class="button button-primary" type="button">
-            Choose destination and export
-          </button>
-          <button id="cancel-evaluation-export-secondary" class="button button-quiet" type="button">Cancel</button>
-        </div>
-      </div>
-    </dialog>
   </body>
 </html>
