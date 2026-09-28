@@ -61,11 +61,12 @@ reporting. It is evaluation-only and is not imported by the application
 runtime. The earlier fixed eight-arm Smart benchmark remains historical
 scaffolding, not the prototype acceptance protocol.
 
-The repository also implements a separate source-preserving Cleanup corpus,
-benchmark, and canary system. No private evaluation run is documented. Its
-contract and evidence cannot be migrated or reinterpreted for this prototype;
-that system is scheduled for removal before the fresh participant package is
-used.
+The obsolete source-preserving Cleanup benchmark and canary toolchain has been
+removed, and its protocol artifacts are historical and non-operational. No
+private evaluation run is documented, and no legacy observation was migrated.
+The provider-neutral automatic-strategy harness remains the independent Smart
+evaluation contract; archived Cleanup protocols and evidence cannot be
+reinterpreted for this prototype.
 
 The latest external Smart evidence audit reported zero eligible and zero
 held-out cases, no required-strata coverage, and no observed-use weights. This
@@ -280,7 +281,7 @@ pilot starts.
 | Stage | Observable exit criteria |
 | --- | --- |
 | 1. Freeze initial Cleanup | Revised #112 defines account-independent lexical eligibility and abstention, then focused child work implements the smallest viable baseline. |
-| 2. Remove the obsolete evaluation path | The old source-preserving corpus, benchmark, and canary leave the current tree without changing ordinary Cleanup. No legacy observation migrates. |
+| 2. Retire the obsolete benchmark path | Completed: the old source-preserving benchmark and canary toolchain left the current tree without changing ordinary Cleanup or migrating a legacy observation. Separate capture, storage, API, UI, and migration removal remains outside this stage. |
 | 3. Accumulate and review fresh evidence | Armed collection writes verified observations to the participant package. Private review derives Cleanup targets, freezes shared related-case grouping and partitions, and prepares both evaluation views. |
 | 4. Qualify Cleanup | The expanded Cleanup baseline passes its frozen account-independent qualification; otherwise Conservative remains the baseline and Smart comparison stops. |
 | 5. Audit Smart evidence | An exploratory milestone of at least 50 eligible cases precedes candidate work but supports no efficacy claim. A content-free audit later proves all required Smart strata and at least 200 eligible held-out cases. |

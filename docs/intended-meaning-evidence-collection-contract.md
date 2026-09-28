@@ -353,10 +353,11 @@ be used in development or evaluation. Review, classification, coverage,
 grouping, and partition progress belong to a separate local private-review
 workflow, not the collector page.
 
-The superseded Smart **Correct and add example** path and the obsolete
-source-preserving Cleanup evaluation system are separate removal work. No data
-from either path migrates into a participant package. Any disposition of
-external private data requires separate verification and authorization.
+The obsolete source-preserving Cleanup benchmark and canary toolchain has been
+removed without migrating data into a participant package. The superseded Smart
+**Correct and add example** path and the remaining obsolete Cleanup capture and
+storage surfaces are separate removal work. Any disposition of external private
+data requires separate verification and authorization.
 
 ## Evaluation views and participant expansion
 

@@ -68,6 +68,9 @@ itself rather than being duplicated here.
 | [Correction benchmark pipeline](archive/correction-benchmark-pipeline.md) | Fixed eight-arm Smart scaffold; superseded for prototype acceptance by the automatic-strategy specification, map, and harness. |
 | [Cleanup resilience and local evaluation design](archive/cleanup-resilience-evaluation.md) | Abandoned source-preserving corpus and benchmark path; the current evaluation model is defined by the product contract, prototype specification, evidence contract, and evaluation map. |
 | [Cleanup benchmark protocol version 1](archive/cleanup-evaluation-benchmark-v1.json) | Historical machine-readable artifact from the abandoned source-preserving evaluation path. |
+| [Cleanup benchmark protocol version 2](archive/cleanup-evaluation-benchmark-v2.json) | Historical machine-readable protocol from the retired benchmark and canary toolchain; non-operational. |
+| [Cleanup evaluation corpus contract](archive/cleanup-evaluation-corpus-contract.md) | Historical contract retained for provenance after its benchmark consumers were removed; non-operational. |
+| [Cleanup evaluation successor protocol](archive/cleanup-evaluation-successor-protocol.md) | Historical narrative protocol from the retired benchmark and canary toolchain; non-operational. |
 | [Product roadmap](archive/roadmap.md) | `PRODUCT.md` and the current evaluation/prototype map. |
 | [UX shape plan](archive/shape-plan.md) | `PRODUCT.md`; retained as historical UX evidence. |
 | [Transcript fidelity specification](archive/transcript-fidelity-spec.md) | `PRODUCT.md`; retained as historical research evidence. |

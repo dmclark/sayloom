@@ -63,7 +63,7 @@ partitions and confidence analysis. A pooled case score alone is insufficient.
 | ---: | --- | --- |
 | 0 | **Current implementation recorded** | Conservative source-preserving preparation remains the incomplete Cleanup implementation. The current single-method Smart path is not the evidence-selected automatic strategy. |
 | 1 | **Initial Cleanup contract frozen** | Revised [#112](https://github.com/dmclark/sayloom/issues/112) defines spelling and contextually obvious misrecognition eligibility, mandatory abstention boundaries, and separate implementation and evaluation work. |
-| 2 | **Obsolete evaluation system removed** | The unoperated source-preserving Cleanup corpus, benchmark, and canary implementation and its dedicated interfaces, tests, migrations, and documentation leave the current tree without changing ordinary Cleanup processing. Any external private-data disposition is separately verified and authorized. |
+| 2 | **Obsolete benchmark toolchain removed** | The unoperated source-preserving Cleanup benchmark and canary entry points, dedicated tests, and operating documentation have left the current tree without changing ordinary Cleanup processing or migrating private data. Capture, storage, API, UI, and migration removal remains separate work, and any external private-data disposition requires separate verification and authorization. |
 | 3 | **Fresh participant package ready** | Prospective collection writes no migrated legacy observations. Private review can derive Cleanup targets, classify both views, group related cases, and freeze global partitions. |
 | 4 | **Cleanup baseline qualified** | The expanded account-independent Cleanup implementation passes its frozen evaluation. Failure leaves Conservative as the actual baseline and blocks Smart comparison. |
 | 5 | **Smart evidence ready** | The initial single-participant package satisfies the frozen Smart strata, observed-use weights, and held-out minimum without weakening profile-dependent or abstention coverage. |
@@ -99,11 +99,12 @@ be implemented from their current `ready-for-agent` briefs.
 
 ## Superseded evaluation path
 
-The source-preserving Cleanup corpus, benchmark, and canary were implemented in
-code and tests, but no private evaluation run is documented. Their contract
-cannot be widened or their evidence reinterpreted for the new Cleanup and Smart
-model. They are scheduled for removal rather than migration; Git history keeps
-their provenance. The historical fixed-arm Smart scaffold likewise remains
+The source-preserving Cleanup benchmark and canary toolchain was removed without
+migration, and no private evaluation run is documented. Its archived contracts
+cannot be widened or its evidence reinterpreted for the new Cleanup and Smart
+model. Git history and the documentation archive keep its provenance. Separate
+capture, storage, API, UI, and migration surfaces remain outside that completed
+removal. The historical fixed-arm Smart scaffold likewise remains
 non-authoritative for prototype acceptance.
 
 The correction-mode ADR and product implementation plan remain useful for
