@@ -77,7 +77,6 @@
     workspaceOutgoing: document.querySelector("#workspace-outgoing"),
     navWorkspace: document.querySelector("#nav-workspace"),
     navSettings: document.querySelector("#nav-settings"),
-    navEvaluation: document.querySelector("#nav-evaluation"),
     settingsManager: document.querySelector("#settings-manager"),
     targetList: document.querySelector("#target-list"),
     targetAddItem: document.querySelector("#target-add-item"),
@@ -128,43 +127,6 @@
     retryEvidenceCollection: document.querySelector("#retry-evidence-collection"),
     continueWithoutEvidence: document.querySelector("#continue-without-evidence"),
     cancelEvidenceRecovery: document.querySelector("#cancel-evidence-recovery"),
-    saveEvaluationCase: document.querySelector("#save-evaluation-case"),
-    evaluationManager: document.querySelector("#evaluation-manager"),
-    evaluationStatus: document.querySelector("#evaluation-status"),
-    evaluationCaseList: document.querySelector("#evaluation-case-list"),
-    refreshEvaluation: document.querySelector("#refresh-evaluation"),
-    previewEvaluationExport: document.querySelector("#preview-evaluation-export"),
-    evaluationCaptureDialog: document.querySelector("#evaluation-capture-dialog"),
-    evaluationCaptureForm: document.querySelector("#evaluation-capture-form"),
-    evaluationSourceCategory: document.querySelector("#evaluation-source-category"),
-    evaluationSourceText: document.querySelector("#evaluation-source-text"),
-    evaluationProviderOutput: document.querySelector("#evaluation-provider-output"),
-    evaluationExpectedCleanup: document.querySelector("#evaluation-expected-cleanup"),
-    evaluationProviderContext: document.querySelector("#evaluation-provider-context"),
-    evaluationPromptContext: document.querySelector("#evaluation-prompt-context"),
-    evaluationCaptureStatus: document.querySelector("#evaluation-capture-status"),
-    cancelEvaluationCapture: document.querySelector("#cancel-evaluation-capture"),
-    cancelEvaluationCaptureSecondary: document.querySelector("#cancel-evaluation-capture-secondary"),
-    evaluationReviewDialog: document.querySelector("#evaluation-review-dialog"),
-    evaluationReviewMetadata: document.querySelector("#evaluation-review-metadata"),
-    evaluationReviewSource: document.querySelector("#evaluation-review-source"),
-    evaluationReviewProviderOutput: document.querySelector("#evaluation-review-provider-output"),
-    evaluationReviewExpected: document.querySelector("#evaluation-review-expected"),
-    evaluationReviewStatus: document.querySelector("#evaluation-review-status"),
-    closeEvaluationReview: document.querySelector("#close-evaluation-review"),
-    evaluationExpiryForm: document.querySelector("#evaluation-expiry-form"),
-    evaluationEarlierExpiry: document.querySelector("#evaluation-earlier-expiry"),
-    evaluationHoldForm: document.querySelector("#evaluation-hold-form"),
-    evaluationBenchmarkId: document.querySelector("#evaluation-benchmark-id"),
-    evaluationBenchmarkRelease: document.querySelector("#evaluation-benchmark-release"),
-    deleteEvaluationCase: document.querySelector("#delete-evaluation-case"),
-    evaluationExportDialog: document.querySelector("#evaluation-export-dialog"),
-    evaluationExportWarning: document.querySelector("#evaluation-export-warning"),
-    evaluationExportMetadata: document.querySelector("#evaluation-export-metadata"),
-    evaluationExportStatus: document.querySelector("#evaluation-export-status"),
-    confirmEvaluationExport: document.querySelector("#confirm-evaluation-export"),
-    cancelEvaluationExport: document.querySelector("#cancel-evaluation-export"),
-    cancelEvaluationExportSecondary: document.querySelector("#cancel-evaluation-export-secondary"),
   };
 
   let status = "unchanged";
@@ -208,11 +170,6 @@
   let frozenEvidence = null;
   let evidenceRecovery = null;
   let evidenceCancellation = Promise.resolve();
-  let evaluationAvailable = false;
-  let currentEvaluation = null;
-  let evaluationCases = [];
-  let reviewedEvaluationCase = null;
-  let evaluationExportPreview = null;
   const errors = { cleanup: null, publication: null };
   const browserSessionId = globalThis.crypto?.randomUUID?.()
     || `00000000-0000-4000-8000-${String(Math.random()).slice(2).padEnd(12, "0").slice(0, 12)}`;
@@ -629,11 +586,6 @@
     elements.publication.hidden = nextState !== "error";
   }
 
-  function invalidateEvaluationCapture() {
-    currentEvaluation = null;
-    elements.saveEvaluationCase.disabled = true;
-  }
-
   function renderCleanupConfiguration(configuration) {
     const routes = Array.isArray(configuration?.routes) ? configuration.routes : [];
     const disclosure = configuration?.disclosure || {};
@@ -979,7 +931,6 @@
     setCleanupError(null);
     clearCleanupAttempts();
     invalidateSmartRepairReview();
-    invalidateEvaluationCapture();
 
     const originalText = elements.original.value;
     const requestDraftRevision = draftRevision;
@@ -1124,28 +1075,6 @@
       } else {
         setCleanupError(null);
       }
-      if (
-        evaluationAvailable
-        && !evidenceLease
-        && ["prepared", "unchanged"].includes(result.status)
-        && result.evaluation
-        && typeof result.evaluation.capture_proof === "string"
-        && Array.isArray(result.attempts)
-      ) {
-        currentEvaluation = {
-          sourceText: originalText,
-          providerOutput: result.prepared_text,
-          provider: result.provider,
-          model: result.model,
-          attempts: result.attempts.map((attempt) => {
-            const safeAttempt = { ...attempt };
-            delete safeAttempt.quota_group_id;
-            return safeAttempt;
-          }),
-          context: result.evaluation,
-        };
-        elements.saveEvaluationCase.disabled = false;
-      }
       restoreOriginalSelection(selection);
     } catch (error) {
       if (
@@ -1176,7 +1105,6 @@
     setCleanupError(null);
     clearCleanupAttempts();
     invalidateSmartRepairReview();
-    invalidateEvaluationCapture();
     if (evidenceLease && evidenceReceipt?.originalText !== elements.original.value) {
       abortActiveRequest();
       setStatus("waiting");
@@ -1252,7 +1180,6 @@
     draftRevision += 1;
     draftModeOverridden = true;
     invalidateSmartRepairReview();
-    invalidateEvaluationCapture();
     elements.prepared.value = "";
     elements.prepared.dataset.repairCount = "0";
     originalOutgoingOverride = false;
@@ -1343,7 +1270,6 @@
     currentOriginalText = "";
     setExplicitSmartState("hidden");
     invalidateSmartRepairReview();
-    invalidateEvaluationCapture();
     elements.original.value = "";
     elements.prepared.value = "";
     elements.prepared.dataset.repairCount = "0";
@@ -1470,7 +1396,6 @@
     elements.prepared.value = "";
     originalOutgoingOverride = true;
     invalidateSmartRepairReview();
-    invalidateEvaluationCapture();
     setCleanupError(null);
     setStatus("waiting");
     schedulePublication();
@@ -1582,7 +1507,6 @@
       invalidateSmartRepairReview();
       if (elements.original.value) setStatus("waiting");
       closeEvidenceAttestation();
-      invalidateEvaluationCapture();
       renderEvidenceCollection();
       schedulePublication();
       const retry = evidenceRecovery;
@@ -1833,361 +1757,6 @@
 
   narrowWorkspace.addEventListener("change", renderWorkspaceLayout);
 
-  async function evaluationRequest(operation, url, options = {}) {
-    let response;
-    try {
-      response = await fetch(url, options);
-    } catch (_error) {
-      throw networkError(operation);
-    }
-    if (!response.ok) throw await safeHttpError(response, operation);
-    return readJson(response, operation);
-  }
-
-  function fillDefinitionList(list, fields) {
-    list.textContent = "";
-    fields.forEach(([label, value]) => {
-      const term = document.createElement("dt");
-      const description = document.createElement("dd");
-      term.textContent = label;
-      description.textContent = value;
-      list.append(term, description);
-    });
-  }
-
-  function clearEvaluationCaptureDialog() {
-    elements.evaluationSourceCategory.value = "";
-    elements.evaluationSourceText.value = "";
-    elements.evaluationProviderOutput.value = "";
-    elements.evaluationExpectedCleanup.value = "";
-    elements.evaluationProviderContext.textContent = "";
-    elements.evaluationPromptContext.textContent = "";
-    elements.evaluationCaptureStatus.textContent = "";
-  }
-
-  function closeEvaluationCapture() {
-    if (elements.evaluationCaptureDialog.open) elements.evaluationCaptureDialog.close();
-    clearEvaluationCaptureDialog();
-  }
-
-  function openEvaluationCapture() {
-    if (
-      !currentEvaluation
-      || currentEvaluation.sourceText !== elements.original.value
-      || currentEvaluation.providerOutput !== elements.prepared.value
-    ) {
-      invalidateEvaluationCapture();
-      return;
-    }
-    elements.evaluationSourceText.value = currentEvaluation.sourceText;
-    elements.evaluationProviderOutput.value = currentEvaluation.providerOutput;
-    elements.evaluationExpectedCleanup.value = currentEvaluation.providerOutput;
-    elements.evaluationProviderContext.textContent = `${currentEvaluation.provider} · ${currentEvaluation.model}`;
-    elements.evaluationPromptContext.textContent = `Prompt ${currentEvaluation.context.prompt_version_id} · ${currentEvaluation.context.prompt_content_sha256}`;
-    elements.evaluationCaptureDialog.showModal();
-    elements.evaluationSourceCategory.focus();
-  }
-
-  elements.saveEvaluationCase.addEventListener("click", openEvaluationCapture);
-  elements.cancelEvaluationCapture.addEventListener("click", closeEvaluationCapture);
-  elements.cancelEvaluationCaptureSecondary.addEventListener("click", closeEvaluationCapture);
-  elements.evaluationCaptureDialog.addEventListener("close", clearEvaluationCaptureDialog);
-  elements.evaluationCaptureForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    if (!currentEvaluation || !elements.evaluationCaptureForm.reportValidity()) return;
-    elements.evaluationCaptureStatus.textContent = "Saving confirmed case…";
-    const context = currentEvaluation.context;
-    const payload = {
-      contract_version: "cleanup-evaluation-corpus-v1",
-      capture_proof: context.capture_proof,
-      consent: {
-        version: "cleanup-evaluation-consent-v1",
-        scope: "polished-cleanup-evaluation-only",
-        confirmed: true,
-      },
-      source_category: elements.evaluationSourceCategory.value,
-      source_text: currentEvaluation.sourceText,
-      provider_output: currentEvaluation.providerOutput,
-      expected_cleanup: elements.evaluationExpectedCleanup.value,
-      cleanup: {
-        completed_at: context.completed_at,
-        provider: currentEvaluation.provider,
-        model: currentEvaluation.model,
-        attempts: currentEvaluation.attempts,
-        prompt_version_id: context.prompt_version_id,
-        prompt_content_sha256: context.prompt_content_sha256,
-        prompt_text: context.prompt_text,
-        cleanup_schema_version: context.cleanup_schema_version,
-      },
-    };
-    try {
-      const saved = await evaluationRequest("Evaluation save", "/api/evaluation/cases", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      invalidateEvaluationCapture();
-      closeEvaluationCapture();
-      elements.evaluationStatus.textContent = `Saved case ${saved.case_id}. Expires ${new Date(saved.expires_at).toLocaleString()}.`;
-      evaluationCases = [];
-    } catch (error) {
-      elements.evaluationCaptureStatus.textContent = `${error.message} ${error.retryAction}`;
-    }
-  });
-
-  function selectedEvaluationCases() {
-    return [...elements.evaluationCaseList.querySelectorAll("input[type=checkbox]:checked")]
-      .map((checkbox) => evaluationCases.find((item) => item.case_id === checkbox.value))
-      .filter(Boolean)
-      .map((item) => ({ case_id: item.case_id, revision: item.revision }));
-  }
-
-  function renderEvaluationCases() {
-    elements.evaluationCaseList.textContent = "";
-    if (evaluationCases.length === 0) {
-      const empty = document.createElement("p");
-      empty.className = "target-list-empty";
-      empty.textContent = "No confirmed evaluation cases are available.";
-      elements.evaluationCaseList.append(empty);
-    }
-    evaluationCases.forEach((item) => {
-      const card = document.createElement("article");
-      const checkbox = document.createElement("input");
-      const review = document.createElement("button");
-      const identity = document.createElement("strong");
-      const context = document.createElement("span");
-      const expiry = document.createElement("span");
-      card.className = `evaluation-case-card${item.upcoming_expiry ? " is-upcoming" : ""}`;
-      card.setAttribute("role", "listitem");
-      checkbox.type = "checkbox";
-      checkbox.value = item.case_id;
-      checkbox.setAttribute("aria-label", `Select case ${item.case_id} for export`);
-      checkbox.addEventListener("change", () => {
-        elements.previewEvaluationExport.disabled = selectedEvaluationCases().length === 0;
-      });
-      review.type = "button";
-      review.setAttribute("aria-label", `Review evaluation case ${item.case_id}`);
-      identity.textContent = item.case_id;
-      context.textContent = `${titleCaseState(item.source_category)} · ${item.provider} · ${item.model}`;
-      expiry.textContent = item.hold
-        ? `Held for ${item.hold.benchmark_id} until ${new Date(item.hold.release_at).toLocaleString()}`
-        : `Expires ${new Date(item.expires_at).toLocaleString()}`;
-      review.append(identity, context, expiry);
-      review.addEventListener("click", () => reviewEvaluationCase(item.case_id));
-      card.append(checkbox, review);
-      elements.evaluationCaseList.append(card);
-    });
-    elements.previewEvaluationExport.disabled = true;
-  }
-
-  async function loadEvaluationCases() {
-    if (!evaluationAvailable) {
-      evaluationCases = [];
-      renderEvaluationCases();
-      elements.evaluationStatus.textContent = "Evaluation storage is not configured and current.";
-      return;
-    }
-    elements.evaluationStatus.textContent = "Loading evaluation metadata…";
-    try {
-      const result = await evaluationRequest("Evaluation case loading", "/api/evaluation/cases");
-      if (!result || !Array.isArray(result.cases)) {
-        throw malformedResponseError("Evaluation case loading", 200);
-      }
-      evaluationCases = result.cases;
-      renderEvaluationCases();
-      elements.evaluationStatus.textContent = `${evaluationCases.length} confirmed case${evaluationCases.length === 1 ? "" : "s"}.`;
-    } catch (error) {
-      elements.evaluationStatus.textContent = `${error.message} ${error.retryAction}`;
-    }
-  }
-
-  async function reviewEvaluationCase(caseId) {
-    elements.evaluationReviewStatus.textContent = "Loading explicit review…";
-    try {
-      reviewedEvaluationCase = await evaluationRequest(
-        "Evaluation case review",
-        `/api/evaluation/cases/${caseId}`,
-      );
-      fillDefinitionList(elements.evaluationReviewMetadata, [
-        ["Case ID", reviewedEvaluationCase.case_id],
-        ["Purpose", reviewedEvaluationCase.purpose],
-        ["Provider and model", `${reviewedEvaluationCase.provider} · ${reviewedEvaluationCase.model}`],
-        ["Captured", new Date(reviewedEvaluationCase.captured_at).toLocaleString()],
-        ["Expires", new Date(reviewedEvaluationCase.expires_at).toLocaleString()],
-        ["Hold", reviewedEvaluationCase.hold
-          ? `${reviewedEvaluationCase.hold.benchmark_id} until ${new Date(reviewedEvaluationCase.hold.release_at).toLocaleString()}`
-          : "None"],
-      ]);
-      elements.evaluationReviewSource.value = reviewedEvaluationCase.source_text;
-      elements.evaluationReviewProviderOutput.value = reviewedEvaluationCase.provider_output;
-      elements.evaluationReviewExpected.value = reviewedEvaluationCase.expected_cleanup;
-      elements.evaluationReviewStatus.textContent = "";
-      elements.evaluationReviewDialog.showModal();
-    } catch (error) {
-      elements.evaluationStatus.textContent = `${error.message} ${error.retryAction}`;
-    }
-  }
-
-  function closeEvaluationReview() {
-    reviewedEvaluationCase = null;
-    elements.evaluationReviewSource.value = "";
-    elements.evaluationReviewProviderOutput.value = "";
-    elements.evaluationReviewExpected.value = "";
-    elements.evaluationReviewStatus.textContent = "";
-    if (elements.evaluationReviewDialog.open) elements.evaluationReviewDialog.close();
-  }
-
-  elements.closeEvaluationReview.addEventListener("click", closeEvaluationReview);
-  elements.evaluationReviewDialog.addEventListener("close", () => {
-    reviewedEvaluationCase = null;
-    elements.evaluationReviewSource.value = "";
-    elements.evaluationReviewProviderOutput.value = "";
-    elements.evaluationReviewExpected.value = "";
-  });
-
-  async function changeReviewedRetention(payload) {
-    if (!reviewedEvaluationCase) return;
-    elements.evaluationReviewStatus.textContent = "Updating retention…";
-    try {
-      const updated = await evaluationRequest(
-        "Evaluation retention",
-        `/api/evaluation/cases/${reviewedEvaluationCase.case_id}/retention`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ revision: reviewedEvaluationCase.revision, ...payload }),
-        },
-      );
-      reviewedEvaluationCase.revision = updated.revision;
-      reviewedEvaluationCase.expires_at = updated.expires_at;
-      reviewedEvaluationCase.hold = updated.hold;
-      elements.evaluationReviewStatus.textContent = "Retention updated.";
-      evaluationCases = [];
-    } catch (error) {
-      elements.evaluationReviewStatus.textContent = `${error.message} ${error.retryAction}`;
-    }
-  }
-
-  elements.evaluationExpiryForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    if (!elements.evaluationExpiryForm.reportValidity()) return;
-    changeReviewedRetention({ expires_at: `${elements.evaluationEarlierExpiry.value}:00Z` });
-  });
-  elements.evaluationHoldForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    if (!elements.evaluationHoldForm.reportValidity()) return;
-    changeReviewedRetention({
-      benchmark_id: elements.evaluationBenchmarkId.value,
-      release_at: `${elements.evaluationBenchmarkRelease.value}:00Z`,
-    });
-  });
-  elements.deleteEvaluationCase.addEventListener("click", async () => {
-    if (!reviewedEvaluationCase || !window.confirm(
-      `Delete evaluation case ${reviewedEvaluationCase.case_id} now? All text, consent, attempts, annotations, and holds will be deleted immediately.`,
-    )) return;
-    try {
-      await evaluationRequest(
-        "Evaluation deletion",
-        `/api/evaluation/cases/${reviewedEvaluationCase.case_id}`,
-        {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ revision: reviewedEvaluationCase.revision, confirmed: true }),
-        },
-      );
-      closeEvaluationReview();
-      await loadEvaluationCases();
-    } catch (error) {
-      elements.evaluationReviewStatus.textContent = `${error.message} ${error.retryAction}`;
-    }
-  });
-
-  function closeEvaluationExport() {
-    evaluationExportPreview = null;
-    elements.evaluationExportWarning.textContent = "";
-    elements.evaluationExportMetadata.textContent = "";
-    elements.evaluationExportStatus.textContent = "";
-    if (elements.evaluationExportDialog.open) elements.evaluationExportDialog.close();
-  }
-
-  elements.previewEvaluationExport.addEventListener("click", async () => {
-    const cases = selectedEvaluationCases();
-    if (cases.length === 0) return;
-    elements.evaluationStatus.textContent = "Preparing export preview…";
-    try {
-      evaluationExportPreview = await evaluationRequest(
-        "Evaluation export preview",
-        "/api/evaluation/exports/preview",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ cases }),
-        },
-      );
-      elements.evaluationExportWarning.textContent = evaluationExportPreview.warning;
-      fillDefinitionList(elements.evaluationExportMetadata, [
-        ["Cases", String(evaluationExportPreview.case_count)],
-        ["Fields", evaluationExportPreview.field_names.join(", ")],
-        ["Estimated UTF-8 bytes", String(evaluationExportPreview.total_bytes)],
-        ["Expiry range", `${new Date(evaluationExportPreview.minimum_expiry).toLocaleString()} — ${new Date(evaluationExportPreview.maximum_expiry).toLocaleString()}`],
-      ]);
-      elements.evaluationStatus.textContent = "";
-      elements.evaluationExportDialog.showModal();
-    } catch (error) {
-      elements.evaluationStatus.textContent = `${error.message} ${error.retryAction}`;
-    }
-  });
-
-  elements.cancelEvaluationExport.addEventListener("click", closeEvaluationExport);
-  elements.cancelEvaluationExportSecondary.addEventListener("click", closeEvaluationExport);
-  elements.evaluationExportDialog.addEventListener("close", () => {
-    evaluationExportPreview = null;
-    elements.evaluationExportWarning.textContent = "";
-    elements.evaluationExportMetadata.textContent = "";
-  });
-  elements.confirmEvaluationExport.addEventListener("click", async () => {
-    if (!evaluationExportPreview) return;
-    if (typeof window.showSaveFilePicker !== "function") {
-      elements.evaluationExportStatus.textContent = "This browser cannot require an explicit save destination. Export was not confirmed.";
-      return;
-    }
-    let destination;
-    try {
-      destination = await window.showSaveFilePicker({
-        suggestedName: "cleanup-evaluation.jsonl",
-        types: [{
-          description: "UTF-8 JSON Lines",
-          accept: { "application/x-ndjson": [".jsonl"] },
-        }],
-      });
-    } catch (error) {
-      if (error.name !== "AbortError") {
-        elements.evaluationExportStatus.textContent = "A private local destination could not be selected. Export was not confirmed.";
-      }
-      return;
-    }
-    elements.evaluationExportStatus.textContent = "Exporting to the selected private destination…";
-    try {
-      const response = await fetch("/api/evaluation/exports", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          preview_token: evaluationExportPreview.preview_token,
-          confirmed: true,
-        }),
-      });
-      if (!response.ok) throw await safeHttpError(response, "Evaluation export");
-      const writable = await destination.createWritable();
-      await writable.write(await response.arrayBuffer());
-      await writable.close();
-      closeEvaluationExport();
-      elements.evaluationStatus.textContent = "Export written to the selected private destination.";
-    } catch (error) {
-      elements.evaluationExportStatus.textContent = `${error.message || "The export could not be written."} ${error.retryAction || "Preview and retry the export."}`;
-    }
-  });
-  elements.refreshEvaluation.addEventListener("click", loadEvaluationCases);
-
   function titleCaseState(value) {
     return String(value || "not_verified")
       .replaceAll("_", " ")
@@ -2330,19 +1899,15 @@
 
   function showDestination(destination) {
     const settingsVisible = destination === "settings";
-    const evaluationVisible = destination === "evaluation";
-    const workspaceVisible = !settingsVisible && !evaluationVisible;
+    const workspaceVisible = !settingsVisible;
     elements.workspace.hidden = !workspaceVisible;
     elements.workspaceControls.hidden = !workspaceVisible;
     elements.workspaceOutgoing.hidden = !workspaceVisible;
     elements.settingsManager.hidden = !settingsVisible;
-    elements.evaluationManager.hidden = !evaluationVisible;
     elements.navWorkspace.classList.toggle("is-active", workspaceVisible);
     elements.navSettings.classList.toggle("is-active", settingsVisible);
-    elements.navEvaluation.classList.toggle("is-active", evaluationVisible);
     elements.navWorkspace.toggleAttribute("aria-current", workspaceVisible);
     elements.navSettings.toggleAttribute("aria-current", settingsVisible);
-    elements.navEvaluation.toggleAttribute("aria-current", evaluationVisible);
     if (!settingsVisible && elements.targetDialog.open) elements.targetDialog.close();
     if (settingsVisible && targetRecords.length === 0) {
       loadTargets().catch((error) => {
@@ -2355,7 +1920,6 @@
         renderTargetErrors(null);
       });
     }
-    if (evaluationVisible) loadEvaluationCases();
   }
 
   elements.navWorkspace.addEventListener("click", () => {
@@ -2364,11 +1928,6 @@
     showDestination("workspace");
   });
   elements.navSettings.addEventListener("click", () => showDestination("settings"));
-  elements.navEvaluation.addEventListener("click", () => {
-    if (!confirmDiscardTargetDraft()) return;
-    targetDirty = false;
-    showDestination("evaluation");
-  });
   elements.newTarget.addEventListener("click", () => {
     if (confirmDiscardTargetDraft()) populateTargetForm(null);
   });
@@ -2538,14 +2097,9 @@
       blockedEvidenceLease = null;
       evidenceReceipt = null;
       renderEvidenceCollection();
-      evaluationAvailable = config.evaluation_configuration?.available === true;
-      elements.evaluationStatus.textContent = evaluationAvailable
-        ? "Evaluation storage is configured and current."
-        : "Evaluation storage is not configured and current.";
 
       elements.prepared.value = "";
       invalidateSmartRepairReview();
-      invalidateEvaluationCapture();
       originalOutgoingOverride = false;
       setStatus(draftPreparationMode === "off" ? "disabled" : "unchanged");
       renderCountsAndSelection();

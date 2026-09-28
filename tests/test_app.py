@@ -30,7 +30,6 @@ def test_health_reports_development_profile(initialized_settings: Settings) -> N
     assert response.status_code == 200
     health = response.json()
     cleanup_configuration = health.pop("cleanup_configuration")
-    evaluation_configuration = health.pop("evaluation_configuration")
     evidence_collection = health.pop("evidence_collection")
     assert health == {
         "status": "ok",
@@ -47,8 +46,6 @@ def test_health_reports_development_profile(initialized_settings: Settings) -> N
     assert cleanup_configuration["available"] is False
     assert cleanup_configuration["routes"] == []
     assert cleanup_configuration["validation_error"] is None
-    assert evaluation_configuration["status"] == "unconfigured"
-    assert evaluation_configuration["available"] is False
     assert evidence_collection == {
         "ready": False,
         "reason": "unconfigured",
@@ -231,7 +228,7 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     )[1]
 
 
-def test_superseded_smart_capture_is_absent_but_cleanup_evaluation_remains(
+def test_obsolete_capture_interfaces_are_absent(
     initialized_settings: Settings,
 ) -> None:
     client = TestClient(create_app(initialized_settings))
@@ -239,7 +236,7 @@ def test_superseded_smart_capture_is_absent_but_cleanup_evaluation_remains(
     page = client.get("/")
     script = client.get("/static/app.js")
     configuration = client.get("/api/config")
-    removed_endpoint = client.post(
+    removed_smart_endpoint = client.post(
         "/api/correction-benchmark/examples",
         json={
             "original_text": "Synthetic original wording.",
@@ -250,10 +247,16 @@ def test_superseded_smart_capture_is_absent_but_cleanup_evaluation_remains(
     assert page.status_code == 200
     assert 'id="correct-and-add-example"' not in page.text
     assert 'id="benchmark-capture-dialog"' not in page.text
-    assert 'id="save-evaluation-case"' in page.text
+    assert 'id="save-evaluation-case"' not in page.text
+    assert 'id="evaluation-manager"' not in page.text
+    assert 'id="nav-evaluation"' not in page.text
     assert "/api/correction-benchmark/examples" not in script.text
+    assert "/api/evaluation" not in script.text
+    assert "evaluation_configuration" not in configuration.json()
     assert "correction_benchmark_configuration" not in configuration.json()
-    assert removed_endpoint.status_code == 404
+    assert removed_smart_endpoint.status_code == 404
+    assert client.get("/api/evaluation/cases").status_code == 404
+    assert client.post("/api/evaluation/cases", json={}).status_code == 404
 
 
 def test_status_errors_use_one_accessible_privacy_safe_dialog(
@@ -401,7 +404,6 @@ def test_config_reports_cleanup_without_exposing_key(initialized_settings: Setti
 
     configuration = response.json()
     cleanup_configuration = configuration.pop("cleanup_configuration")
-    evaluation_configuration = configuration.pop("evaluation_configuration")
     evidence_collection = configuration.pop("evidence_collection")
     assert configuration == {
         "display_name": "Sayloom Development",
@@ -417,7 +419,6 @@ def test_config_reports_cleanup_without_exposing_key(initialized_settings: Setti
         {"provider": "gemini", "model": "gemini-2.5-flash"},
     ]
     assert cleanup_configuration["paid_data_acknowledgement"] is None
-    assert evaluation_configuration["status"] == "unconfigured"
     assert evidence_collection["ready"] is False
     assert "not-a-real-key" not in response.text
 
@@ -510,6 +511,9 @@ def test_acknowledged_cross_provider_route_is_exact_sanitized_and_falls_back_onc
     assert "same current text and cleanup instruction" in cleanup_configuration["disclosure"][
         "fallback"
     ]
+    assert cleanup_configuration["disclosure"]["corpus"] == (
+        "Routine cleanup does not retain Original, Prepared, or provider payloads."
+    )
     assert result.json()["provider"] == "openai"
     assert result.json()["model"] == "gpt-5.6-luna"
     assert len(requests) == 2
@@ -1508,7 +1512,6 @@ const fetch = (url, options = {}) => {
   if (url === "/api/config") return Promise.resolve(response({
     preparation_default: "smart",
     cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
-    evaluation_configuration: { available: false },
   }));
   if (url === "/api/prompts") return Promise.resolve(response({
     versions: [], active_prompt_version_id: null,
@@ -1640,7 +1643,7 @@ const fetch = async (url, options = {}) => {
   if (url === "/api/config") return response({
     preparation_default: "conservative",
     cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
-    evidence_collection: { ready: false }, evaluation_configuration: { available: false },
+    evidence_collection: { ready: false },
   });
   if (url === "/api/preferences/preparation-default") {
     return response({ preparation_default: body.preparation_default });
@@ -1801,7 +1804,7 @@ const fetch = async (url, options = {}) => {
   if (url === "/api/config") return response({
     preparation_default: "smart",
     cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
-    evidence_collection: { ready: false }, evaluation_configuration: { available: false },
+    evidence_collection: { ready: false },
   });
   if (url === "/api/cleanup") {
     const body = JSON.parse(options.body);
@@ -2071,7 +2074,6 @@ const fetch = async (url, options = {}) => {
   if (url === "/api/config") return response({
     preparation_default: "smart",
     cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
-    evaluation_configuration: { available: false },
   });
   if (url === "/api/prompts") return response({ versions: [], active_prompt_version_id: null });
   if (url === "/api/outgoing-state") {
@@ -2341,7 +2343,7 @@ def test_configurable_workspace_uses_native_caret_and_accessible_controls(
     assert 'aria-valuemax="75"' in page.text
     assert 'class="panel-prompt-control"' not in page.text
     assert 'class="prepared-heading-actions"' in page.text
-    assert page.text.count('class="utility-rail-icon"') == 3
+    assert page.text.count('class="utility-rail-icon"') == 2
     assert 'setLayoutPreference("side-by-side")' in script.text
     assert 'aria-orientation", sideBySide ? "vertical" : "horizontal"' in script.text
     assert "ArrowLeft: sideBySide ? currentShare - 2" in script.text

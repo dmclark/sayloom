@@ -152,15 +152,6 @@ class CleanupAttempt(BaseModel):
     retry_after_seconds: int | None = None
 
 
-class EvaluationCaptureContext(BaseModel):
-    capture_proof: str
-    completed_at: str
-    prompt_version_id: int
-    prompt_content_sha256: str
-    prompt_text: str
-    cleanup_schema_version: str
-
-
 class TextSpan(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -191,15 +182,12 @@ class CleanupResult(BaseModel):
     error: SafeError | None = None
     attempts: list[CleanupAttempt] = Field(default_factory=list)
     lexical_repairs: list[LexicalRepair] | None = None
-    evaluation: EvaluationCaptureContext | None = None
 
     @model_serializer(mode="wrap")
-    def omit_absent_evaluation(self, handler: Any) -> dict[str, Any]:
+    def omit_absent_repairs(self, handler: Any) -> dict[str, Any]:
         serialized = handler(self)
         if self.lexical_repairs is None:
             serialized.pop("lexical_repairs", None)
-        if self.evaluation is None:
-            serialized.pop("evaluation", None)
         return serialized
 
 

@@ -109,28 +109,6 @@ scripts/dev.py evidence-package ready
 The browser has no package creation, migration, repair, or approval interface. Package artifacts use
 owner-only permissions, create-exclusive writes, and immediate reread/hash verification.
 
-## Private cleanup evaluation corpus
-
-Evaluation capture is disabled unless `LOCAL_TEXT_EVALUATION_DATA_DIRECTORY` names an absolute,
-user-owned external directory that is separate from the repository and application state. The
-evaluation database has its own migration chain and is never created, migrated, or expired during
-normal application startup. Configure the directory, then use only the explicit administration
-commands:
-
-```sh
-uv run python -m local_text.evaluation_admin schema
-uv run python -m local_text.evaluation_admin migrate
-uv run python -m local_text.evaluation_admin expire
-```
-
-The Workspace issues a short-lived process-bound capture proof only for a successful current
-cleanup. **Save evaluation case** opens a client-local review and writes nothing until **Confirm and
-save**. Confirmed cases expire after 90 days, support earlier expiry or one fixed benchmark hold,
-and can be reviewed or deleted immediately. Export requires a field/count/privacy preview followed
-by an explicit browser-selected local destination; it streams deterministic UTF-8 JSONL without
-recording a path or export event. Saving is for polished-cleanup evaluation only and is not consent
-to training or personalization.
-
 The provider-free [automatic-strategy evaluation harness](docs/automatic-strategy-evaluation-harness.md)
 is the current Smart evaluation contract. It supersedes the historical fixed
 2 × 2 × 2 [Smart correction benchmark scaffold](docs/archive/correction-benchmark-pipeline.md)
@@ -209,7 +187,7 @@ The Workspace's expandable **Cleanup route** disclosure and the sanitized
 status and provider/model order without credentials. Cross-provider cleanup sends
 the current text and cleanup instruction to paid Gemini. Only after a qualifying
 Gemini failure may it send the same current text and instruction to paid OpenAI.
-This processing does not save an evaluation corpus.
+Routine cleanup does not retain Original, Prepared, or provider payloads.
 
 Create the shared file with an editor so the credential does not enter shell
 history or command arguments:
@@ -229,7 +207,7 @@ remain exclusively bound by the selected state manifest.
 
 ## Durable prompt configuration
 
-SQLite in the external profile state directory is authoritative for the seeded prompt, immutable custom prompt versions, exact durable default selection, the cleanup default, target definitions and target-operation errors, seed state, and one-time import status. Workspace cleanup and Evidence Collection requests omit a page-session prompt override, so the server resolves the durable active prompt and returns its exact ID and content hash with cleanup and evaluation evidence. Every active prompt is wrapped in the fixed source-preserving product contract before it is sent to a provider, so neither a legacy seed nor a custom version can widen accepted output. Expanded prompt management is intentionally outside the Workspace surface.
+SQLite in the external profile state directory is authoritative for the seeded prompt, immutable custom prompt versions, exact durable default selection, the cleanup default, target definitions and target-operation errors, seed state, and one-time import status. Workspace cleanup and Evidence Collection requests omit a page-session prompt override, so the server resolves the durable active prompt and returns its exact ID and content hash. Every active prompt is wrapped in the fixed source-preserving product contract before it is sent to a provider, so neither a legacy seed nor a custom version can widen accepted output. Expanded prompt management is intentionally outside the Workspace surface.
 
 The **Settings** destination places the persisted default correction mode before durable target management. The saved correction default is snapshotted when the next Original begins; changing it does not reprocess or change the active draft. Conservative results offer a one-shot **Run Smart correction** action, while a Smart default runs automatically without a redundant action. Settings manages target definitions for Amp, iTerm, Supacode, and VS Code plus bounded user-authored targets. **Save definition** never installs. **Install/Regenerate command** explicitly writes one generated command to the configured Raycast Script Commands directory, and Disable/Remove state their command-removal consequences. Generated commands consume only the current outgoing-state API, never press Return, and leave hotkey assignment to Raycast and the user. Application and macOS permission state remains **Not verified** until it is exercised on the Mac that runs Raycast. The fixed **Dev: Open Sayloom** command and four fixed Gate 1 send commands remain available during managed-command verification.
 
