@@ -304,11 +304,7 @@ def create_app(
         application_database_path=runtime.resolved_database_path,
     )
     evaluation_store = EvaluationStore(evaluation.database) if evaluation.available else None
-    evidence = EvidenceCollection(
-        runtime.evaluation_data_directory / "intended-meaning-evidence"
-        if runtime.evaluation_data_directory is not None
-        else None
-    )
+    evidence = EvidenceCollection(runtime.evidence_package_directory)
     capture_proofs = CaptureProofs()
     export_tokens = ExportTokens()
     prompts = PromptStore(database)

@@ -4,6 +4,7 @@ import logging
 import os
 import stat
 import subprocess
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -289,6 +290,18 @@ def test_browser_has_no_package_administration_routes(initialized_settings) -> N
     ]
 
 
+def test_application_startup_does_not_create_or_write_evidence_package(
+    initialized_settings, tmp_path: Path
+) -> None:
+    package = tmp_path / "external-package"
+    settings = replace(initialized_settings, evidence_package_directory=package)
+
+    with TestClient(create_app(settings=settings)) as client:
+        assert client.get("/health").status_code == 200
+
+    assert not package.exists()
+
+
 def test_development_administration_uses_state_configuration_without_application_database(
     tmp_path: Path,
 ) -> None:
@@ -309,14 +322,18 @@ def test_development_administration_uses_state_configuration_without_application
     assert created_state.returncode == 0
     evaluation_directory = tmp_path / "evaluation-data"
     evaluation_directory.mkdir(mode=0o700)
+    package = evaluation_directory / "intended-meaning-evidence"
     environment_file = state_root / "selected/environment"
     environment_file.write_text(
-        f"LOCAL_TEXT_EVALUATION_DATA_DIRECTORY={evaluation_directory}\n"
+        f"LOCAL_TEXT_EVIDENCE_PACKAGE_DIRECTORY={package}\n"
     )
     environment_file.chmod(0o600)
-    package = evaluation_directory / "intended-meaning-evidence"
     database = tmp_path / "application-state.sqlite3"
-    environment = {**os.environ, "LOCAL_TEXT_DATABASE_PATH": str(database)}
+    environment = {
+        **os.environ,
+        "HOME": str(tmp_path / "synthetic-home"),
+        "LOCAL_TEXT_DATABASE_PATH": str(database),
+    }
     command = [
         str(REPOSITORY_ROOT / "scripts/dev.py"),
         "--state-root",

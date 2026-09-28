@@ -92,12 +92,12 @@ The local default is the `development` profile and displays **Sayloom Developmen
 
 ## External evidence package administration
 
-The evidence package lives in the `intended-meaning-evidence` child of the absolute, user-owned
-external directory configured by `LOCAL_TEXT_EVALUATION_DATA_DIRECTORY`, outside Git and
+The evidence package lives at the absolute, user-owned external directory configured by
+`LOCAL_TEXT_EVIDENCE_PACKAGE_DIRECTORY`, outside Git and
 application state. Only the explicit administration script can create or approve it. Create the
 package, then approve the exact manifest digest returned by that command; the readiness response is
 content-free and never returns the package path. The script reads
-`LOCAL_TEXT_EVALUATION_DATA_DIRECTORY` from this checkout's development environment file; it does
+`LOCAL_TEXT_EVIDENCE_PACKAGE_DIRECTORY` from this checkout's development environment file; it does
 not need to be exported in the invoking shell.
 
 ```sh
