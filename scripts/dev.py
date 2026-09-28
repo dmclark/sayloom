@@ -779,10 +779,10 @@ def db_command(state: State, arguments: argparse.Namespace) -> int:
 
 def evidence_package_command(state: State, arguments: argparse.Namespace) -> int:
     configuration = state_configuration(state)
-    evaluation_directory = configuration.get("LOCAL_TEXT_EVALUATION_DATA_DIRECTORY")
-    if not evaluation_directory:
-        fail("LOCAL_TEXT_EVALUATION_DATA_DIRECTORY is not configured")
-    package = Path(evaluation_directory) / "intended-meaning-evidence"
+    package_directory = configuration.get("LOCAL_TEXT_EVIDENCE_PACKAGE_DIRECTORY")
+    if not package_directory:
+        fail("LOCAL_TEXT_EVIDENCE_PACKAGE_DIRECTORY is not configured")
+    package = Path(package_directory)
     operation = arguments.evidence_package_command
     if operation == "create":
         return run_admin(state, "evidence-package-create", str(package))

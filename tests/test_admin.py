@@ -41,6 +41,9 @@ def run_dev(
     *arguments: str,
     environment: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    isolated_environment = dict(environment or os.environ)
+    if environment is None or isolated_environment.get("HOME") == os.environ.get("HOME"):
+        isolated_environment["HOME"] = str(state_root.parent / "synthetic-home")
     return subprocess.run(
         [
             str(REPOSITORY_ROOT / "scripts/dev.py"),
@@ -49,7 +52,7 @@ def run_dev(
             *arguments,
         ],
         cwd=REPOSITORY_ROOT,
-        env=environment,
+        env=isolated_environment,
         text=True,
         capture_output=True,
         check=False,
@@ -1036,8 +1039,10 @@ def test_runtime_environment_passes_supported_runtime_configuration(
     environment_path = config_root / "environment"
     environment_path.parent.mkdir(parents=True)
     evaluation_data_directory = tmp_path / "synthetic-evaluation-data"
+    evidence_package_directory = tmp_path / "synthetic-participant-package"
     environment_path.write_text(
         f"LOCAL_TEXT_EVALUATION_DATA_DIRECTORY={evaluation_data_directory}\n"
+        f"LOCAL_TEXT_EVIDENCE_PACKAGE_DIRECTORY={evidence_package_directory}\n"
         "LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS=18,12\n"
     )
     environment_path.chmod(0o600)
@@ -1087,6 +1092,9 @@ def test_runtime_environment_passes_supported_runtime_configuration(
 
     assert captured_environment["LOCAL_TEXT_EVALUATION_DATA_DIRECTORY"] == str(
         evaluation_data_directory
+    )
+    assert captured_environment["LOCAL_TEXT_EVIDENCE_PACKAGE_DIRECTORY"] == str(
+        evidence_package_directory
     )
     assert captured_environment["LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS"] == "18,12"
     assert captured_environment["LOCAL_TEXT_PROVIDER_TRAFFIC_DIAGNOSTICS_FILE"] == str(

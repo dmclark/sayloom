@@ -258,7 +258,7 @@ def test_withdrawal_uses_tombstone_and_invalidates_receipt(tmp_path: Path) -> No
 def test_confirmed_observation_is_verified_before_smart_receives_only_frozen_input(
     initialized_settings: Settings, tmp_path: Path
 ) -> None:
-    evaluation_directory, package = configured_package(tmp_path)
+    _evaluation_directory, package = configured_package(tmp_path)
     provider_calls: list[dict[str, object]] = []
 
     class Provider:
@@ -290,7 +290,7 @@ def test_confirmed_observation_is_verified_before_smart_receives_only_frozen_inp
                 elapsed_ms=1,
             )
 
-    settings = replace(initialized_settings, evaluation_data_directory=evaluation_directory)
+    settings = replace(initialized_settings, evidence_package_directory=package)
     service = CleanupService(provider=Provider(), model=Provider.model, timeout_seconds=1)
     with TestClient(create_app(settings, service)) as client:
         readiness = client.get("/api/config").json()["evidence_collection"]
@@ -372,8 +372,8 @@ def test_confirmed_observation_is_verified_before_smart_receives_only_frozen_inp
 def test_application_restart_discards_lease_and_receipt_and_requires_fresh_attestation(
     initialized_settings: Settings, tmp_path: Path
 ) -> None:
-    evaluation_directory, _package = configured_package(tmp_path)
-    settings = replace(initialized_settings, evaluation_data_directory=evaluation_directory)
+    _evaluation_directory, package = configured_package(tmp_path)
+    settings = replace(initialized_settings, evidence_package_directory=package)
     browser_session_id = str(uuid4())
 
     with TestClient(create_app(settings)) as first_client:
@@ -454,8 +454,8 @@ def test_application_restart_discards_lease_and_receipt_and_requires_fresh_attes
 def test_outgoing_state_requires_current_receipt_and_never_queues_delivery(
     initialized_settings: Settings, tmp_path: Path
 ) -> None:
-    evaluation_directory, _package = configured_package(tmp_path)
-    settings = replace(initialized_settings, evaluation_data_directory=evaluation_directory)
+    _evaluation_directory, package = configured_package(tmp_path)
+    settings = replace(initialized_settings, evidence_package_directory=package)
     client = TestClient(create_app(settings))
     browser_session_id = str(uuid4())
     client.get("/api/config", headers={"X-Evidence-Browser-Session": browser_session_id})
@@ -527,8 +527,8 @@ def test_outgoing_state_requires_current_receipt_and_never_queues_delivery(
 def test_stale_config_reload_cannot_disarm_a_newer_browser_lease(
     initialized_settings: Settings, tmp_path: Path
 ) -> None:
-    evaluation_directory, _package = configured_package(tmp_path)
-    settings = replace(initialized_settings, evaluation_data_directory=evaluation_directory)
+    _evaluation_directory, package = configured_package(tmp_path)
+    settings = replace(initialized_settings, evidence_package_directory=package)
     client = TestClient(create_app(settings))
     first_session = str(uuid4())
     first_lease = client.post(
