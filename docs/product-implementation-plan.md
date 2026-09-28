@@ -280,8 +280,9 @@ or weakening privacy and fail-open guarantees.
   specification and issue #46 graph.
 - Treat issues #14 and #15 as superseded fixed-arm history; compatible isolated
   mechanics moved to the automatic-strategy harness and evidence path.
-- Keep the cleanup benchmark runner, corpus, protocol, and evidence separate;
-  none validates Smart correction.
+- Keep the provider-neutral automatic-strategy harness and its approved evidence
+  independent of the retired Cleanup benchmark and archived protocols; neither
+  archived Cleanup material nor any legacy observation validates Smart correction.
 - Apply the frozen prototype thresholds for intended-text accuracy, harmful
   corrections, manual-edit reduction, latency, and fail-open reliability.
 - Run one dedicated integration and release-verification phase after all

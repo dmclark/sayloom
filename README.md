@@ -134,8 +134,9 @@ to training or personalization.
 The provider-free [automatic-strategy evaluation harness](docs/automatic-strategy-evaluation-harness.md)
 is the current Smart evaluation contract. It supersedes the historical fixed
 2 × 2 × 2 [Smart correction benchmark scaffold](docs/archive/correction-benchmark-pipeline.md)
-for prototype acceptance. Neither harness is the cleanup runner, and cleanup
-evidence does not validate Smart correction or authorize a private run.
+for prototype acceptance. It remains independent of the retired Cleanup
+benchmark toolchain; archived Cleanup evidence does not validate Smart
+correction or authorize a private run.
 
 When the externally administered intended-meaning package is approved and ready, the Workspace can
 arm **Evidence Collection** after a fresh Voiceitt-source attestation. Arming lasts only for that
@@ -154,92 +155,6 @@ added wording, substitutions, duplication, reordering, and word removal are
 rejected locally and fail open to Original. Configured prompt
 versions provide guidance only within this fixed boundary; broader grammar,
 tone, or wording rewriting is not a current cleanup mode.
-
-The purpose-built cleanup benchmark can freeze that shipped execution contract
-without loading application state, credentials, corpus text, or provider clients. It reads the
-exact configured prompt bytes from standard input and writes canonical JSON containing the prompt,
-framing, schema, validator, output-cap, provider-request, and dependency-lock bytes and hashes:
-
-```sh
-uv run python -m local_text.cleanup_contract \
-  --configured-prompt-id PROMPT_ID < configured-prompt.txt > cleanup-contract.json
-```
-
-The snapshot command does not run the benchmark or authorize provider calls.
-
-The separate synthetic-smoke gate accepts a frozen registration containing that contract,
-per-arm conservative request bounds and integer-micro pricing, the 120-call quota reservation,
-isolated-environment attestations, and official provider evidence retrieved within 24 hours. It
-refuses a dirty or mismatched checkout, insecure or repository-local output storage, ordinary app
-credentials or state configuration, stale evidence, and missing dedicated benchmark credentials.
-Every attempt needs a distinct registered suite ID and matching output path; a failed or interrupted
-suite cannot be resumed selectively.
-
-Even with a valid registration, live traffic requires the explicit command flag and separate human
-approval. The command uses only `LOCAL_TEXT_BENCHMARK_GEMINI_API_KEY` and
-`LOCAL_TEXT_BENCHMARK_OPENAI_API_KEY`; it never falls back to application credentials:
-
-```sh
-uv run python -m local_text.cleanup_evaluation_smoke \
-  --registration /isolated/input/smoke-registration.json \
-  --output /isolated/output/<registered-suite-id>.json \
-  --authorize-live-smoke
-```
-
-The mode-`0600` disposition stores only safe identifiers, hashes, call metadata, integer USD
-micros, and the pass/block reason. Passing smoke satisfies only the smoke prerequisite; it does not
-authorize private corpus access, benchmark calls, spending beyond the smoke, or benchmark operation.
-
-The paired benchmark executor accepts only the unchanged registered manifest and snapshot, the
-matching passed smoke disposition, current provider evidence, and an exact run confirmation binding
-the selected revisions, provider models, effective-prompt hash, 120-call maximum, disclosures,
-estimate and $10 cap, named hold/release, and storage locations. It writes a dedicated mode-`0600`
-SQLite ledger outside the repository. Each request is transactionally reserved before send and
-receives one terminal record; safe pre-send reservations may resume, while any possibly sent request
-without a terminal record invalidates the run. Cases and their two arms always follow frozen order,
-with no retry, fallback, replacement, omission, or rerun.
-
-Live execution remains blocked unless the separately reviewed authorization is represented by both
-the frozen confirmation and the explicit command flag. The command uses only dedicated benchmark
-credentials and refuses application credentials or state:
-
-```sh
-uv run python -m local_text.cleanup_evaluation_execution \
-  --registration /isolated/input/registration.json \
-  --snapshot /isolated/input/snapshot.json \
-  --smoke /isolated/input/smoke.json \
-  --invariants /isolated/input/current-invariants.json \
-  --ledger /isolated/output/<registered-run-id>.sqlite3 \
-  --authorize-private-benchmark
-```
-
-Building or testing this command does not grant that authorization and performs no provider calls.
-
-After all 120 requests complete, initialize the private blinded review in that same external ledger.
-The command exposes one seeded-random output at a time, with only a blind review ID and position.
-Responses are read from local JSON files so rationales do not appear in command arguments. Each
-response names its `review_id`, `expected_revision`, and every protocol rubric field. A stale
-revision is rejected rather than overwriting a newer judgment.
-
-```sh
-uv run python -m local_text.cleanup_evaluation_review initialize \
-  --registration /isolated/input/registration.json \
-  --snapshot /isolated/input/snapshot.json \
-  --ledger /isolated/output/<registered-run-id>.sqlite3
-uv run python -m local_text.cleanup_evaluation_review next-individual \
-  --run-id <registered-run-id> --ledger /isolated/output/<registered-run-id>.sqlite3
-uv run python -m local_text.cleanup_evaluation_review record-individual \
-  --run-id <registered-run-id> --ledger /isolated/output/<registered-run-id>.sqlite3 \
-  --response /isolated/input/individual-response.json
-```
-
-Once all individual judgments are recorded, `freeze-individual` permanently closes that phase.
-Only then does `next-pair` expose independently ordered, side-randomized A/B pairs against Original;
-record choices with `record-pair` and a response containing `review_id`, `expected_revision`, and
-`choice` (`a`, `b`, `tie`, or `neither`). `freeze` requires all 60 pair choices and makes both sets
-of judgments immutable. `unblind` is rejected until that freeze and succeeds only once, returning
-the private identity mapping for local reporting. `status` returns content-free progress and records
-that review blocks benchmark passage until the one-time unblind transition.
 
 Development configuration uses one shared file and an optional state-specific
 file inside the external state directory:

@@ -3,18 +3,18 @@
 - **Contract version:** `cleanup-evaluation-corpus-v1`
 - **Consent version:** `cleanup-evaluation-consent-v1`
 - **Export version:** `cleanup-evaluation-export-v1`
-- **Status:** Superseded; implementation present only until dedicated removal
+- **Status:** Historical and non-operational; retained for provenance only
 - **Canonical benchmark protocol:**
-  [`cleanup-evaluation-benchmark-v2.json`](cleanup-evaluation-benchmark-v2.json) — superseded compatibility
-  input; no collection or operation authorized
+  [`cleanup-evaluation-benchmark-v2.json`](cleanup-evaluation-benchmark-v2.json) — historical
+  compatibility record; no collection or operation authorized
 - **Superseded history:**
-  [`cleanup-evaluation-benchmark-v1.json`](archive/cleanup-evaluation-benchmark-v1.json) — preserved unchanged
+  [`cleanup-evaluation-benchmark-v1.json`](cleanup-evaluation-benchmark-v1.json) — preserved unchanged
 
-This contract is retained temporarily because the obsolete implementation still
-depends on it. It is not current evaluation authority, accepts no new cases, and
-is scheduled for removal under the
-[current evaluation map](evaluation-mvp-map.md). Git history will preserve its
-provenance after removal.
+> **Historical document:** The benchmark and canary implementation that consumed
+> this contract has been removed. This file does not describe an available
+> workflow and must not be used to authorize collection, migration, review,
+> provider access, or operation. See the
+> [current evaluation map](../evaluation-mvp-map.md) for current authority.
 
 The superseded contract governed a private corpus of user-confirmed polished cleanups. It did not authorize
 passive collection. The Stage 3 implementation exposes capture only after a successful current
