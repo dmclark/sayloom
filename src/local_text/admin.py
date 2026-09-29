@@ -43,7 +43,13 @@ def _print(value: dict[str, object]) -> None:
 def _run(args: argparse.Namespace) -> int:
     if args.command == "evidence-package-create":
         result = create_package(args.path)
-        _print({"package_id": str(result.package_id), "approval_digest": result.approval_digest})
+        _print(
+            {
+                "package_id": str(result.package_id),
+                "participant_id": str(result.participant_id),
+                "approval_digest": result.approval_digest,
+            }
+        )
         return 0
 
     if args.command == "evidence-package-approve":
