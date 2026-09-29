@@ -7,8 +7,11 @@ or explicit instructions in the current request.
 ## Overrides
 
 - For local code changes, follow the root guidance's **Local worktree workflow**,
-  including its runner-directory gate and single-worktree boundary. Keep the
-  primary `main` checkout clean for integration.
+  including its fail-closed Supacode/Git registration gate, exact `runner-1`
+  directory and new-thread binding, and single-worktree boundary. A shell
+  command workdir or existing thread is not a substitute for that binding;
+  use a correctly bound continuation. Keep the primary `main` checkout clean
+  for integration.
 - Prefer an Amp orb for isolated work. Read-only research, planning, review, and
   documentation-only changes may run in an orb when their inputs are available
   there.
