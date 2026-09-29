@@ -12,8 +12,19 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
+MANIFEST_VERSION = "participant-package-manifest-v1"
 PACKAGE_VERSION = "evidence-package-v1"
 CONTRACT_VERSION = "intended-meaning-evidence-collection-v1"
+
+_PERMITTED_USES = (
+    "collection",
+    "verification",
+    "private_review",
+    "classification",
+    "partitioning",
+    "derive_cleanup_evaluation_view",
+    "derive_smart_evaluation_view",
+)
 
 _MANIFEST = "manifest.json"
 _APPROVAL = "approval.json"
@@ -27,6 +38,7 @@ class EvidencePackageError(RuntimeError):
 @dataclass(frozen=True)
 class PackageCreation:
     package_id: UUID
+    participant_id: UUID
     approval_digest: str
 
 
@@ -148,12 +160,27 @@ def create_package(root: Path, *, created_at: datetime | None = None) -> Package
     if _inside_git(root):
         raise EvidencePackageError("external package must remain outside Git")
     package_id = uuid4()
+    participant_id = uuid4()
     manifest = _canonical_json(
         {
+            "collection_contract_version": CONTRACT_VERSION,
+            "created_at": _timestamp(created_at or datetime.now(UTC)),
+            "manifest_version": MANIFEST_VERSION,
+            "ownership": {
+                "administrator_or_custodian_has_independent_rights": False,
+                "owner_participant_id": str(participant_id),
+                "participant_controls_package": True,
+            },
             "package_id": str(package_id),
             "package_version": PACKAGE_VERSION,
-            "contract_version": CONTRACT_VERSION,
-            "created_at": _timestamp(created_at or datetime.now(UTC)),
+            "participant_id": str(participant_id),
+            "permitted_uses": list(_PERMITTED_USES),
+            "retention": {
+                "active_purposes_only": True,
+                "extension_requires_owner_review": True,
+                "owner_managed_backups_are_private_copies": True,
+                "owner_managed_backups_follow_same_restrictions": True,
+            },
         }
     )
     try:
@@ -168,7 +195,11 @@ def create_package(root: Path, *, created_at: datetime | None = None) -> Package
         raise EvidencePackageError("external package already exists") from exc
     except OSError as exc:
         raise EvidencePackageError("external package creation failed") from exc
-    return PackageCreation(package_id=package_id, approval_digest=sha256(manifest).hexdigest())
+    return PackageCreation(
+        package_id=package_id,
+        participant_id=participant_id,
+        approval_digest=sha256(manifest).hexdigest(),
+    )
 
 
 def approve_package(
@@ -181,7 +212,9 @@ def approve_package(
     manifest_bytes = _read(root / _MANIFEST)
     if sha256(manifest_bytes).hexdigest() != approval_digest:
         raise EvidencePackageError("approval digest does not match the package manifest")
-    manifest = _read_json(root / _MANIFEST)
+    manifest, _, _, manifest_reason = _manifest_state(root)
+    if manifest_reason is not None:
+        raise EvidencePackageError("package manifest is not compatible")
     try:
         package_id = UUID(str(manifest["package_id"]))
     except (KeyError, TypeError, ValueError) as exc:
@@ -213,14 +246,100 @@ def _permission_state(root: Path) -> tuple[bool, bool]:
     return owned, restrictive
 
 
-def _metadata_versions(root: Path) -> tuple[str | None, str | None, bool]:
-    manifest = _read_json(root / _MANIFEST)
+def _manifest_state(
+    root: Path,
+) -> tuple[dict[str, Any], str | None, str | None, str | None]:
+    manifest_path = root / _MANIFEST
+    if not manifest_path.is_file():
+        return {}, None, None, "manifest_missing"
+    try:
+        manifest = _read_json(manifest_path)
+    except EvidencePackageError:
+        return {}, None, None, "manifest_incomplete"
     package_version = manifest.get("package_version")
-    contract_version = manifest.get("contract_version")
+    contract_version = manifest.get("collection_contract_version")
+    package_version_value = package_version if isinstance(package_version, str) else None
+    contract_version_value = contract_version if isinstance(contract_version, str) else None
+    if (
+        manifest.get("manifest_version") != MANIFEST_VERSION
+        or package_version_value != PACKAGE_VERSION
+        or contract_version_value != CONTRACT_VERSION
+    ):
+        return manifest, package_version_value, contract_version_value, "version"
+    required_keys = {
+        "collection_contract_version",
+        "created_at",
+        "manifest_version",
+        "ownership",
+        "package_id",
+        "package_version",
+        "participant_id",
+        "permitted_uses",
+        "retention",
+    }
+    ownership = manifest.get("ownership")
+    retention = manifest.get("retention")
+    if (
+        set(manifest) != required_keys
+        or not isinstance(ownership, dict)
+        or set(ownership)
+        != {
+            "administrator_or_custodian_has_independent_rights",
+            "owner_participant_id",
+            "participant_controls_package",
+        }
+        or not isinstance(retention, dict)
+        or set(retention)
+        != {
+            "active_purposes_only",
+            "extension_requires_owner_review",
+            "owner_managed_backups_are_private_copies",
+            "owner_managed_backups_follow_same_restrictions",
+        }
+    ):
+        return manifest, package_version_value, contract_version_value, "manifest_incomplete"
+    try:
+        package_id = UUID(manifest["package_id"])
+        participant_id = UUID(manifest["participant_id"])
+        created_at = datetime.fromisoformat(manifest["created_at"].replace("Z", "+00:00"))
+    except (AttributeError, TypeError, ValueError):
+        return manifest, package_version_value, contract_version_value, "manifest_incomplete"
+    terms_match = (
+        package_id != participant_id
+        and created_at.tzinfo is not None
+        and ownership
+        == {
+            "administrator_or_custodian_has_independent_rights": False,
+            "owner_participant_id": str(participant_id),
+            "participant_controls_package": True,
+        }
+        and manifest.get("permitted_uses") == list(_PERMITTED_USES)
+        and retention
+        == {
+            "active_purposes_only": True,
+            "extension_requires_owner_review": True,
+            "owner_managed_backups_are_private_copies": True,
+            "owner_managed_backups_follow_same_restrictions": True,
+        }
+    )
+    return (
+        manifest,
+        package_version_value,
+        contract_version_value,
+        None if terms_match else "manifest_mismatch",
+    )
+
+
+def _metadata_versions(
+    root: Path,
+) -> tuple[str | None, str | None, bool, str | None]:
+    manifest, package_version, contract_version, manifest_reason = _manifest_state(root)
+    if manifest_reason is not None:
+        return package_version, contract_version, False, manifest_reason
     try:
         approval = _read_json(root / _APPROVAL)
     except EvidencePackageError:
-        return str(package_version), str(contract_version), False
+        return package_version, contract_version, False, None
     approved = (
         approval.get("approved") is True
         and approval.get("package_id") == manifest.get("package_id")
@@ -228,7 +347,7 @@ def _metadata_versions(root: Path) -> tuple[str | None, str | None, bool]:
         and approval.get("contract_version") == contract_version
         and approval.get("manifest_sha256") == sha256(_read(root / _MANIFEST)).hexdigest()
     )
-    return str(package_version), str(contract_version), approved
+    return package_version, contract_version, approved, None
 
 
 def _probe_capabilities(root: Path) -> tuple[bool, bool]:
@@ -257,25 +376,16 @@ def check_readiness(root: Path) -> PackageReadiness:
     package_version: str | None = None
     contract_version: str | None = None
     approved = False
+    manifest_reason: str | None = None
     external_location = not _inside_git(root)
     try:
-        package_version, contract_version, approved = _metadata_versions(root)
+        package_version, contract_version, approved, manifest_reason = _metadata_versions(root)
     except EvidencePackageError:
-        return PackageReadiness(
-            False,
-            "unavailable",
-            package_version,
-            contract_version,
-            external_location,
-            False,
-            False,
-            False,
-            False,
-            False,
-        )
+        manifest_reason = "manifest_incomplete"
     owned, restrictive = _permission_state(root)
-    if package_version != PACKAGE_VERSION or contract_version != CONTRACT_VERSION:
-        reason = "version"
+    append_only, hash_and_reread = _probe_capabilities(root)
+    if manifest_reason is not None:
+        reason = manifest_reason
     elif not approved:
         reason = "not_approved"
     elif not external_location:
@@ -285,22 +395,9 @@ def check_readiness(root: Path) -> PackageReadiness:
     elif not restrictive:
         reason = "permissions"
     else:
-        append_only, hash_and_reread = _probe_capabilities(root)
         reason = None if append_only and hash_and_reread else "capabilities"
-        return PackageReadiness(
-            reason is None,
-            reason,
-            package_version,
-            contract_version,
-            external_location,
-            approved,
-            owned,
-            restrictive,
-            append_only,
-            hash_and_reread,
-        )
     return PackageReadiness(
-        False,
+        reason is None,
         reason,
         package_version,
         contract_version,
@@ -308,8 +405,8 @@ def check_readiness(root: Path) -> PackageReadiness:
         approved,
         owned,
         restrictive,
-        False,
-        False,
+        append_only,
+        hash_and_reread,
     )
 
 

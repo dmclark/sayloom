@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from local_text.app import create_app
 from local_text.evidence_package import (
     CONTRACT_VERSION,
+    MANIFEST_VERSION,
     PACKAGE_VERSION,
     EvidencePackageError,
     approve_package,
@@ -35,6 +36,90 @@ def approved_package(tmp_path: Path) -> Path:
     creation = create_package(package)
     approve_package(package, creation.approval_digest)
     return package
+
+
+def test_administrator_creates_versioned_participant_controlled_manifest(tmp_path: Path) -> None:
+    package = tmp_path / "external-package"
+    created_at = datetime(2026, 9, 28, 16, 45, tzinfo=UTC)
+
+    creation = create_package(package, created_at=created_at)
+    manifest = json.loads((package / "manifest.json").read_text())
+
+    assert creation.participant_id != creation.package_id
+    assert manifest == {
+        "collection_contract_version": CONTRACT_VERSION,
+        "created_at": "2026-09-28T16:45:00Z",
+        "manifest_version": MANIFEST_VERSION,
+        "ownership": {
+            "administrator_or_custodian_has_independent_rights": False,
+            "owner_participant_id": str(creation.participant_id),
+            "participant_controls_package": True,
+        },
+        "package_id": str(creation.package_id),
+        "package_version": PACKAGE_VERSION,
+        "participant_id": str(creation.participant_id),
+        "permitted_uses": [
+            "collection",
+            "verification",
+            "private_review",
+            "classification",
+            "partitioning",
+            "derive_cleanup_evaluation_view",
+            "derive_smart_evaluation_view",
+        ],
+        "retention": {
+            "active_purposes_only": True,
+            "extension_requires_owner_review": True,
+            "owner_managed_backups_are_private_copies": True,
+            "owner_managed_backups_follow_same_restrictions": True,
+        },
+    }
+    assert creation.approval_digest == hashlib.sha256(
+        (package / "manifest.json").read_bytes()
+    ).hexdigest()
+    assert not (package / "approval.json").exists()
+
+
+@pytest.mark.parametrize(
+    ("change", "expected_reason"),
+    [
+        ("missing", "manifest_missing"),
+        ("incomplete", "manifest_incomplete"),
+        ("mismatched", "manifest_mismatch"),
+        ("unsupported", "version"),
+    ],
+)
+def test_readiness_rejects_incompatible_manifests_while_checking_storage_capabilities(
+    tmp_path: Path, change: str, expected_reason: str
+) -> None:
+    package = tmp_path / f"external-package-{change}"
+    create_package(package)
+    manifest_path = package / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    if change == "missing":
+        manifest_path.unlink()
+    elif change == "incomplete":
+        del manifest["retention"]["extension_requires_owner_review"]
+    elif change == "mismatched":
+        manifest["ownership"]["owner_participant_id"] = str(uuid4())
+    else:
+        manifest["manifest_version"] = "participant-package-manifest-v999"
+    if change != "missing":
+        manifest_path.write_text(
+            json.dumps(manifest, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+            + "\n"
+        )
+        manifest_path.chmod(0o600)
+
+    readiness = check_readiness(package)
+
+    assert readiness.ready is False
+    assert readiness.reason == expected_reason
+    assert readiness.owned is True
+    assert readiness.restrictive_permissions is True
+    assert readiness.append_only_writes is True
+    assert readiness.hash_and_reread is True
+    assert str(package) not in json.dumps(readiness.to_dict())
 
 
 def test_administrator_creates_approves_and_checks_a_content_free_package(tmp_path: Path) -> None:
@@ -352,6 +437,7 @@ def test_development_administration_uses_state_configuration_without_application
         check=False,
     )
     creation = json.loads(created.stdout)
+    assert creation["participant_id"] != creation["package_id"]
     approved = subprocess.run(
         [*command, "approve", creation["approval_digest"]],
         cwd=REPOSITORY_ROOT,
