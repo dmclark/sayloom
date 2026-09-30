@@ -635,6 +635,10 @@ def amp_runner_processes(*, required: bool = False) -> dict[Path, set[int]]:
         capture_output=True,
         text=True,
     )
+    if result.returncode != 0:
+        if required:
+            fail("could not inspect Amp runner directories; preserving development worktrees")
+        return {}
     runners: dict[Path, set[int]] = {}
     pid: int | None = None
     for line in result.stdout.splitlines():
@@ -669,22 +673,36 @@ def stop_amp_runners(repository: Path) -> None:
     fail(f"Amp runner(s) in {repository} did not stop; preserving its worktree")
 
 
-def supacode_worktrees() -> dict[Path, str]:
+def supacode_worktrees() -> dict[Path, tuple[str, str]]:
     supacode = shutil.which("supacode")
     if supacode is None:
         return {}
     result = subprocess.run(
-        [supacode, "worktree", "list"],
+        [supacode, "worktree", "list", "--with-status"],
         check=True,
         capture_output=True,
         text=True,
     )
-    worktrees: dict[Path, str] = {}
+    worktrees: dict[Path, tuple[str, str]] = {}
     for line in result.stdout.splitlines():
-        worktree_id = line.split("\t", maxsplit=1)[0]
-        if worktree_id:
-            worktrees[Path(parse.unquote(worktree_id)).resolve()] = worktree_id
+        worktree_id, status = line.split("\t", maxsplit=1)
+        worktrees[Path(parse.unquote(worktree_id)).resolve()] = (worktree_id, status)
     return worktrees
+
+
+def repository_worktrees() -> set[Path]:
+    result = subprocess.run(
+        ["git", "worktree", "list", "--porcelain"],
+        cwd=repository_root(),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return {
+        Path(line.removeprefix("worktree ")).resolve()
+        for line in result.stdout.splitlines()
+        if line.startswith("worktree ")
+    }
 
 
 def abbreviated_path(path: Path) -> str:
@@ -726,31 +744,63 @@ def print_registered_states(root: Path) -> None:
 
 
 def prune(root: Path, *, apply: bool) -> None:
-    stale = sorted(
-        (state for state in registered_states(root) if not Path(state.repository_root).is_dir()),
+    states_by_repository: dict[Path, list[State]] = {}
+    for state in registered_states(root):
+        states_by_repository.setdefault(Path(state.repository_root).resolve(), []).append(state)
+
+    supacode = supacode_worktrees()
+    archived: list[tuple[Path, str, list[State]]] = []
+    for repository in sorted(repository_worktrees(), key=str):
+        entry = supacode.get(repository)
+        if entry is None or entry[1] != "archived":
+            continue
+        states = sorted(states_by_repository.get(repository, []), key=lambda state: state.name)
+        archived.append((repository, entry[0], states))
+    orphaned = sorted(
+        (
+            state
+            for repository, states in states_by_repository.items()
+            if not repository.is_dir() and repository not in supacode
+            for state in states
+        ),
         key=lambda state: state.name,
     )
-    if not stale:
-        print("No stale development states found.")
+    if not archived and not orphaned:
+        print("No archived worktrees or orphaned development states found.")
         return
-    for state in stale:
-        print(f"Stale: {state.name} ({state.repository_root})")
+    for repository, _worktree_id, states in archived:
+        print(f"Archived worktree: {repository}")
+        for state in states:
+            print(f"  State: {state.name} ({state.state_directory})")
+    for state in orphaned:
+        print(
+            f"Orphaned state: {state.name} ({state.state_directory}; "
+            f"missing checkout {state.repository_root})"
+        )
     if not apply:
-        print("Preview only. Run scripts/dev.py prune --apply to remove these states.")
+        print("Preview only. Run scripts/dev.py prune --apply to remove these resources.")
         return
-    worktrees = supacode_worktrees()
-    for state in stale:
-        repository = Path(state.repository_root).resolve()
+
+    for repository, worktree_id, states in archived:
         stop_amp_runners(repository)
-        worktree_id = worktrees.get(repository)
-        if worktree_id is not None:
-            subprocess.run(
-                ["supacode", "worktree", "delete", "--worktree", worktree_id, "--background"],
-                check=True,
-            )
-            print(f"Removed Supacode worktree {repository}")
-        if state_path(root, state.name).exists():
-            remove_state(root, state, confirmed=True)
+        subprocess.run(
+            ["supacode", "worktree", "delete", "--worktree", worktree_id, "--background"],
+            check=True,
+        )
+        print(f"Removed Supacode worktree {repository}")
+        for state in states:
+            if state_path(root, state.name).exists():
+                remove_state(root, state, confirmed=True)
+
+    orphaned_by_repository: dict[Path, list[State]] = {}
+    for state in orphaned:
+        repository = Path(state.repository_root).resolve()
+        orphaned_by_repository.setdefault(repository, []).append(state)
+    for repository, states in orphaned_by_repository.items():
+        stop_amp_runners(repository)
+        for state in states:
+            if state_path(root, state.name).exists():
+                remove_state(root, state, confirmed=True)
 
 
 def db_command(state: State, arguments: argparse.Namespace) -> int:
@@ -886,7 +936,7 @@ def parser() -> argparse.ArgumentParser:
   scripts/dev.py logs --provider-traffic
                                 temporarily log and follow exact provider traffic
   scripts/dev.py list            show every registered development state
-  scripts/dev.py prune           preview stale-state cleanup
+  scripts/dev.py prune           preview archived-worktree and orphaned-state cleanup
 
 database commands:
   scripts/dev.py db              report schema status without mutation
@@ -972,8 +1022,12 @@ status and prune are read-only unless prune receives --apply.
     )
     remove_parser.add_argument("-y", "--yes", action="store_true", help="skip confirmation")
 
-    prune_parser = subparsers.add_parser("prune", help="find stale checkout states")
-    prune_parser.add_argument("--apply", action="store_true", help="remove reported stale states")
+    prune_parser = subparsers.add_parser(
+        "prune", help="find archived worktrees and orphaned states"
+    )
+    prune_parser.add_argument(
+        "--apply", action="store_true", help="remove reported worktrees and states"
+    )
 
     database = subparsers.add_parser("db", help="run focused database administration")
     database.add_argument("--state", help=argparse.SUPPRESS)

@@ -79,7 +79,12 @@ state's old port. Alias conflicts are rejected before state changes. Production
 remains separate on reserved port 7532. Use
 `scripts/dev.py list` to inspect every registration, `remove` to delete the
 current checkout's external state after confirmation, and `prune` to preview
-states whose checkout no longer exists. `prune --apply` performs that cleanup.
+Supacode-archived worktrees in this Git repository plus states whose checkout
+no longer exists and has no Supacode registration. `prune --apply` stops any Amp
+runner bound to each reported checkout, deletes archived worktrees through
+Supacode, and removes every associated state directory, including its
+environment. Primary, pinned, unpinned, foreign-repository, and unregistered
+worktrees are never prune candidates.
 The tracked `supacode.json` runs `init` after Supacode creates a worktree, maps
 its repeatable run command to the controlled `restart`, and runs
 `remove --all --yes` only before deletion. Reversible archive leaves state

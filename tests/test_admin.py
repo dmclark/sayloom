@@ -532,21 +532,34 @@ def test_list_prune_and_remove_manage_only_registered_state_data(tmp_path: Path)
         repository=tmp_path / "deleted-worktree",
         port=unused_port(),
     )
+    (stale_path.parent / "environment").write_text("LOCAL_TEXT_OPENAI_MODEL=fixture\n")
+    isolated_environment = {
+        **os.environ,
+        "PATH": os.pathsep.join(
+            entry
+            for entry in os.environ["PATH"].split(os.pathsep)
+            if "supacode.app" not in entry
+        ),
+    }
 
     listed = run_dev(state_root, "list")
-    preview = run_dev(state_root, "prune")
+    preview = run_dev(state_root, "prune", environment=isolated_environment)
 
     assert listed.returncode == 0
     assert "stale" in listed.stdout.lower()
     assert preview.returncode == 0
-    assert "Preview only" in preview.stdout
+    assert preview.stdout.splitlines() == [
+        f"Orphaned state: stale ({stale_path.parent}; "
+        f"missing checkout {tmp_path / 'deleted-worktree'})",
+        "Preview only. Run scripts/dev.py prune --apply to remove these resources.",
+    ]
     assert stale_path.exists()
 
     applied = run_dev(
         state_root,
         "prune",
         "--apply",
-        environment={**os.environ, "HOME": str(tmp_path / "home")},
+        environment={**isolated_environment, "HOME": str(tmp_path / "home")},
     )
     assert applied.returncode == 0
     assert not stale_path.parent.exists()
@@ -675,6 +688,60 @@ def test_amp_runner_processes_maps_runner_pids_to_checkout_paths(
     assert module.amp_runner_processes(required=True) == {repository.resolve(): {101}}
 
 
+def test_amp_runner_processes_fail_closed_when_directory_inspection_fails(monkeypatch) -> None:
+    scripts = str(REPOSITORY_ROOT / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        specification = importlib.util.spec_from_file_location(
+            "sayloom_dev_runner_failure_script", REPOSITORY_ROOT / "scripts/dev.py"
+        )
+        assert specification is not None and specification.loader is not None
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+    finally:
+        sys.path.remove(scripts)
+
+    responses = iter(
+        (
+            subprocess.CompletedProcess([], 0, "101 /opt/bin/amp --no-tui\n"),
+            subprocess.CompletedProcess([], 1, "", "inspection failed"),
+        )
+    )
+    monkeypatch.setattr(module.shutil, "which", lambda command: f"/usr/bin/{command}")
+    monkeypatch.setattr(module.subprocess, "run", lambda *_args, **_kwargs: next(responses))
+
+    with pytest.raises(SystemExit, match="could not inspect Amp runner directories"):
+        module.amp_runner_processes(required=True)
+
+
+def test_supacode_worktrees_preserve_encoded_ids_and_statuses(tmp_path: Path, monkeypatch) -> None:
+    scripts = str(REPOSITORY_ROOT / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        specification = importlib.util.spec_from_file_location(
+            "sayloom_dev_supacode_script", REPOSITORY_ROOT / "scripts/dev.py"
+        )
+        assert specification is not None and specification.loader is not None
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+    finally:
+        sys.path.remove(scripts)
+
+    repository = tmp_path / "managed worktree"
+    worktree_id = module.parse.quote(f"{repository}/", safe="")
+    monkeypatch.setattr(module.shutil, "which", lambda _command: "/opt/bin/supacode")
+
+    def fake_run(command: list[str], **_arguments) -> subprocess.CompletedProcess[str]:
+        assert command == ["/opt/bin/supacode", "worktree", "list", "--with-status"]
+        return subprocess.CompletedProcess(command, 0, f"{worktree_id}\tarchived\n")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    assert module.supacode_worktrees() == {
+        repository.resolve(): (worktree_id, "archived")
+    }
+
+
 def test_prune_apply_stops_runner_before_deleting_worktree_and_state(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
@@ -692,15 +759,27 @@ def test_prune_apply_stops_runner_before_deleting_worktree_and_state(
 
     state_root = tmp_path / "states"
     repository = tmp_path / "managed-worktree"
+    repository.mkdir()
     write_foreign_state(
         state_root,
         name="managed",
         repository=repository,
         port=unused_port(),
     )
+    write_foreign_state(
+        state_root,
+        name="also-managed",
+        repository=repository,
+        port=unused_port(),
+    )
     worktree_id = "%2Fmanaged-worktree%2F"
     events: list[str] = []
-    monkeypatch.setattr(module, "supacode_worktrees", lambda: {repository.resolve(): worktree_id})
+    monkeypatch.setattr(
+        module,
+        "supacode_worktrees",
+        lambda: {repository.resolve(): (worktree_id, "archived")},
+    )
+    monkeypatch.setattr(module, "repository_worktrees", lambda: {repository.resolve()})
     monkeypatch.setattr(
         module, "stop_amp_runners", lambda _repository: events.append("stop runner")
     )
@@ -721,19 +800,90 @@ def test_prune_apply_stops_runner_before_deleting_worktree_and_state(
     monkeypatch.setattr(
         module,
         "remove_state",
-        lambda _root, _state, *, confirmed: events.append("remove state"),
+        lambda _root, state, *, confirmed: events.append(f"remove state {state.name}"),
     )
 
     module.prune(state_root, apply=False)
 
-    preview = capsys.readouterr().out
-    assert "Stale: managed" in preview
-    assert "Preview only. Run scripts/dev.py prune --apply" in preview
+    assert capsys.readouterr().out.splitlines() == [
+        f"Archived worktree: {repository}",
+        f"  State: also-managed ({state_root / 'also-managed'})",
+        f"  State: managed ({state_root / 'managed'})",
+        "Preview only. Run scripts/dev.py prune --apply to remove these resources.",
+    ]
     assert events == []
 
     module.prune(state_root, apply=True)
 
-    assert events == ["stop runner", "delete worktree", "remove state"]
+    assert events == [
+        "stop runner",
+        "delete worktree",
+        "remove state also-managed",
+        "remove state managed",
+    ]
+
+
+def test_prune_protects_non_archived_foreign_and_unregistered_worktrees(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    scripts = str(REPOSITORY_ROOT / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        specification = importlib.util.spec_from_file_location(
+            "sayloom_dev_protected_prune_script", REPOSITORY_ROOT / "scripts/dev.py"
+        )
+        assert specification is not None and specification.loader is not None
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+    finally:
+        sys.path.remove(scripts)
+
+    state_root = tmp_path / "states"
+    repositories = {
+        name: tmp_path / name
+        for name in ("active", "pinned", "primary", "foreign", "unregistered")
+    }
+    for index, (name, repository) in enumerate(repositories.items(), start=1):
+        repository.mkdir()
+        write_foreign_state(
+            state_root,
+            name=name,
+            repository=repository,
+            port=7400 + index,
+        )
+    monkeypatch.setattr(
+        module,
+        "supacode_worktrees",
+        lambda: {
+            repositories["active"].resolve(): ("active-id", "unpinned"),
+            repositories["pinned"].resolve(): ("pinned-id", "pinned"),
+            repositories["primary"].resolve(): ("primary-id", "main"),
+            repositories["foreign"].resolve(): ("foreign-id", "archived"),
+        },
+    )
+    monkeypatch.setattr(
+        module,
+        "repository_worktrees",
+        lambda: {
+            repositories["active"].resolve(),
+            repositories["pinned"].resolve(),
+            repositories["primary"].resolve(),
+            repositories["unregistered"].resolve(),
+        },
+    )
+    monkeypatch.setattr(
+        module,
+        "stop_amp_runners",
+        lambda _repository: pytest.fail("protected worktrees must not be inspected for shutdown"),
+    )
+
+    module.prune(state_root, apply=True)
+
+    assert (
+        capsys.readouterr().out
+        == "No archived worktrees or orphaned development states found.\n"
+    )
+    assert all((state_root / name / "state.json").exists() for name in repositories)
 
 
 def test_prune_apply_preserves_worktree_and_state_when_runner_does_not_stop(
@@ -753,6 +903,7 @@ def test_prune_apply_preserves_worktree_and_state_when_runner_does_not_stop(
 
     state_root = tmp_path / "states"
     repository = tmp_path / "managed-worktree"
+    repository.mkdir()
     manifest = write_foreign_state(
         state_root,
         name="managed",
@@ -760,8 +911,11 @@ def test_prune_apply_preserves_worktree_and_state_when_runner_does_not_stop(
         port=unused_port(),
     )
     monkeypatch.setattr(
-        module, "supacode_worktrees", lambda: {repository.resolve(): "%2Fmanaged-worktree%2F"}
+        module,
+        "supacode_worktrees",
+        lambda: {repository.resolve(): ("%2Fmanaged-worktree%2F", "archived")},
     )
+    monkeypatch.setattr(module, "repository_worktrees", lambda: {repository.resolve()})
     monkeypatch.setattr(
         module,
         "stop_amp_runners",
@@ -776,7 +930,7 @@ def test_prune_apply_preserves_worktree_and_state_when_runner_does_not_stop(
     with pytest.raises(SystemExit, match="runner remained active"):
         module.prune(state_root, apply=True)
 
-    assert not repository.exists()
+    assert repository.exists()
     assert manifest.exists()
 
 
