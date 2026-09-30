@@ -40,6 +40,8 @@ itself rather than being duplicated here.
 
 | Document | Authority |
 | --- | --- |
+| [Personal corrections execution guide](personal-corrections-execution-guide.md) | Current execution order for the private single-user Personal corrections flywheel. |
+| [Personal corrections stage 1 implementation specification](personal-corrections-implementation-spec.md) | Proposed executable storage, interaction, retrieval, privacy, migration, export, and ticket boundaries; requires confirmation before implementation. |
 | [Automatic correction prototype specification](automatic-correction-prototype-spec.md) | Focused definition of done for the automatic-correction prototype. |
 | [Intended-meaning evidence collection contract](intended-meaning-evidence-collection-contract.md) | Confirmed interaction, privacy, participant-package, and evaluation-view boundary for prospective evidence collection; issue reconciliation is required before further implementation. |
 | [Evaluation and automatic-correction prototype map](evaluation-mvp-map.md) | Current milestone order and separation of Cleanup and Smart evaluation. |
