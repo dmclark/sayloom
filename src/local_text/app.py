@@ -16,7 +16,7 @@ from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from local_text.cleanup import (
     GEMINI_37_FLASH,
@@ -35,6 +35,13 @@ from local_text.cleanup import (
 from local_text.config import Profile, Settings, load_settings
 from local_text.database import ApplicationDatabase
 from local_text.evidence_collection import EvidenceCollection, EvidenceCollectionError
+from local_text.personal_corrections import (
+    PersonalCorrectionConflictError,
+    PersonalCorrectionError,
+    PersonalCorrectionNotFoundError,
+    PersonalCorrectionRevisionConflictError,
+    PersonalCorrectionStore,
+)
 from local_text.prompt_store import PromptNotFoundError, PromptRecord, PromptStore, SeedStateError
 from local_text.state import OutgoingStateStore, OutgoingStateUpdate
 from local_text.target_adapter import TargetAdapter, TargetArtifactError
@@ -228,6 +235,27 @@ class PreparationDefaultRequest(BaseModel):
     preparation_default: PreparationMode
 
 
+class PersonalCorrectionProfileRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+
+
+class PersonalCorrectionEntryCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    intended_term: str = Field(min_length=1, max_length=200)
+    aliases: tuple[Annotated[str, Field(min_length=1, max_length=200)], ...] = Field(
+        min_length=1, max_length=50
+    )
+    applicability_context: str | None = Field(default=None, max_length=500)
+
+
+class PersonalCorrectionEntryUpdateRequest(PersonalCorrectionEntryCreateRequest):
+    expected_revision: int = Field(ge=1)
+    enabled: bool
+
+
 class EvidenceArmRequest(BaseModel):
     browser_session_id: UUID
     source_attestation_confirmed: bool
@@ -292,6 +320,7 @@ def create_app(
     evidence = EvidenceCollection(runtime.evidence_package_directory)
     prompts = PromptStore(database)
     targets = TargetStore(database)
+    personal_corrections = PersonalCorrectionStore(database)
     adapter = target_adapter or TargetAdapter(runtime.resolved_raycast_directory)
     configuration_error: str | None = None
     preparation_default = PreparationMode.CONSERVATIVE
@@ -386,6 +415,17 @@ def create_app(
     async def privacy_safe_validation_error(
         request: Request, exc: RequestValidationError
     ) -> Response:
+        if request.url.path.startswith("/api/personal-corrections"):
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "detail": {
+                        "code": "invalid_personal_correction_request",
+                        "message": "The request did not match the Personal corrections contract.",
+                        "retry_action": "Review the current form values and retry.",
+                    }
+                },
+            )
         if request.url.path.startswith("/api/evidence-collection/"):
             return JSONResponse(
                 status_code=422,
@@ -601,6 +641,94 @@ def create_app(
         require_configuration()
         prompts.set_preparation_default(request.preparation_default)
         return {"preparation_default": request.preparation_default}
+
+    def personal_correction_response(record) -> dict[str, object]:
+        return asdict(record)
+
+    def personal_correction_failure(exc: PersonalCorrectionError) -> None:
+        if isinstance(exc, PersonalCorrectionNotFoundError):
+            raise HTTPException(status_code=404, detail="Personal correction does not exist")
+        if isinstance(exc, PersonalCorrectionRevisionConflictError):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "stale_personal_correction_revision",
+                    "message": "This Personal correction changed since it was opened.",
+                    "retry_action": "Reload Personal corrections and apply the edit again.",
+                },
+            )
+        if isinstance(exc, PersonalCorrectionConflictError):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "personal_correction_conflict",
+                    "message": "A conflicting Personal correction already exists.",
+                    "retry_action": "Reload Personal corrections and edit the existing entry.",
+                },
+            )
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "invalid_personal_correction",
+                "message": "The Personal correction contains an invalid value.",
+                "retry_action": "Review the current form values and retry.",
+            },
+        )
+
+    @application.get("/api/personal-corrections")
+    def get_personal_corrections(response: Response) -> dict[str, object]:
+        require_configuration()
+        response.headers["Cache-Control"] = "no-store"
+        return personal_correction_response(personal_corrections.read())
+
+    @application.put("/api/personal-corrections/profile")
+    def update_personal_correction_profile(
+        request: PersonalCorrectionProfileRequest, response: Response
+    ) -> dict[str, object]:
+        require_configuration()
+        response.headers["Cache-Control"] = "no-store"
+        return personal_correction_response(
+            personal_corrections.set_profile_enabled(request.enabled)
+        )
+
+    @application.post(
+        "/api/personal-corrections/entries", status_code=status.HTTP_201_CREATED
+    )
+    def create_personal_correction(
+        request: PersonalCorrectionEntryCreateRequest, response: Response
+    ) -> dict[str, object]:
+        require_configuration()
+        response.headers["Cache-Control"] = "no-store"
+        try:
+            record = personal_corrections.create_entry(
+                intended_term=request.intended_term,
+                aliases=request.aliases,
+                applicability_context=request.applicability_context,
+            )
+        except PersonalCorrectionError as exc:
+            personal_correction_failure(exc)
+        return personal_correction_response(record)
+
+    @application.put("/api/personal-corrections/entries/{entry_id}")
+    def update_personal_correction(
+        entry_id: str,
+        request: PersonalCorrectionEntryUpdateRequest,
+        response: Response,
+    ) -> dict[str, object]:
+        require_configuration()
+        response.headers["Cache-Control"] = "no-store"
+        try:
+            record = personal_corrections.update_entry(
+                entry_id,
+                expected_revision=request.expected_revision,
+                intended_term=request.intended_term,
+                aliases=request.aliases,
+                applicability_context=request.applicability_context,
+                enabled=request.enabled,
+            )
+        except PersonalCorrectionError as exc:
+            personal_correction_failure(exc)
+        return personal_correction_response(record)
 
     @application.post("/api/cleanup", response_model=CleanupResult)
     async def clean_text(request: CleanupRequest) -> CleanupResult:

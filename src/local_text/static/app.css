@@ -525,6 +525,69 @@ main { padding-top: 8px; }
 .correction-settings label { display: grid; gap: 5px; min-width: 190px; color: var(--muted); font-size: 0.68rem; font-weight: 700; }
 .correction-settings select { min-height: 38px; padding: 7px 30px 7px 9px; border: 1px solid var(--line); border-radius: 2px; color: var(--ink); background: var(--paper-bright); }
 .settings-save-state { min-height: 1.25em; margin: 12px 0 0; color: var(--blue-dark); font-size: 0.72rem; }
+.personal-corrections-settings > .settings-section-heading { align-items: center; }
+.personal-correction-create {
+  margin-top: 16px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  background: rgba(219, 234, 246, 0.28);
+}
+.personal-correction-fields {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.7fr) minmax(200px, 1fr) minmax(220px, 1.2fr);
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.personal-correction-fields label {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.personal-correction-fields label > span,
+.personal-correction-fields small { color: var(--muted); font-size: 0.65rem; font-weight: 500; }
+.personal-correction-fields input,
+.personal-correction-fields textarea {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: var(--ink);
+  background: var(--paper-bright);
+  resize: vertical;
+}
+.personal-correction-fields textarea { min-height: 74px; }
+.personal-corrections-empty { margin: 18px 0 0; color: var(--muted); font-size: 0.78rem; }
+.personal-correction-list { display: grid; gap: 12px; margin-top: 16px; }
+.personal-correction-card {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--blue);
+  background: var(--paper-bright);
+}
+.personal-correction-card.is-disabled { border-left-color: var(--line); opacity: 0.82; }
+.personal-correction-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.personal-correction-card h4 { margin: 0; font: 500 1.05rem/1.2 "Iowan Old Style", Palatino, serif; }
+.personal-correction-enabled { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 0.72rem; font-weight: 700; }
+.personal-correction-alias-warning {
+  display: block;
+  margin-top: 5px;
+  color: #85520b;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.personal-correction-card footer { display: flex; align-items: center; gap: 12px; }
+.personal-correction-card footer span { color: var(--muted); font-size: 0.68rem; }
 .target-settings { padding-inline: 0; }
 .target-settings > .settings-section-heading { padding-inline: 20px; }
 .target-grid {
@@ -1246,6 +1309,8 @@ textarea::placeholder { color: #9a988f; font-style: italic; }
   .smart-repair-review { max-height: 360px; border-top: 1px solid var(--line); border-left: 0; }
   .settings-section-heading { align-items: stretch; flex-direction: column; }
   .correction-settings label { min-width: 0; }
+  .personal-correction-fields { grid-template-columns: 1fr; }
+  .personal-correction-card header { align-items: flex-start; flex-direction: column; }
   .smart-task-context {
     align-items: stretch;
     flex-direction: column;

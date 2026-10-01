@@ -37,8 +37,8 @@ def test_health_reports_development_profile(initialized_settings: Settings) -> N
         "development_state": None,
         "database": {
             "state": "current",
-            "current_revision": "0003_unified_preparation_default",
-            "expected_revision": "0003_unified_preparation_default",
+            "current_revision": "0004_personal_corrections_foundation",
+            "expected_revision": "0004_personal_corrections_foundation",
         },
         "configuration_error": None,
     }
@@ -83,7 +83,7 @@ def test_health_reports_schema_mismatch(tmp_path: Path) -> None:
     assert response.json()["database"] == {
         "state": "mismatch",
         "current_revision": "obsolete_revision",
-        "expected_revision": "0003_unified_preparation_default",
+        "expected_revision": "0004_personal_corrections_foundation",
     }
 
 

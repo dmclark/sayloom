@@ -78,6 +78,14 @@
     navWorkspace: document.querySelector("#nav-workspace"),
     navSettings: document.querySelector("#nav-settings"),
     settingsManager: document.querySelector("#settings-manager"),
+    personalCorrectionsToggle: document.querySelector("#personal-corrections-toggle"),
+    personalCorrectionsState: document.querySelector("#personal-corrections-state"),
+    personalCorrectionForm: document.querySelector("#personal-correction-form"),
+    personalCorrectionTerm: document.querySelector("#personal-correction-term"),
+    personalCorrectionAliases: document.querySelector("#personal-correction-aliases"),
+    personalCorrectionContext: document.querySelector("#personal-correction-context"),
+    personalCorrectionsEmpty: document.querySelector("#personal-corrections-empty"),
+    personalCorrectionList: document.querySelector("#personal-correction-list"),
     targetList: document.querySelector("#target-list"),
     targetAddItem: document.querySelector("#target-add-item"),
     newTarget: document.querySelector("#new-target"),
@@ -157,6 +165,7 @@
   let smartRepairs = [];
   let selectedSmartRepair = null;
   let smartRepairResultCurrent = false;
+  let personalCorrectionProfile = { enabled: false, entries: [] };
   let targetRecords = [];
   let selectedTargetId = null;
   let targetDirty = false;
@@ -1791,6 +1800,123 @@
     });
   }
 
+  function personalCorrectionAliases(value) {
+    return value.split(/\r?\n/).map((alias) => alias.trim()).filter(Boolean);
+  }
+
+  function personalCorrectionField(labelText, value, maximum, multiline = false) {
+    const label = document.createElement("label");
+    const field = document.createElement(multiline ? "textarea" : "input");
+    label.append(document.createTextNode(labelText));
+    field.value = value || "";
+    field.maxLength = maximum;
+    field.required = labelText !== "Applicability context";
+    label.append(field);
+    return { label, field };
+  }
+
+  function renderPersonalCorrections() {
+    const { enabled, entries } = personalCorrectionProfile;
+    elements.personalCorrectionsToggle.textContent = enabled
+      ? "Disable Personal corrections"
+      : "Enable Personal corrections";
+    elements.personalCorrectionForm.hidden = !enabled;
+    elements.personalCorrectionsState.textContent = enabled
+      ? "Enabled for this local profile."
+      : entries.length
+        ? "Disabled globally. Saved corrections are retained."
+        : "Disabled. Nothing is saved until you explicitly enable it.";
+    elements.personalCorrectionsEmpty.hidden = entries.length > 0;
+    elements.personalCorrectionList.textContent = "";
+    entries.forEach((entry) => {
+      const form = document.createElement("form");
+      const header = document.createElement("header");
+      const title = document.createElement("h4");
+      const enabledLabel = document.createElement("label");
+      const enabledInput = document.createElement("input");
+      const fields = document.createElement("div");
+      const term = personalCorrectionField("Intended term", entry.intended_term, 200);
+      const aliases = personalCorrectionField(
+        "Misheard aliases",
+        entry.aliases.map((alias) => alias.observed_alias).join("\n"),
+        1000,
+        true,
+      );
+      const context = personalCorrectionField(
+        "Applicability context", entry.applicability_context || "", 500, true,
+      );
+      const footer = document.createElement("footer");
+      const save = document.createElement("button");
+      const state = document.createElement("span");
+      form.className = `personal-correction-card${entry.enabled ? "" : " is-disabled"}`;
+      title.textContent = entry.intended_term;
+      enabledLabel.className = "personal-correction-enabled";
+      enabledInput.type = "checkbox";
+      enabledInput.checked = entry.enabled;
+      enabledLabel.append(enabledInput, document.createTextNode("Enabled"));
+      header.append(title, enabledLabel);
+      fields.className = "personal-correction-fields";
+      fields.append(term.label, aliases.label, context.label);
+      entry.aliases.filter((alias) => alias.ambiguous).forEach(() => {
+        const warning = document.createElement("span");
+        warning.className = "personal-correction-alias-warning";
+        warning.textContent = "This alias also appears under another intended term.";
+        aliases.label.append(warning);
+      });
+      save.type = "submit";
+      save.className = "button";
+      save.textContent = "Save changes";
+      state.textContent = `Revision ${entry.revision}`;
+      state.setAttribute("role", "status");
+      footer.append(save, state);
+      form.append(header, fields, footer);
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const aliasValues = personalCorrectionAliases(aliases.field.value);
+        if (!term.field.value.trim() || aliasValues.length === 0) {
+          state.textContent = "An intended term and at least one alias are required.";
+          return;
+        }
+        save.disabled = true;
+        state.textContent = "Saving…";
+        try {
+          const response = await fetch(`/api/personal-corrections/entries/${entry.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              expected_revision: entry.revision,
+              intended_term: term.field.value,
+              aliases: aliasValues,
+              applicability_context: context.field.value || null,
+              enabled: enabledInput.checked,
+            }),
+          });
+          if (!response.ok) throw await safeHttpError(response, "Personal correction save");
+          await loadPersonalCorrections();
+        } catch (error) {
+          state.textContent = error.code === "stale_personal_correction_revision"
+            ? "Changed elsewhere. Reloading…"
+            : "Save failed. Review the fields and retry.";
+          if (error.code === "stale_personal_correction_revision") await loadPersonalCorrections();
+        } finally {
+          save.disabled = false;
+        }
+      });
+      elements.personalCorrectionList.append(form);
+    });
+  }
+
+  async function loadPersonalCorrections() {
+    const response = await fetch("/api/personal-corrections");
+    if (!response.ok) throw await safeHttpError(response, "Personal corrections loading");
+    const profile = await readJson(response, "Personal corrections loading");
+    if (!profile || typeof profile.enabled !== "boolean" || !Array.isArray(profile.entries)) {
+      throw malformedResponseError("Personal corrections loading", response.status);
+    }
+    personalCorrectionProfile = profile;
+    renderPersonalCorrections();
+  }
+
   function renderTargetList() {
     elements.targetList.textContent = "";
     if (targetRecords.length === 0) {
@@ -1909,6 +2035,11 @@
     elements.navWorkspace.toggleAttribute("aria-current", workspaceVisible);
     elements.navSettings.toggleAttribute("aria-current", settingsVisible);
     if (!settingsVisible && elements.targetDialog.open) elements.targetDialog.close();
+    if (settingsVisible) {
+      loadPersonalCorrections().catch(() => {
+        elements.personalCorrectionsState.textContent = "Personal corrections could not be loaded.";
+      });
+    }
     if (settingsVisible && targetRecords.length === 0) {
       loadTargets().catch((error) => {
         targetLocalError = {
@@ -1928,6 +2059,50 @@
     showDestination("workspace");
   });
   elements.navSettings.addEventListener("click", () => showDestination("settings"));
+  elements.personalCorrectionsToggle.addEventListener("click", async () => {
+    elements.personalCorrectionsToggle.disabled = true;
+    elements.personalCorrectionsState.textContent = "Saving…";
+    try {
+      const response = await fetch("/api/personal-corrections/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !personalCorrectionProfile.enabled }),
+      });
+      if (!response.ok) throw await safeHttpError(response, "Personal corrections profile");
+      personalCorrectionProfile = await readJson(response, "Personal corrections profile");
+      renderPersonalCorrections();
+    } catch (_error) {
+      elements.personalCorrectionsState.textContent = "Profile change failed. Retry when ready.";
+    } finally {
+      elements.personalCorrectionsToggle.disabled = false;
+    }
+  });
+  elements.personalCorrectionForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const aliasValues = personalCorrectionAliases(elements.personalCorrectionAliases.value);
+    if (!elements.personalCorrectionTerm.value.trim() || aliasValues.length === 0) return;
+    const submit = elements.personalCorrectionForm.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    elements.personalCorrectionsState.textContent = "Adding correction…";
+    try {
+      const response = await fetch("/api/personal-corrections/entries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          intended_term: elements.personalCorrectionTerm.value,
+          aliases: aliasValues,
+          applicability_context: elements.personalCorrectionContext.value || null,
+        }),
+      });
+      if (!response.ok) throw await safeHttpError(response, "Personal correction create");
+      elements.personalCorrectionForm.reset();
+      await loadPersonalCorrections();
+    } catch (_error) {
+      elements.personalCorrectionsState.textContent = "Correction was not added. Review the fields and retry.";
+    } finally {
+      submit.disabled = false;
+    }
+  });
   elements.newTarget.addEventListener("click", () => {
     if (confirmDiscardTargetDraft()) populateTargetForm(null);
   });

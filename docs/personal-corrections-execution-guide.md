@@ -1,9 +1,9 @@
 # Personal corrections execution guide
 
 - **Status:** Current execution guide
-- **Active stage:** 1 — Specify and reconcile the personal correction flywheel
+- **Active stage:** 3 — Missed-repair capture and explicit save
 - **Initial user:** One implicit private local user
-- **Last confirmed:** 2026-09-29
+- **Last confirmed:** 2026-09-30
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Domain vocabulary:** [`CONTEXT.md`](../CONTEXT.md)
 
@@ -27,8 +27,9 @@ but do not determine the next deliverable while that work is deferred.
 
 ## Current position
 
-Sayloom can generate Smart Prepared text and show its server-derived repair
-queue. It cannot yet complete the personal correction flywheel:
+Sayloom can generate Smart Prepared text, show its server-derived repair queue,
+and manage the explicitly enabled local Personal corrections foundation. It
+cannot yet capture a missed repair or complete the personal correction flywheel:
 
 ```text
 Smart misses wording
@@ -49,8 +50,9 @@ Personal correction informs a later Smart request
 Inspect recurrence and export private discovery data
 ```
 
-The immediate next deliverable is a focused implementation specification and
-an exact ticket-reconciliation plan. Product implementation has not started.
+The immediate next deliverable is stage 3 missed-repair capture and explicit
+save. Stage 2 did not begin capture, episodes, Smart retrieval, events, export,
+or hard deletion.
 
 ## Current contract
 
@@ -158,14 +160,29 @@ gate is met and its evidence is recorded in this guide or its linked issue.
 
 | Stage | Status | Deliverable | Exit gate |
 | ---: | --- | --- | --- |
-| 1 | **Active** | Focused implementation specification and exact ticket-reconciliation plan | Storage boundaries, interactions, failure behavior, migrations, export contract, and tracer-bullet tickets are executable without inventing product decisions. |
-| 2 | Next | Local Personal corrections foundation | The implicit local principal can enable the feature and create, inspect, edit, disable, and delete canonical terms and aliases. Startup performs no migration or seed write. |
-| 3 | Blocked by stage 2 | Missed-repair capture and explicit save | A bound pre/post edit produces reviewable candidates and bounded observed/intended sentences; only selected mappings and approved context persist. |
+| 1 | **Complete** | Focused implementation specification and exact ticket-reconciliation plan | Storage boundaries, interactions, failure behavior, migrations, export contract, and tracer-bullet tickets are executable without inventing product decisions. |
+| 2 | **Complete** | Local Personal corrections foundation | The implicit local principal can explicitly enable the feature and create, inspect, revision-check edit, and globally or individually disable canonical terms and aliases. Startup performs no migration or seed write. Hard deletion remains in the later deletion/history/export stage under the reconciled issue boundary. |
+| 3 | **Active** | Missed-repair capture and explicit save | A bound pre/post edit produces reviewable candidates and bounded observed/intended sentences; only selected mappings and approved context persist. |
 | 4 | Blocked by stage 3 | Smart retrieval and reuse | Only deterministically relevant enabled entries reach Smart; ambiguity may abstain; stale and failure paths remain fail-open and content-free. |
 | 5 | Blocked by stage 4 | History, management, and private export | Recurrence and runtime-use events remain claim-safe; edit, disable, deletion, and a versioned export work end to end. |
 | 6 | Blocked by stage 5 | Personal usefulness demonstration | One real mapping is saved, encountered again, used to produce the intended Smart correction, and visible in local recurrence history. |
 | 7 | Later | Optional outcome feedback | The user can mark an applied correction helped or wrong without Copy, delivery, or inaction becoming implicit feedback. |
 | 8 | Recurring after stage 6 | Content-free readiness review | Aggregate recurrence and category patterns justify a focused formulaic-rule research question, or the review records that more ordinary use is needed. |
+
+### Stage 2 completion evidence
+
+- Reconciled issue: [#12](https://github.com/dmclark/sayloom/issues/12).
+- Alembic revision `0004_personal_corrections_foundation` creates the empty
+  owner-scoped profile, entry, and alias foundation without a profile row or
+  seed write; synthetic tests cover predecessor preservation, storage checks,
+  foreign-key ownership, downgrade, and re-upgrade.
+- Store and API tests cover explicit first enablement, local-owner filtering,
+  normalized uniqueness, ambiguous alias disclosure, create/read/edit,
+  global and per-entry disablement, and stale revision conflicts.
+- Isolated synthetic browser checks cover disabled/empty and populated states,
+  ambiguity, edit and disable behavior, and representative desktop and narrow
+  layouts. Normal startup against the predecessor schema remains non-mutating
+  and reports `setup_required`.
 
 ## Ticket reconciliation plan
 

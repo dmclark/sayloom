@@ -23,12 +23,23 @@ from local_text.prompt_store import PromptStore
 from local_text.target_store import TargetStore
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PERSONAL_CORRECTIONS_PREDECESSOR_REVISION = "0003_unified_preparation_default"
+_DESTRUCTIVE_DOWNGRADE_ACKNOWLEDGEMENT = (
+    "acknowledge_destructive_personal_corrections_downgrade"
+)
 
 
-def _alembic_config(database_url: str) -> AlembicConfig:
+def _alembic_config(
+    database_url: str,
+    *,
+    acknowledge_destructive_personal_corrections_downgrade: bool = False,
+) -> AlembicConfig:
     alembic_config = AlembicConfig(str(PROJECT_ROOT / "alembic.ini"))
     alembic_config.set_main_option("script_location", str(PROJECT_ROOT / "migrations"))
     alembic_config.set_main_option("sqlalchemy.url", database_url)
+    alembic_config.attributes[_DESTRUCTIVE_DOWNGRADE_ACKNOWLEDGEMENT] = (
+        acknowledge_destructive_personal_corrections_downgrade
+    )
     return alembic_config
 
 
@@ -74,10 +85,23 @@ def _run(args: argparse.Namespace) -> int:
         previous_umask = os.umask(0o077)
         try:
             config.resolved_database_path.parent.mkdir(parents=True, exist_ok=True)
-            command.upgrade(_alembic_config(database.url), "head")
+            alembic_config = _alembic_config(
+                database.url,
+                acknowledge_destructive_personal_corrections_downgrade=(
+                    args.acknowledge_destructive_personal_corrections_downgrade
+                ),
+            )
+            if args.downgrade_to:
+                command.downgrade(alembic_config, args.downgrade_to)
+            else:
+                if args.acknowledge_destructive_personal_corrections_downgrade:
+                    raise RuntimeError(
+                        "destructive downgrade acknowledgement requires --downgrade-to"
+                    )
+                command.upgrade(alembic_config, "head")
         finally:
             os.umask(previous_umask)
-        state = database.assert_ready()
+        state = database.schema_status() if args.downgrade_to else database.assert_ready()
         _print(asdict(state))
         return 0
 
@@ -120,7 +144,19 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="local-text-admin")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("schema", help="report schema state without changing it")
-    subparsers.add_parser("migrate", help="apply migrations; use the controlled update script")
+    migrate = subparsers.add_parser(
+        "migrate", help="apply migrations; use the controlled update script"
+    )
+    migrate.add_argument(
+        "--downgrade-to",
+        choices=[PERSONAL_CORRECTIONS_PREDECESSOR_REVISION],
+        help="explicitly downgrade Personal corrections to its predecessor revision",
+    )
+    migrate.add_argument(
+        "--acknowledge-destructive-personal-corrections-downgrade",
+        action="store_true",
+        help="confirm a private export was created and verified before destructive downgrade",
+    )
     subparsers.add_parser("seed", help="apply the deterministic seed release")
 
     preview = subparsers.add_parser("import-preview", help="preview allowlisted configuration")

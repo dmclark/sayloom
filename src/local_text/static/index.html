@@ -264,6 +264,35 @@
                 Loading saved default…
               </p>
             </section>
+            <section class="settings-section personal-corrections-settings" aria-labelledby="personal-corrections-title">
+              <div class="settings-section-heading">
+                <div>
+                  <h3 id="personal-corrections-title">Personal corrections</h3>
+                  <p>Save terms and misheard aliases for your local profile. This foundation does not yet send them to Smart.</p>
+                </div>
+                <button id="personal-corrections-toggle" class="button" type="button">Enable Personal corrections</button>
+              </div>
+              <p id="personal-corrections-state" class="settings-save-state" role="status" aria-live="polite">
+                Loading Personal corrections…
+              </p>
+              <form id="personal-correction-form" class="personal-correction-create" hidden>
+                <div class="personal-correction-fields">
+                  <label>Intended term
+                    <input id="personal-correction-term" required maxlength="200" autocomplete="off">
+                  </label>
+                  <label>Misheard aliases
+                    <textarea id="personal-correction-aliases" required maxlength="1000" placeholder="One per line" aria-describedby="personal-correction-alias-help"></textarea>
+                    <small id="personal-correction-alias-help">Enter one or more aliases, one per line.</small>
+                  </label>
+                  <label>Applicability context <span>Optional</span>
+                    <textarea id="personal-correction-context" maxlength="500" placeholder="When should this term apply?"></textarea>
+                  </label>
+                </div>
+                <button class="button button-primary" type="submit">Add correction</button>
+              </form>
+              <p id="personal-corrections-empty" class="personal-corrections-empty">No corrections saved yet.</p>
+              <div id="personal-correction-list" class="personal-correction-list" aria-label="Saved Personal corrections"></div>
+            </section>
             <section class="settings-section target-settings" aria-labelledby="targets-title">
               <div class="settings-section-heading">
                 <div>
