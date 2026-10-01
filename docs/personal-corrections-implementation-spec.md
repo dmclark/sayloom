@@ -490,7 +490,24 @@ confirmation distinguishes edit from deletion and states the deletion cascade.
 
 Deletion claims must name their scope: current-state UI deletion or confirmed
 purge across the previewed registered states. Neither flow claims deletion from
-unregistered directories or user-created exports.
+unregistered directories, managed SQLite backups, or user-created exports.
+
+**Deferred privacy choice — blocks complete durable-deletion acceptance:** The
+controlled restart workflow creates full SQLite backups. D15 settles deletion
+from live current-state and registered-state databases only; it does not decide
+how backups containing Personal Corrections are handled. Before implementation
+claims complete durable deletion, confirm one of these policies:
+
+1. automatic lifecycle backups omit Personal Corrections tables;
+2. deletion also removes every in-scope managed backup that may contain
+   Personal Corrections, with a clear warning about loss of configuration
+   recovery; or
+3. deletion covers the selected live databases and future exports while prior
+   encrypted or access-controlled recovery snapshots follow a separately
+   documented retention period.
+
+The versioned private export remains user-created private data under every
+option and is never silently removed by UI deletion or registered-state purge.
 
 ## Versioned private export
 
@@ -595,7 +612,9 @@ not mutated.
 7. Profile evidence is advice, not an automatic replacement command. Every
    resulting lexical change remains under the Smart review contract.
 8. Disablement is reversible retention. Deletion is hard removal within its
-   declared current-state or confirmed registered-state purge scope.
+   declared current-state or confirmed registered-state live-database scope.
+   Managed-backup handling is unresolved, so complete durable deletion must not
+   be claimed.
 9. Export contains only Personal corrections state and writes no server-side
    copy. It is private data, not a support artifact or Git attachment.
 10. Reactive episodes are excluded from held-out evaluation unless a future
@@ -661,7 +680,10 @@ synthetic text.
 - Deleting an entry removes aliases, linked events, and every linked episode
   while retaining unrelated entries; future export cannot reveal deleted text.
 - Current-state deletion and preview/confirm cross-state purge scopes are
-  exercised separately; neither claims to purge unregistered locations.
+  exercised separately; neither claims to purge unregistered locations,
+  managed backups, or user-created exports.
+- The confirmed managed-backup policy is exercised, not merely documented,
+  before complete durable deletion is accepted.
 - Export validates against a checked-in v1 schema/fixture, has stable ordering,
   includes all approved fields and only content-minimized events, and emits no
   server-side artifact.
@@ -682,9 +704,11 @@ ticket is marked ready for implementation:
 
 1. **Addition/removal reuse:** Confirm stage 1's proposed episode-only storage
    for additions and removals, with replacement-only runtime reuse.
-2. **Export surface:** Choose browser Download or admin command. This does not
+2. **Managed-backup deletion:** Choose one policy in Management and deletion.
+   This blocks a complete durable-deletion claim.
+3. **Export surface:** Choose browser Download or admin command. This does not
    block schema/store work.
-3. **Exact management composition:** Navigation and component layout remain an
+4. **Exact management composition:** Navigation and component layout remain an
    implementation choice, but every durable field and destructive consequence
    must stay inspectable.
 
@@ -729,8 +753,8 @@ not after schema or UI completion.
 2. **`Complete Personal Corrections deletion, history, and private export`** —
    Implement inspectable content-minimized history, hard cascade semantics,
    current-state UI deletion, preview/confirm purge across registered states,
-   and export v1 with no server artifact. **Blocked by the Smart retrieval
-   child.**
+   the confirmed managed-backup policy, and export v1 with no server artifact.
+   **Blocked by the Smart retrieval child and the managed-backup policy.**
 3. **`Demonstrate the first private Personal corrections usefulness loop`** —
    Record the execution guide's nine-step gate with one real private mapping,
    using only content-free evidence in the issue. Do not paste private text or

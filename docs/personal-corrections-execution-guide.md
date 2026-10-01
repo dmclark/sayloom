@@ -158,6 +158,10 @@ Broaden retrieval only in response to observed misses.
   parallel states may diverge.
 - UI deletion affects only the current state. A separate administration command
   may purge registered states only after preview and confirmation.
+- Both deletion paths cover live databases only. Managed SQLite backup handling
+  remains unresolved, and user-created exports are not removed. Complete
+  durable deletion cannot be claimed until the backup policy is confirmed and
+  verified.
 - API keys remain in protected shared configuration and never enter a Personal
   Corrections database, snapshot, or export. Keychain is deferred.
 
@@ -195,7 +199,7 @@ gate is met and its evidence is recorded in this guide or its linked issue.
 | ---: | --- | --- | --- |
 | 1 | **Active** | Development-state root migration | An explicit, verified migration moves registered state data to `${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/`; normal startup never migrates. |
 | 2 | Blocked by phase 1 | Evidence Collection retirement | Workspace and runtime APIs, arming and lease logic, participant-package tooling, and dedicated tests are removed while historical docs and Git remain. |
-| 3 | Blocked by phase 2 | Personal Corrections | Explicit Original → Intended review and approval, durable `local` ownership, cross-session Smart reuse, management, current-state deletion, registered-state purge, and private export work end to end. |
+| 3 | Blocked by phase 2 | Personal Corrections | Explicit Original → Intended review and approval, durable `local` ownership, cross-session Smart reuse, management, current-state deletion, registered-state purge, and private export work end to end. Complete durable-deletion acceptance additionally requires a confirmed managed-backup policy. |
 | 4 | Blocked by phase 3 | New-state inheritance | A new state inherits and verifies a transactional snapshot from the explicitly activated eligible source; failures prevent activation, no-source creation reports empty, and existing states remain untouched. |
 
 ### Existing partial implementation evidence

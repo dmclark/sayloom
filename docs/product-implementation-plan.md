@@ -40,7 +40,10 @@ Implementation proceeds in this order:
    dedicated tests. Preserve historical documentation and Git history.
 3. **Personal Corrections:** implement explicit Original → Intended review and
    approval, durable `owner_id = "local"`, cross-session live Smart use,
-   management, state-scoped deletion, registered-state purge, and export.
+   management, state-scoped live-database deletion, registered-state purge, and
+   export. A separate unresolved policy must decide how managed SQLite backups
+   containing Personal Corrections are handled before complete durable deletion
+   can be claimed; neither deletion flow removes user-created exports.
 4. **New-state inheritance:** copy and verify a transactional Personal
    Corrections snapshot from the eligible source explicitly activated for
    creation before activating the destination.
@@ -253,6 +256,9 @@ disableable, and deletable for one local user.
 - Supply only enabled knowledge owned by `local` during Smart preparation.
 - Scope UI deletion to the current state and provide a separate preview/confirm
   administration command for purging registered states only.
+- Treat both as live-database operations. Do not claim complete durable deletion
+  until a confirmed policy for managed SQLite backups is implemented and
+  verified; never silently remove user-created exports.
 - Keep API keys in protected shared configuration, never in Personal
   Corrections storage or export.
 

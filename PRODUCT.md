@@ -187,6 +187,9 @@ the same product purpose but may use different delivery and provider adapters.
   diverge.
 - Limits UI deletion to the current state. Cross-state purge is a separate
   preview-and-confirm administration action over registered states only.
+- Makes no complete durable-deletion claim until a separate policy decides how
+  managed SQLite backups containing Personal Corrections are handled. Neither
+  live-database deletion flow removes user-created exports.
 
 ### Initial hosted service
 
@@ -294,6 +297,9 @@ The following remain open and must not be presented as committed behavior:
 - Hosted accounts, device sync, and their ownership boundary until a real
   multi-user, synchronization, or hosting requirement exists.
 - Keychain storage for API keys.
+- Whether managed SQLite backups containing Personal Corrections are omitted,
+  purged, or retained. Current-state deletion and registered-state purge apply
+  only to live databases and do not remove user-created exports.
 - Any renewed research or evaluation purpose and contract.
 
 ## Evidence on Hand

@@ -77,6 +77,12 @@ registered states, but it must preview the affected registered states and
 require confirmation before deletion. It does not search or mutate
 unregistered state directories.
 
+This decision governs live registered-state databases only. It does not decide
+whether managed SQLite backups containing Personal Corrections are omitted,
+purged, or retained, and neither deletion flow removes user-created exports.
+The backup-deletion policy remains deferred; no implementation may claim
+complete durable deletion until that policy is confirmed and verified.
+
 ### Retire Evidence Collection before adding Personal Corrections
 
 Evidence Collection is superseded product direction. A later implementation
@@ -105,6 +111,8 @@ Implementation proceeds in this order:
 - Current states receive no automatic correction backfill.
 - UI deletion cannot imply deletion from other states; the cross-state purge
   boundary is explicit and administrative.
+- Live-database deletion does not establish deletion from managed backups or
+  user-created exports; complete durable deletion remains an unresolved claim.
 - Evidence Collection code and operational paths remain temporarily present
   until their separately authorized retirement phase.
 
