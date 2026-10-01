@@ -1,41 +1,46 @@
-# Personal corrections stage 1 implementation specification
+# Personal Corrections implementation specification
 
-- **Status:** Proposed for confirmation
-- **Scope:** Private, single-user Personal corrections flywheel
+- **Status:** Confirmed target contract; implementation pending
+- **Scope:** Private, single-user Personal Corrections flywheel
 - **Execution authority:** [Personal corrections execution guide](personal-corrections-execution-guide.md)
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
+- **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
 - **Domain vocabulary:** [`CONTEXT.md`](../CONTEXT.md)
-- **Prepared:** 2026-09-29
+- **Confirmed:** 2026-10-01
 
 ## Purpose
 
-This specification makes stages 2–5 of the execution guide implementable
-without widening the product contract. It defines the smallest durable model,
-capture and approval lifecycle, Smart-only retrieval boundary, occurrence
-history, deletion behavior, private export, migration, and acceptance evidence
-needed for the first usefulness gate.
+This specification defines the Personal Corrections phase of the ordered work
+in the execution guide. It defines the smallest durable model, review and
+approval lifecycle, Smart-only retrieval boundary, occurrence history,
+state-local deletion, private export, migration, and acceptance evidence needed
+for the first usefulness gate.
 
 This document does not authorize implementation, migration, private-data
 access, provider traffic, GitHub mutation, or operation of the stable
-application. Confirmation of this specification and separate authorization are
-required before implementation.
+application. Evidence Collection and current Application Support state paths
+still exist until the preceding retirement and state-root migration phases are
+separately implemented and verified.
 
 ## Confirmed outcome and non-goals
 
-The first release serves one implicit private local principal. The user can:
+The first release serves one implicit private local principal with durable
+`owner_id = "local"`. It adds no account, login, owner selector, or owner UI.
+The user can:
 
-1. explicitly enable Personal corrections;
-2. turn a missed Cleanup or Smart repair into a reviewed correction episode;
-3. save selected mappings and bounded optional sentence evidence;
+1. turn a missed Cleanup or Smart repair into a reviewed correction episode;
+2. explicitly review and approve an Original → Intended mapping;
+3. save a Personal Correction for live use in later sessions;
 4. inspect, edit, disable, or delete a Personal correction;
 5. have matching enabled aliases supplied only to a later Smart request;
 6. inspect content-minimized recurrence events; and
 7. export the current private state in a versioned machine-readable format.
 
-The release does not add hosted identity, multiple users, model training,
-cross-user learning, automatic approval, outcome claims, `helped` or `wrong`
-feedback, formulaic Cleanup rules, or held-out evaluation evidence. Reactive
-correction episodes are private development and discovery evidence only.
+The release does not add hosted identity, multiple users, device sync, model
+training, cross-user learning, automatic approval, outcome claims, `helped` or
+`wrong` feedback, formulaic Cleanup rules, or evaluation evidence. Accounts
+remain deferred until multi-user, device-sync, or hosting boundaries exist.
+Any renewed research requires a new approved evaluation purpose and contract.
 
 Core Cleanup remains account-independent. No Personal correction setting,
 entry, alias, episode, event, lookup, failure, or export may change Cleanup's
@@ -64,14 +69,14 @@ The implementation must extend, rather than bypass, these current boundaries:
 
 Ordinary `/api/cleanup` callers must not submit profile rows or select an owner.
 The application route owns local-principal selection and retrieval before it
-constructs the internal Smart request. Evidence Collection remains a separate
-contract and must not become a Personal corrections write path.
+constructs the internal Smart request. Evidence Collection is superseded and
+must be retired before this phase; it is not a Personal Corrections write path.
 
 ## Terms used here
 
 - **Local principal:** The constant internal owner key `local`. It is not a
   hosted account or display name.
-- **Profile:** The local principal's persisted Personal corrections enablement
+- **Profile:** The local principal's persisted Personal Corrections enablement
   state and entries.
 - **Entry:** One intended canonical term, optional approved applicability
   context, enabled state, and one or more observed aliases.
@@ -95,8 +100,9 @@ filtering is insufficient.
 | `enabled` | Required boolean. |
 | `created_at`, `updated_at` | Required UTC timestamps. |
 
-No row means never enabled and therefore disabled. The explicit first enable
-creates the row. Later global disablement changes `enabled` but does not alter
+No row means no saved Personal Corrections and therefore disabled. The first
+approved save creates the profile row and an enabled entry in the same
+transaction. Later global disablement changes `enabled` but does not alter
 individual entries. The migration creates no profile row or other seed data.
 
 ### `personal_correction_entries`
@@ -304,6 +310,13 @@ sentences, and all durable text. The user may select 1–20 mappings, edit the
 mapping text, edit or remove either sentence, and edit/remove applicability
 context.
 
+The interface describes this action as **save a Personal Correction**, never as
+“data collection.” Save requires explicit review and approval of the displayed
+Original → Intended mapping. That approval authorizes the saved correction for
+live Smart use across later sessions until it is edited, disabled, or deleted.
+An edit ends the prior mapping's authorization; the edited Original → Intended
+mapping must be reviewed and explicitly saved before it is enabled for reuse.
+
 Save is one database transaction. For each selected reusable replacement it:
 
 1. normalizes intended and observed values;
@@ -351,9 +364,8 @@ responses.
 | Method and route | Contract |
 | --- | --- |
 | `GET /api/personal-corrections` | Return global state, entries, aliases, bounded episodes, and content-minimized history for management. |
-| `PUT /api/personal-corrections/profile` | Explicitly create/enable or later globally disable the local profile. Accept only `enabled`. |
-| `POST /api/personal-corrections/entries` | Explicitly create one enabled intended term with one or more aliases and optional context. |
-| `PUT /api/personal-corrections/entries/{id}` | Revision-checked edit of intended term, aliases, context, or enabled state. |
+| `PUT /api/personal-corrections/profile` | Globally disable or re-enable an existing local profile. Accept only `enabled`; it cannot create an absent profile. |
+| `PUT /api/personal-corrections/entries/{id}` | Revision-checked save of a reviewed edit to intended term, aliases, context, or enabled state; changed mapping text is not reusable before this explicit save. |
 | `DELETE /api/personal-corrections/entries/{id}` | Revision-checked hard deletion with the disclosed cascade. |
 | `POST /api/personal-corrections/candidates` | Derive ordered lexical mappings and sentence prefills from exact pre/post revisions without writing them. |
 | `POST /api/personal-corrections/episodes` | Idempotently approve bounded sentences and 1–20 selected mappings in one transaction. |
@@ -448,6 +460,12 @@ An entry update is transactional, owner-scoped, and revision-checked. Disabling
 an entry prevents future retrieval but preserves its episodes and history.
 Global disablement prevents all retrieval but preserves entries.
 
+UI deletion is scoped to the currently active development state. It must not
+claim to remove the correction from another state. A separate administration
+command may purge Personal Corrections across registered states only. Before
+writing, that command must preview the affected registered states and require
+explicit confirmation; unregistered directories are outside its scope.
+
 Entry deletion is a hard delete. In one transaction it deletes:
 
 - the entry and every alias;
@@ -470,22 +488,9 @@ revision-checked entry update; episode mapping text remains the exact approved
 historical value, while future retrieval uses the edited alias. The management
 confirmation distinguishes edit from deletion and states the deletion cascade.
 
-**Unresolved privacy choice — blocks final deletion acceptance:** The controlled
-restart workflow creates full SQLite backups. The product authorities do not
-say whether deleting Personal corrections must also destroy prior managed
-backups. Before implementation, confirm one of these policies:
-
-1. **Recommended:** automatic lifecycle backups omit Personal corrections
-   tables; the versioned private export is the user's explicit backup mechanism;
-2. deletion also removes every selected-state managed backup that may contain
-   Personal corrections, with a clear warning about loss of configuration
-   recovery; or
-3. deletion covers the live database and future exports while prior encrypted
-   or access-controlled recovery snapshots follow a separately documented
-   retention period.
-
-The implementation must not claim complete durable deletion until one policy
-is confirmed and tested.
+Deletion claims must name their scope: current-state UI deletion or confirmed
+purge across the previewed registered states. Neither flow claims deletion from
+unregistered directories or user-created exports.
 
 ## Versioned private export
 
@@ -525,7 +530,28 @@ may expose this endpoint through a management-area Download action or an
 explicit admin command. Whichever surface is selected must emit the exact same
 schema and must not write a second server-managed copy.
 
-## Migration and rollback
+## Development-state location and inheritance
+
+The development-state root moves from the current macOS Application Support
+location to `${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/`. A
+dedicated administration operation performs and verifies that migration before
+activation. Normal startup never moves state files or runs database migrations.
+
+After Personal Corrections are implemented, creation of a new development
+state must inherit them when an eligible source was explicitly activated for
+that creation. The source is read in one transaction, copied as a coherent
+snapshot, and verified in the destination before activation. API keys and other
+protected shared configuration are not part of the Personal Corrections
+snapshot.
+
+If an eligible source exists and snapshot creation, copy, or verification
+fails, initialization fails before activation and preserves the source. It must
+not silently substitute an empty profile. If no eligible source exists,
+initialization reports an explicitly empty Personal Corrections profile and may
+activate the state. Creation performs no backfill into existing states and no
+post-creation synchronization; parallel states may diverge.
+
+## Database migration and rollback
 
 Add one Alembic revision after `0003_unified_preparation_default`. Upgrade:
 
@@ -535,9 +561,9 @@ Add one Alembic revision after `0003_unified_preparation_default`. Upgrade:
 3. updates `SCHEMA_REVISION` so an old database reports `mismatch` until the
    explicit controlled migration runs.
 
-The existing explicit administration path owns migration. Normal application
-startup remains read-only with respect to schema and seed state and returns
-`setup_required` on a missing or mismatched revision.
+The explicit administration path owns database migration. Normal application
+startup remains read-only with respect to schema, seed state, and state-root
+location and returns `setup_required` on a missing or mismatched revision.
 
 Downgrade to `0003_unified_preparation_default` drops child tables before
 parents. It is intentionally data-destructive and must refuse to proceed when
@@ -568,12 +594,17 @@ not mutated.
    corrections never inform Cleanup.
 7. Profile evidence is advice, not an automatic replacement command. Every
    resulting lexical change remains under the Smart review contract.
-8. Disablement is reversible retention; deletion is hard removal under the
-   confirmed backup policy.
+8. Disablement is reversible retention. Deletion is hard removal within its
+   declared current-state or confirmed registered-state purge scope.
 9. Export contains only Personal corrections state and writes no server-side
    copy. It is private data, not a support artifact or Git attachment.
 10. Reactive episodes are excluded from held-out evaluation unless a future
-    prospective protocol independently qualifies them.
+    approved evaluation purpose and contract independently qualifies them.
+11. API keys remain in protected shared configuration and never enter Personal
+    Corrections tables, snapshots, or exports. Keychain storage is deferred.
+12. Each development state owns an independent snapshot. New-state inheritance
+    is transactional and verified, never silently empty when a source exists,
+    and never followed by automatic synchronization.
 
 ## Acceptance checks
 
@@ -629,7 +660,8 @@ synthetic text.
   `intended_produced`.
 - Deleting an entry removes aliases, linked events, and every linked episode
   while retaining unrelated entries; future export cannot reveal deleted text.
-- The confirmed backup policy is exercised, not merely documented.
+- Current-state deletion and preview/confirm cross-state purge scopes are
+  exercised separately; neither claims to purge unregistered locations.
 - Export validates against a checked-in v1 schema/fixture, has stable ordering,
   includes all approved fields and only content-minimized events, and emits no
   server-side artifact.
@@ -650,17 +682,15 @@ ticket is marked ready for implementation:
 
 1. **Addition/removal reuse:** Confirm stage 1's proposed episode-only storage
    for additions and removals, with replacement-only runtime reuse.
-2. **Backup deletion policy:** Choose one policy in Management and deletion.
-   This blocks a complete deletion claim.
-3. **Export surface:** Choose browser Download or admin command. This does not
+2. **Export surface:** Choose browser Download or admin command. This does not
    block schema/store work.
-4. **Exact management composition:** Navigation and component layout remain an
+3. **Exact management composition:** Navigation and component layout remain an
    implementation choice, but every durable field and destructive consequence
    must stay inspectable.
 
-Fuzzy aliases, outcome feedback, import, hosted ownership, retention windows,
-automatic formulaic rules, and use of episodes in evaluation are deferred
-product work, not stage-1 implementation choices.
+Fuzzy aliases, outcome feedback, import, hosted ownership, device sync,
+retention windows, automatic formulaic rules, Keychain storage, and any use of
+episodes in evaluation are deferred product work, not implementation choices.
 
 ## Exact ticket-reconciliation proposal
 
@@ -685,7 +715,7 @@ not after schema or UI completion.
 
 | Issue | Exact mutation | Blocking edges after reconciliation |
 | --- | --- | --- |
-| [#12](https://github.com/dmclark/sayloom/issues/12) | Retitle **Create the local Personal corrections profile and management boundary**. Replace acceptance criteria with: explicit enable-by-row-creation; schema and owner-scoped store; entry/alias CRUD; global and per-entry disablement; optimistic revisions; explicit migration/downgrade; no startup migration/seed; no Original/Prepared retention; synthetic persistence/API/UI checks. Link this specification. Remove `#10` as a blocker because hosted identity is deferred; state that `local` is the only principal. | Umbrella only. |
+| [#12](https://github.com/dmclark/sayloom/issues/12) | Retitle **Create the local Personal Corrections profile and management boundary**. Replace acceptance criteria with: the first explicitly approved save creates the profile row and enabled entry; schema and owner-scoped store; management read/edit/disable/delete without an unreviewed create path; optimistic revisions; explicit migration/downgrade; no startup migration/seed; no Original/Prepared retention; synthetic persistence/API/UI checks. Link this specification. Remove `#10` as a blocker because hosted identity is deferred; state that `local` is the only principal. | Umbrella only. |
 | [#109](https://github.com/dmclark/sayloom/issues/109) | Retitle **Capture a bound missed repair for Personal corrections review**. Replace the claim that capture cannot lead to personalization with the state machine in this specification. Add bounded editable/removable observed/intended sentences and shared lexical candidates. Preserve no-write behavior for ordinary actions. Bind a normal edit session from one frozen pre-edit revision to its latest settled post-edit revision; allow exact post-edit automatic regeneration, then invalidate any edit after review opens or any changed transformation input. Remove #45 as blocker and remove `needs-triage`; add `ready-for-agent` only after the addition/removal choice is confirmed. | #12. |
 | [#13](https://github.com/dmclark/sayloom/issues/13) | Retitle **Approve and save a Personal correction episode**. Replace model-confirmation-only input with selected user-supplied mappings from #109. Require replacement dedupe, idempotent `approval_id`, atomic episode/mapping/event write, context conflict review, bounded sentence enforcement, and no writes from dismissal/Copy/delivery/inaction. Remove #11 and #12 as direct blockers; #12 remains transitive through #109. | #109. |
 | [#45](https://github.com/dmclark/sayloom/issues/45) | Keep title and current-result browser-local scope. Add a note: this is optional later positive confirmation of model-proposed repairs; it neither blocks #109 nor authorizes Personal corrections persistence. Do not close it and do not add it to the active flywheel's blocking path. | Keep #11 only. |
@@ -696,10 +726,11 @@ not after schema or UI completion.
    server-owned normalization, exact lexical-boundary matching, deterministic
    ordering, 50-item bound, typed Smart evidence, observed/supplied/produced
    events, and every fail-open path. Prove Cleanup isolation. **Blocked by #13.**
-2. **`Complete Personal corrections deletion, history, and private export`** —
+2. **`Complete Personal Corrections deletion, history, and private export`** —
    Implement inspectable content-minimized history, hard cascade semantics,
-   confirmed backup policy, and export v1 with no server artifact. **Blocked by
-   the Smart retrieval child and the backup-policy decision.**
+   current-state UI deletion, preview/confirm purge across registered states,
+   and export v1 with no server artifact. **Blocked by the Smart retrieval
+   child.**
 3. **`Demonstrate the first private Personal corrections usefulness loop`** —
    Record the execution guide's nine-step gate with one real private mapping,
    using only content-free evidence in the issue. Do not paste private text or

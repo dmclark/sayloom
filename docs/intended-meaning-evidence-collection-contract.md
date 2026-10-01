@@ -1,16 +1,22 @@
 # Intended-meaning evidence collection contract
 
-- **Status:** Confirmed participant-evidence-package and collection specification;
-  implementation reconciliation required before further implementation
+- **Status:** Superseded product direction; retained for history pending runtime retirement
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
-- **Prototype authority:**
-  [`automatic-correction-prototype-spec.md`](automatic-correction-prototype-spec.md)
+- **Superseded by:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
 - **Decision source:**
   [Confirmed package-contract interview](https://ampcode.com/threads/T-01a0e53c-8153-714f-93a3-67df8d02e8b6)
 - **Collection task:**
   [Collect intended-meaning evidence during ordinary use](https://github.com/dmclark/sayloom/issues/61)
 - **Downstream review task:**
   [Freeze and audit intended-meaning evidence partitions](https://github.com/dmclark/sayloom/issues/62)
+
+> **Superseded direction:** Do not use this document to authorize collection,
+> evaluation, package administration, provider execution, or new implementation.
+> Evidence Collection remains in the current Workspace and runtime until a
+> later implementation phase removes those surfaces, arming and lease logic,
+> participant-package tooling, and dedicated tests. Historical documentation
+> and Git history remain. Any renewed research requires a new explicitly
+> approved evaluation purpose and contract.
 
 This specification defines the bounded browser interaction and **participant
 evidence package** used to collect evidence for separate Cleanup and Smart
@@ -382,6 +388,10 @@ claim.
 
 ## Current implementation reconciliation
 
+This section records the implementation that still exists; it is not a plan to
+complete this superseded contract. The target is retirement after the explicit
+development-state root migration and before Personal Corrections implementation.
+
 Issue [#118](https://github.com/dmclark/sayloom/issues/118) is the correct but
 incomplete configuration slice of this specification. Its implementation gives
 Evidence Collection the dedicated exact-root
@@ -401,9 +411,8 @@ work must:
 - define package closure and revocation; and
 - propagate withdrawal through retained private derived artifacts.
 
-These gaps do not invalidate issue #118's configuration boundary. They prevent
-the current package implementation from being treated as the complete confirmed
-contract.
+These gaps remain historical context only. They do not justify completing the
+package contract instead of retiring Evidence Collection.
 
 ## Verification boundary
 

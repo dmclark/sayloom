@@ -1,11 +1,10 @@
 # Sayloom product implementation plan
 
-- **Status:** Approved
+- **Status:** Approved sequence; implementation pending
 - **Audience:** Product, design, engineering, research, and delivery contributors
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
-- **Evaluation and milestone authority:** [`evaluation-mvp-map.md`](evaluation-mvp-map.md)
-- **Automatic-correction prototype:**
-  [`automatic-correction-prototype-spec.md`](automatic-correction-prototype-spec.md)
+- **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
+- **Execution authority:** [Personal Corrections execution guide](personal-corrections-execution-guide.md)
 
 ## Purpose
 
@@ -15,23 +14,55 @@ reinterpret `PRODUCT.md`. Each capability area has observable exit criteria;
 implementation follows the issue order below and completes affected checks
 before advancing.
 
-The Current product already provides Conservative source-preserving preparation, provider
+The current product already provides Conservative source-preserving preparation, provider
 routing, editable Original text, a generated result named Prepared,
 explicit Outgoing selection, fail-open behavior, prompt versions, inspectable
 failures, local Raycast delivery, and a bounded single-method Smart path with
-server-derived repair metadata. Automatic selection among multiple correction
-methods, complete meaning-bearing change review, user-scoped personalization,
-hosted identity, managed hosted provider access, and the hosted service remain
-implementation gaps.
+server-derived repair metadata. A partial local Personal Corrections foundation
+also exists. Complete meaning-bearing change review, live Personal Corrections,
+state portability, hosted identity, managed hosted provider access, and the
+hosted service remain implementation gaps.
 
-## Sequencing
+The current runtime still contains Evidence Collection Workspace and runtime
+APIs, arming and lease logic, participant-package tooling, dedicated tests, and
+development-state paths under macOS Application Support. Those are current
+implementation facts pending migration and retirement, not target direction.
 
-The automatic-correction prototype now follows the staged plan in the
+## Current implementation sequence
+
+Implementation proceeds in this order:
+
+1. **State-root migration:** explicitly migrate registered development-state
+   data to `${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/`. Normal
+   startup never migrates files or schemas.
+2. **Evidence Collection retirement:** remove it from the Workspace and runtime
+   APIs, including arming and lease logic, participant-package tooling, and
+   dedicated tests. Preserve historical documentation and Git history.
+3. **Personal Corrections:** implement explicit Original → Intended review and
+   approval, durable `owner_id = "local"`, cross-session live Smart use,
+   management, state-scoped deletion, registered-state purge, and export.
+4. **New-state inheritance:** copy and verify a transactional Personal
+   Corrections snapshot from the eligible source explicitly activated for
+   creation before activating the destination.
+
+An eligible-source inheritance failure fails initialization before activation.
+No source is an explicitly reported empty profile. Existing states receive no
+backfill, no automatic post-creation synchronization occurs, and parallel
+states may diverge. One shared live Personal Corrections database is rejected
+because it would break parallel debugging-state isolation.
+
+Accounts remain deferred until multi-user, device-sync, or hosting boundaries
+exist. API keys remain in protected shared configuration and never enter a
+Personal Corrections database or export; Keychain storage is deferred.
+
+## Historical correction and evaluation sequence
+
+The deferred automatic-correction prototype is documented in the staged plan in the
 [focused specification](automatic-correction-prototype-spec.md), coordinated by
 [the automatic-correction initiative](https://github.com/dmclark/sayloom/issues/46).
-It treats automatic selection as a possible implementation inside Smart,
-compares experimental method families outside production runtime, and admits
-only an evidence-selected winner to runtime integration.
+It preserves prior technical context but does not authorize evaluation,
+provider execution, or runtime integration. Renewed research requires a new
+approved evaluation purpose and contract.
 
 The historical sequence below remains useful for the broader production Smart
 and personalization path. Its fixed single-Smart-prompt evidence steps are
@@ -63,13 +94,11 @@ Locally proven Smart product
 #17 Partner-demo ready
 ```
 
-Issue [#9](https://github.com/dmclark/sayloom/issues/9) coordinates the broader
-production Smart and personalization work. The linked
-[evaluation map](evaluation-mvp-map.md) and focused prototype specification own
-the current automatic-strategy evidence path and keep Cleanup evaluation
-independent from Smart evaluation. The capability sections below describe
-scope; they do not override that path. Memory and the full memory-inclusive
-self-pilot are outside the prototype.
+Issue [#9](https://github.com/dmclark/sayloom/issues/9) preserves broader
+production Smart and personalization history. The linked
+[evaluation map](evaluation-mvp-map.md) and focused prototype specification are
+deferred references. They do not override the current four-phase sequence or
+authorize collection, evaluation, provider execution, or pilot work.
 
 ## Capability area: Prepared vocabulary and mode foundation
 
@@ -189,54 +218,48 @@ benchmark material and superseded alternatives remain in read-only Mandrel.
 
 ### Outcome
 
-Establish the ownership boundary required for hosted configuration and
-personalization.
+Preserve the accepted local ownership boundary and defer tenant identity until
+a real multi-user, device-sync, or hosting boundary exists.
 
 ### In scope
 
-- Introduce one implicit local principal and authenticated hosted accounts.
-- Scope durable user settings by principal.
-- Select and document the hosted authentication, database, session, and
-  anonymous-rate-limit mechanisms before implementation.
+- Use the constant durable owner ID `local` for Personal Corrections.
+- Add no local account, login, owner selector, or owner-management UI.
+- Select and document hosted authentication, tenant storage, sessions, and
+  anonymous-rate-limit mechanisms only when hosting work begins.
 - Enforce ownership in persistence queries rather than only in route handlers.
 - Add explicit migration and rollback procedures.
 - Keep Original and Prepared out of durable application tables.
 
 ### Exit criteria
 
-- Cross-user tests prove durable configuration isolation.
-- Anonymous requests cannot create durable personalization.
+- Local tests prove every Personal Corrections query uses `owner_id = "local"`.
+- A separately approved hosted design defines cross-user acceptance evidence.
 - Normal startup still checks schema state without migrating or seeding.
 
 ## Capability area: Controllable personalization
 
 ### Outcome
 
-Add later user-specific learning that remains private, inspectable, editable,
-and deletable. This memory-inclusive scope belongs to issues #13 and #16 after
-the Evidence-backed Smart MVP; it is not required for the MVP.
+Add live Personal Corrections that remain private, inspectable, editable,
+disableable, and deletable for one local user.
 
-### Decision required before implementation
+### In scope
 
-Confirm the initial personalization schema, what constitutes user approval,
-how approved knowledge affects inference, and the retention controls. These
-details remain deferred in `PRODUCT.md` and this plan does not decide them.
-
-### In scope after that decision
-
-- Let users enable or disable automatic personalization.
-- Let users inspect, edit, and delete learned information.
-- Learn only from the confirmed approval signal; ordinary processing must not
-  silently retain text.
-- Supply only the current principal's enabled knowledge during preparation.
-- Store personalization in private local state locally and authenticated,
-  account-scoped storage when hosted.
+- Save only an explicitly reviewed and approved Original → Intended mapping.
+- Treat save as authorization for live use across sessions until edit,
+  disablement, or deletion.
+- Let users inspect, edit, disable, and delete saved Personal Corrections.
+- Supply only enabled knowledge owned by `local` during Smart preparation.
+- Scope UI deletion to the current state and provide a separate preview/confirm
+  administration command for purging registered states only.
+- Keep API keys in protected shared configuration, never in Personal
+  Corrections storage or export.
 
 ### Exit criteria
 
 - Create, inspect, edit, delete, disablement, and inference tests pass.
-- Cross-user tests demonstrate that one user's information cannot affect
-  another user's correction.
+- Owner-scoping tests prove no non-`local` row can be returned or mutated.
 - Disabling or deleting information prevents its later use.
 
 ## Capability area: Hosted offering
@@ -248,8 +271,8 @@ Provide the initial hosted offering defined by the product contract.
 ### In scope
 
 - Run the same preparation and review core behind hosted deployment adapters.
-- Allow limited anonymous evaluation, then require an account for continued use
-  and personalization.
+- Design accounts and isolation when hosting creates that boundary. Any limited
+  anonymous evaluation requires its own approved evaluation purpose and contract.
 - Use Sayloom-managed provider credentials and disclose third-party processing
   and provider-training terms clearly.
 - Keep Original and Prepared request-scoped and out of databases, logs,
@@ -267,6 +290,9 @@ Provide the initial hosted offering defined by the product contract.
 
 ## Capability area: Smart evaluation and release verification
 
+**Deferred:** This capability area is historical planning context, not active
+work. Renewed research requires a new approved evaluation purpose and contract.
+
 ### Outcome
 
 Verify independently that the complete automatic implementation of Smart
@@ -275,9 +301,9 @@ or weakening privacy and fail-open guarantees.
 
 ### In scope
 
-- Follow the candidate, development-comparison, held-out-selection, integration,
-  verification, and pilot stages in the focused automatic-correction
-  specification and issue #46 graph.
+- After a new evaluation contract is approved, reconcile the candidate,
+  development-comparison, held-out-selection, integration, verification, and
+  pilot stages rather than assuming the prior issue #46 graph remains valid.
 - Treat issues #14 and #15 as superseded fixed-arm history; compatible isolated
   mechanics moved to the automatic-strategy harness and evidence path.
 - Keep the provider-neutral automatic-strategy harness and its approved evidence

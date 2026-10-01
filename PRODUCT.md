@@ -6,7 +6,7 @@
 - **Audience:** Product, design, engineering, research, and delivery contributors
 - **Authority:** This document is the sole authority for Sayloom's product
   vision, positioning, roadmap direction, audience, and scope.
-- **Confirmed:** 2026-09-26
+- **Confirmed:** 2026-10-01
 
 ## Authority and supersession
 
@@ -104,36 +104,31 @@ evidence slice, safety thresholds, and Cleanup regression coverage establish
 that it is determinate and account-independent. Cleanup and Smart versions do
 not change during a registered evaluation or silently inside a released result.
 
-## Intended-meaning evidence collection
+## Personal Corrections and research boundary
 
-The local application may provide **Evidence Collection**, an optional research
-interaction that prospectively records actual Voiceitt-generated English text
-and producer-confirmed Intended text. Evidence Collection is independent of
-Cleanup and Smart correction; it is not a third correction or polishing mode
-and does not change either stage's contract.
+**Personal Corrections** serve live personalization for one local user. Sayloom
+saves a Personal Correction only after the user explicitly reviews and approves
+an **Original → Intended** mapping. Saving authorizes that correction for use in
+later sessions until the user edits, disables, or deletes it. Ordinary editing,
+processing, copying, delivery, dismissal, or inaction saves nothing.
+Editing a saved mapping ends its prior authorization; the edited Original →
+Intended mapping must be reviewed and explicitly saved before live reuse.
 
-Evidence Collection must be visibly armed for the current browser session and
-must never become a durable default. Arming requires a fresh source attestation
-and an externally administered, approved private evidence package. Before a
-consequential Smart, Copy, or local-delivery action can expose a candidate or
-consume Outgoing, the user confirms or corrects Intended text or excludes the
-observation. Intended text is never supplied to correction as candidate input.
+The durable owner ID is the internal constant `local`. The local product has no
+account, login, owner selector, or owner-management interface. Accounts remain
+deferred until multi-user, device-sync, or hosting boundaries exist.
 
-The user can cancel collection, continue ordinary uncollected use, exclude an
-observation, or withdraw previously collected private content. Collection
-failure must disarm the interaction without silently exposing a candidate or
-converting the action into uncollected evidence. Private evidence remains in
-the approved user-controlled external package, outside application operating
-state, routine logs, Git, GitHub, Mandrel, and orbs.
+Personal Corrections are product state, not research collection. Product copy
+says **save a Personal Correction**, not “data collection.” Formal evaluation
+is deferred. Any renewed research requires a new explicitly approved evaluation
+purpose and contract; ordinary use and saved corrections do not authorize
+research reuse.
 
-The first approved collection and evaluation claim remains bounded to one
-primary user. Contracts are participant-aware: each future participant uses an
-isolated package, and a separately authorized manifest may combine frozen
-package snapshots for participant-aware evaluation. This does not introduce
-hosted accounts, multi-participant operation, recruitment, implicit
-personalization, provider execution authorization, deployment, or pilot
-operation. The detailed interaction and package boundary is defined by the
-[intended-meaning evidence collection contract](docs/intended-meaning-evidence-collection-contract.md).
+Evidence Collection is superseded direction and is scheduled for removal from
+the Workspace, runtime APIs, arming and lease logic, participant-package
+tooling, and dedicated tests. Historical documentation and Git history remain.
+These surfaces still exist in the current runtime until that later retirement
+phase is implemented.
 
 ## Review and CART display
 
@@ -151,10 +146,11 @@ selected correction mode or silently switch processing behavior.
 Personalization belongs exclusively to one user. Information learned from one
 person must never affect another person's corrections.
 
-Users choose whether automatic personalization is enabled. They can inspect,
-edit, or delete what Sayloom has learned. With personalization enabled,
-user-approved corrections, edits, vocabulary, spelling, capitalization, and
-similar preferences may improve later results.
+Users can inspect, edit, disable, or delete each saved Personal Correction.
+Only an explicitly reviewed and approved Original → Intended mapping becomes
+durable personalization. Its authorization persists across sessions until the
+user edits, disables, or deletes it. A reviewed and explicitly saved edit starts
+new authorization for the edited mapping.
 
 Private correction profiles and Correction memory inform Smart only in the
 initial product contract. Core Cleanup remains independently usable and
@@ -162,10 +158,10 @@ evaluable without an account or user-specific state. Any future profile-backed
 Cleanup extension requires its own versioned contract and evaluation and may
 not weaken the anonymous Cleanup baseline.
 
-In the local application, personalization stays in the user's private local
-state. In the hosted service, it is isolated to the authenticated account.
-Personalization does not imply model training, cross-user learning, or consent
-to use private text for another purpose.
+In the local application, personalization stays in private state owned by
+`local`. Personalization does not imply model training, cross-user learning,
+evaluation, or consent to use private text for another purpose. Hosted identity
+and account isolation remain future decisions for a real hosting boundary.
 
 ## Operating Context
 
@@ -179,13 +175,25 @@ the same product purpose but may use different delivery and provider adapters.
 - May use user-supplied provider credentials.
 - Can publish Outgoing text to local integrations such as Raycast commands.
 - Keeps operating data and personalization outside Git in private local state.
+- Moves development-state data to
+  `${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/` only through an
+  explicit migration; normal startup never migrates it.
+- Gives each development state an independent Personal Corrections snapshot.
+  New states inherit and verify a transactional snapshot from the eligible
+  source explicitly activated for creation before activation.
+- Fails initialization when an eligible source exists but inheritance fails;
+  when no source exists, reports an empty profile explicitly.
+- Performs no post-creation synchronization or backfill, so parallel states may
+  diverge.
+- Limits UI deletion to the current state. Cross-state purge is a separate
+  preview-and-confirm administration action over registered states only.
 
 ### Initial hosted service
 
 - Provides correction, review, personalization, and copying of Prepared text.
 - May launch without automated delivery into target applications.
-- Allows limited anonymous evaluation, then requires an account for continued
-  use and personalization.
+- Requires a separate account and isolation design once hosting creates that
+  boundary; the local Personal Corrections contract does not pre-decide it.
 - Uses Sayloom-managed third-party AI provider access by default, with clear
   disclosure, appropriate privacy terms, and no provider training on user
   content.
@@ -234,21 +242,29 @@ this contract. The expanded Cleanup baseline, user-scoped learning, hosted
 accounts, hosted provider management, and the hosted service are not
 implemented unless later technical evidence says otherwise.
 
+The checkout still contains Evidence Collection Workspace and runtime APIs,
+arming and lease logic, participant-package tooling, dedicated tests, and
+development-state paths under macOS Application Support. Their presence is a
+current implementation fact pending the ordered migration and retirement work;
+it does not make Evidence Collection current product direction.
+
 Implementation and product design use **Prepared** for the generated result and
 reserve **Outgoing** for the exact selected delivery value.
 
 ### Durable constraints
 
 - **Never block the user:** Original remains available, and unavailable or
-  failed processing must leave a usable path forward. An explicitly armed
-  Evidence Collection session may block candidate exposure and delivery until
-  the user completes, cancels, or leaves that research interaction.
+  failed processing must leave a usable path forward.
 - **User authority:** Sayloom proposes intended wording; it does not claim to
   know what was spoken or override the user's correction.
 - **Private by default:** Dictated text, generated text, credentials, databases,
   logs, and other operating data never enter Git.
-- **Account isolation:** Hosted personalization and durable configuration are
-  isolated by authenticated user and never shared implicitly.
+- **Local ownership:** The durable local owner ID is `local`; no local account,
+  login, or owner UI exists.
+- **State isolation:** Development states hold independent Personal Corrections
+  snapshots and may diverge after creation; they do not share one live database.
+- **Credential separation:** API keys remain in protected shared configuration,
+  never in a Personal Corrections database or export. Keychain is deferred.
 - **Explicit learning control:** No cross-user learning, model training, or
   repurposing of private text follows from ordinary product use.
 - **Repository hygiene:** Commit project context deliberately; never add
@@ -256,7 +272,7 @@ reserve **Outgoing** for the exact selected delivery value.
 - **Neutral technical identity:** Package and machine-level identifiers remain
   decoupled from the Sayloom display brand.
 - **No startup migrations:** Normal application startup checks schema state but
-  does not migrate or seed databases.
+  does not migrate or seed databases and does not move development-state files.
 - **Controlled local lifecycle:** Validated changes use the controlled
   verify-then-restart workflow rather than hot reload.
 - **Predecessor isolation:** Sayloom never inspects, modifies, stops, or reuses
@@ -273,14 +289,19 @@ The following remain open and must not be presented as committed behavior:
 - The hosted target-integration mechanism.
 - Optional private text history; initial hosted text remains ephemeral.
 - Timing and design of hosted bring-your-own-key support.
-- Exact personalization schema, inference method, and retention controls.
+- Personalization methods and retention controls beyond the confirmed first
+  Personal Corrections contract.
+- Hosted accounts, device sync, and their ownership boundary until a real
+  multi-user, synchronization, or hosting requirement exists.
+- Keychain storage for API keys.
+- Any renewed research or evaluation purpose and contract.
 
 ## Evidence on Hand
 
 - The confirmed product interview and decision ledger in
   https://ampcode.com/threads/T-01a05f4e-9fac-71ec-96dc-2fea35b0d4e4.
-- The confirmed Evidence Collection product and interaction contract in
-  https://ampcode.com/threads/T-01a0b132-326f-705b-957f-3c80041999e5.
+- The accepted Personal Corrections ownership and state-portability decision in
+  [`docs/adr/0002-personal-corrections-ownership-and-state-portability.md`](docs/adr/0002-personal-corrections-ownership-and-state-portability.md).
 - The confirmed Cleanup, Smart, evaluation, and participant-boundary ledger in
   https://ampcode.com/threads/T-3a6a2274-45b0-4568-ae30-9f2f8845818b.
 - `ref:sayloom-product-contract` in the existing `voiceitt-bridge` Mandrel

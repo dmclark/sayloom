@@ -1,10 +1,11 @@
-# Personal corrections execution guide
+# Personal Corrections execution guide
 
 - **Status:** Current execution guide
-- **Active stage:** 3 — Missed-repair capture and explicit save
+- **Active phase:** 1 — Development-state root migration
 - **Initial user:** One implicit private local user
-- **Last confirmed:** 2026-09-30
+- **Last confirmed:** 2026-10-01
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
+- **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
 - **Domain vocabulary:** [`CONTEXT.md`](../CONTEXT.md)
 
 ## Purpose
@@ -16,20 +17,23 @@ This guide is the single place to answer:
 3. What proves that delivery is complete?
 4. Which prompt should start the next focused piece of work?
 
-The active goal is to improve one private user's correction accuracy and speed
-now while collecting structured, private data that can support formulaic work
-later. Hosted accounts, multi-user operation, pilots, and broad efficacy claims
-do not block this goal.
+The active goal is to deliver live Personal Corrections for one local user in
+the confirmed order: state-root migration, Evidence Collection retirement,
+Personal Corrections, then new-state inheritance. Hosted accounts, multi-user
+operation, device sync, research, pilots, and broad efficacy claims do not
+block this goal.
 
 `PRODUCT.md` remains product authority. This guide controls current execution
-order. The formal Cleanup and Smart evaluation documents retain their contracts
-but do not determine the next deliverable while that work is deferred.
+order. Formal evaluation is deferred. Renewing it requires a new approved
+evaluation purpose and contract; an older research document or open issue does
+not authorize resumption.
 
 ## Current position
 
 Sayloom can generate Smart Prepared text, show its server-derived repair queue,
-and manage the explicitly enabled local Personal corrections foundation. It
-cannot yet capture a missed repair or complete the personal correction flywheel:
+and manage a partial local Personal Corrections foundation. It cannot yet
+complete the confirmed Personal Corrections flywheel or state-portability
+contract:
 
 ```text
 Smart misses wording
@@ -38,10 +42,10 @@ Smart misses wording
 User edits Original
         │
         ▼
-"This is what I meant"
+Review Original → Intended
         │
         ▼
-Review and save selected mapping
+Save a Personal Correction
         │
         ▼
 Personal correction informs a later Smart request
@@ -50,19 +54,30 @@ Personal correction informs a later Smart request
 Inspect recurrence and export private discovery data
 ```
 
-The immediate next deliverable is stage 3 missed-repair capture and explicit
-save. Stage 2 did not begin capture, episodes, Smart retrieval, events, export,
-or hard deletion.
+The current runtime still contains Evidence Collection Workspace and API
+surfaces, arming and lease logic, participant-package tooling, dedicated tests,
+and development-state paths under macOS Application Support. The partial
+Personal Corrections foundation does not make the newly confirmed sequence
+complete.
+
+The immediate next deliverable is the explicit migration from the current
+Application Support state root to
+`${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/`. Normal startup must
+not perform that migration. Evidence Collection retirement follows it.
 
 ## Current contract
 
 ### Ownership and activation
 
-- One implicit local principal owns all Personal corrections data.
-- Hosted authentication is deferred until hosting or a second user creates a
-  real isolation requirement.
-- The user explicitly enables Personal corrections once.
+- The constant durable owner ID `local` owns all Personal Corrections data.
+- There is no account, login, owner selector, or owner-management UI.
+- Accounts are deferred until multi-user, device-sync, or hosting boundaries
+  create a real isolation requirement.
 - A newly reviewed and saved entry is enabled by default.
+- Saving authorizes that correction across later sessions until it is edited,
+  disabled, or deleted.
+- Editing ends the prior mapping's authorization. The edited Original →
+  Intended mapping requires review and explicit save before reuse.
 - Every entry remains inspectable, editable, disableable, and deletable.
 - Deleting an entry also deletes its linked occurrence history from durable
   local storage and future exports.
@@ -75,6 +90,9 @@ or hard deletion.
   **This is what I meant** for the exact pre-edit and post-edit revisions.
 - Sayloom derives candidate additions, removals, and replacements. The user
   selects and may edit the mappings to save.
+- The user explicitly reviews and approves Original → Intended before Sayloom
+  can **save a Personal Correction**. The interface does not call this data
+  collection.
 - Multiple selected mappings may belong to one correction episode.
 - The save interaction visibly previews all durable private text and allows the
   user to edit or remove bounded context before approval.
@@ -128,6 +146,21 @@ specification. It must be short, explicit, and enforced at the storage boundary.
 Exact alias normalization beyond the initial bounded match is **Deferred**.
 Broaden retrieval only in response to observed misses.
 
+### State portability and deletion
+
+- Development states use independent Personal Corrections snapshots rather
+  than one shared live database.
+- A future new state inherits one verified transactional snapshot from the
+  eligible source explicitly activated for creation.
+- If that source exists and inheritance fails, initialization fails before
+  activation. If no source exists, initialization reports an empty profile.
+- Creation does not backfill existing states or start automatic synchronization;
+  parallel states may diverge.
+- UI deletion affects only the current state. A separate administration command
+  may purge registered states only after preview and confirmation.
+- API keys remain in protected shared configuration and never enter a Personal
+  Corrections database, snapshot, or export. Keychain is deferred.
+
 ### Occurrence history and claims
 
 Equivalent repeated corrections update recurrence information rather than
@@ -144,32 +177,28 @@ was correct. Copy and delivery never count as approval. Optional **helped** or
 ### Export
 
 The first useful release includes a documented, machine-readable private export
-of Personal corrections and their content-minimized occurrence history. The
-export may support private recurrence analysis and future formulaic-rule
-research. Its exact file format and versioned schema are **Deferred** until the
-implementation specification.
+of Personal Corrections and their content-minimized occurrence history. The
+export supports user control and private portability; it does not authorize
+research or evaluation. Its exact format is defined in the implementation
+specification.
 
-Reactive correction episodes are development and discovery evidence because
-they are supplied after a correction result was visible. They must never be
-presented as unbiased held-out evaluation evidence.
+Saved corrections and episodes are live product state. They must never be
+presented as evaluation evidence unless a new approved purpose and contract
+explicitly qualifies them.
 
 ## Delivery map
 
-Only one stage is active at a time. Advance the marker after the stage's exit
+Only one phase is active at a time. Advance the marker after the phase's exit
 gate is met and its evidence is recorded in this guide or its linked issue.
 
-| Stage | Status | Deliverable | Exit gate |
+| Phase | Status | Deliverable | Exit gate |
 | ---: | --- | --- | --- |
-| 1 | **Complete** | Focused implementation specification and exact ticket-reconciliation plan | Storage boundaries, interactions, failure behavior, migrations, export contract, and tracer-bullet tickets are executable without inventing product decisions. |
-| 2 | **Complete** | Local Personal corrections foundation | The implicit local principal can explicitly enable the feature and create, inspect, revision-check edit, and globally or individually disable canonical terms and aliases. Startup performs no migration or seed write. Hard deletion remains in the later deletion/history/export stage under the reconciled issue boundary. |
-| 3 | **Active** | Missed-repair capture and explicit save | A bound pre/post edit produces reviewable candidates and bounded observed/intended sentences; only selected mappings and approved context persist. |
-| 4 | Blocked by stage 3 | Smart retrieval and reuse | Only deterministically relevant enabled entries reach Smart; ambiguity may abstain; stale and failure paths remain fail-open and content-free. |
-| 5 | Blocked by stage 4 | History, management, and private export | Recurrence and runtime-use events remain claim-safe; edit, disable, deletion, and a versioned export work end to end. |
-| 6 | Blocked by stage 5 | Personal usefulness demonstration | One real mapping is saved, encountered again, used to produce the intended Smart correction, and visible in local recurrence history. |
-| 7 | Later | Optional outcome feedback | The user can mark an applied correction helped or wrong without Copy, delivery, or inaction becoming implicit feedback. |
-| 8 | Recurring after stage 6 | Content-free readiness review | Aggregate recurrence and category patterns justify a focused formulaic-rule research question, or the review records that more ordinary use is needed. |
+| 1 | **Active** | Development-state root migration | An explicit, verified migration moves registered state data to `${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/`; normal startup never migrates. |
+| 2 | Blocked by phase 1 | Evidence Collection retirement | Workspace and runtime APIs, arming and lease logic, participant-package tooling, and dedicated tests are removed while historical docs and Git remain. |
+| 3 | Blocked by phase 2 | Personal Corrections | Explicit Original → Intended review and approval, durable `local` ownership, cross-session Smart reuse, management, current-state deletion, registered-state purge, and private export work end to end. |
+| 4 | Blocked by phase 3 | New-state inheritance | A new state inherits and verifies a transactional snapshot from the explicitly activated eligible source; failures prevent activation, no-source creation reports empty, and existing states remain untouched. |
 
-### Stage 2 completion evidence
+### Existing partial implementation evidence
 
 - Reconciled issue: [#12](https://github.com/dmclark/sayloom/issues/12).
 - Alembic revision `0004_personal_corrections_foundation` creates the empty
@@ -184,6 +213,9 @@ gate is met and its evidence is recorded in this guide or its linked issue.
   layouts. Normal startup against the predecessor schema remains non-mutating
   and reports `setup_required`.
 
+This evidence describes current partial implementation only. It does not
+satisfy phase 3 or justify skipping phases 1 and 2.
+
 ## Ticket reconciliation plan
 
 This table records intended disposition, not completed GitHub mutation. Creating
@@ -191,9 +223,9 @@ or editing issues requires a separately authorized tracker operation.
 
 | Issue | Intended disposition |
 | --- | --- |
-| New Personal correction flywheel umbrella | **Proposed:** create it to own stages 1–8 and their blocking edges. |
+| New Personal Corrections flywheel umbrella | **Proposed:** reconcile it to phase 3 and its internal blocking edges. |
 | [#109](https://github.com/dmclark/sayloom/issues/109) | Revise around missed-repair capture and bounded observed/intended correction episodes. Remove #45 as a blocker. |
-| [#12](https://github.com/dmclark/sayloom/issues/12) | Revise around the implicit local principal, Personal corrections management, one-time enablement, and runtime profile boundary. |
+| [#12](https://github.com/dmclark/sayloom/issues/12) | Revise around durable owner `local`, Personal Corrections management, first-profile creation through explicit approved save, and the runtime profile boundary. |
 | [#13](https://github.com/dmclark/sayloom/issues/13) | Revise or split around explicit save, deduplication, occurrence history, deletion, and export. It must accept user-supplied missed repairs rather than require model-proposed confirmation. |
 | [#45](https://github.com/dmclark/sayloom/issues/45) | Retain as later positive confirmation of model-proposed repairs. It does not block the personal flywheel. |
 | [#9](https://github.com/dmclark/sayloom/issues/9) | Keep as broader Smart and personalization history; do not use its superseded fixed-arm sequence as the current path. |
@@ -206,10 +238,10 @@ The personal flywheel is useful when all of the following are demonstrated in
 the private local application:
 
 1. Smart misses a real intended term.
-2. The user edits Original and explicitly starts **This is what I meant**.
-3. The user reviews the bounded observed and intended sentences, selects or
-   edits the derived mapping, and saves it.
-4. The mapping appears in Personal corrections and can be edited, disabled, or
+2. The user edits Original and starts the correction review.
+3. The user reviews Original → Intended, selects or edits the derived mapping,
+   and explicitly saves a Personal Correction.
+4. The mapping appears in Personal Corrections and can be edited, disabled, or
    deleted.
 5. A later Original contains the alias.
 6. Retrieval supplies the enabled mapping to Smart.
@@ -227,14 +259,15 @@ The following work remains valid but inactive:
 
 - account-independent lexical Cleanup discovery and qualification;
 - automatic Smart strategy comparison and held-out selection;
-- participant-package preparation and formal intended-text evaluation;
+- participant-package preparation and formal intended-text evaluation, unless
+  a new purpose and contract are approved;
 - optional model-proposed repair confirmation and outcome feedback;
 - hosted identity, cross-user isolation, and hosted persistence;
 - pilots, partner demonstrations, and broad efficacy claims; and
 - multi-user personalization or learning.
 
 Resume one of these tracks only through a new explicit decision that updates
-the active stage in this guide. Do not infer resumption from an existing open
+the active phase in this guide. Do not infer resumption from an existing open
 issue.
 
 ## Risks and controls
@@ -245,28 +278,22 @@ issue.
 | Exact retrieval misses variants | Record the miss; broaden normalization only from observed need. |
 | Durable context contains sensitive text | Preview it, bound it, permit editing/removal, keep it local, and cascade deletion. |
 | Usage events are mistaken for efficacy | Name only the observed event; never infer correctness or causation. |
-| Reactive episodes leak into held-out evaluation | Label them discovery evidence and maintain a separate prospective held-out path. |
+| Saved corrections are repurposed for evaluation | Require a new approved evaluation purpose and contract; ordinary product authorization is insufficient. |
 | Existing roadmaps distract from the active goal | Treat this guide as current execution authority and mark other tracks deferred. |
-| Implementation silently widens scope | Stop at the current stage's exit gate; open a focused decision for any new behavior. |
+| Implementation silently widens scope | Stop at the current phase's exit gate; open a focused decision for any new behavior. |
 
 ## Copy-ready prompts
 
-### Use now: specify stage 1
+### Use now: implement phase 1
 
 ```text
-Use docs/personal-corrections-execution-guide.md as the confirmed current
-execution authority and PRODUCT.md as product authority. Produce the focused
-implementation specification for stage 1 of the private, single-user Personal
-corrections flywheel. Inspect the current code and existing issues #12, #13,
-#45, and #109 before proposing boundaries. Specify the smallest executable data
-model, explicit migration and rollback, capture and approval state machine,
-bounded observed/intended sentence handling, deterministic alias retrieval,
-failure and stale-state behavior, deletion semantics, occurrence events,
-versioned private export, privacy invariants, and acceptance checks. Preserve
-Cleanup's account independence and normal startup's no-migration rule. Mark
-unresolved implementation choices rather than silently deciding product
-behavior. End with an exact ticket-reconciliation proposal, but do not mutate
-GitHub or implement code without separate authorization.
+Use docs/personal-corrections-execution-guide.md and ADR-0002 as the confirmed
+execution authority. Implement only phase 1: an explicit, verified migration of
+registered development states from the current macOS Application Support root
+to ${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/. Preserve
+registration, fail safely before activation, and prove normal startup never
+migrates files or schemas. Do not retire Evidence Collection or implement
+Personal Corrections or inheritance in the same change.
 ```
 
 ### After the specification is confirmed: reconcile tickets
@@ -282,27 +309,29 @@ Show the exact proposed issue mutations and ask for approval before changing
 GitHub.
 ```
 
-### After tickets are authorized: implement the next stage
+### After each phase is authorized: implement the next phase
 
 ```text
-Implement only the first ready stage in
+Implement only the first ready phase in
 docs/personal-corrections-execution-guide.md from its confirmed specification
 and reconciled GitHub ticket. Work test-first on the risky persistence,
 ownership, deletion, and stale-state boundaries. Keep all operating data and
 private text outside Git, preserve one implicit local principal, perform schema
 changes only through an explicit migration, and do not run migrations at normal
 startup. Verify the affected automated and representative browser states, then
-update the execution guide's stage marker and evidence only if the exit gate is
-actually met. Do not begin the next stage in the same thread.
+update the execution guide's phase marker and evidence only if the exit gate is
+actually met. Do not begin the next phase in the same thread.
 ```
 
-### After the first usefulness gate: review formulaic readiness
+### Deferred: review formulaic readiness
 
 ```text
-Review the private Personal corrections flywheel for formulaic-rule readiness
-using only content-free aggregate recurrence and category summaries unless I
-separately authorize private-content access. Determine whether repeated patterns
-justify one focused research question or whether more ordinary use is needed.
+Do not run this work without a newly approved evaluation purpose and contract.
+After that approval, review the private Personal Corrections flywheel for
+formulaic-rule readiness using only content-free aggregate recurrence and
+category summaries unless I separately authorize private-content access.
+Determine whether repeated patterns justify one focused research question or
+whether more ordinary use is needed.
 Do not treat reactive correction episodes as held-out evaluation evidence, do
 not weaken Cleanup's account-independent boundary, and do not start provider
 calls, spending, formal evaluation, or implementation. Return the evidence for
@@ -311,14 +340,14 @@ the recommendation and a copy-ready prompt for the single next research task.
 
 ## Updating this guide
 
-When a stage completes:
+When a phase completes:
 
 1. record its linked issue or specification and decisive verification evidence;
 2. change that row to **Complete**;
 3. mark exactly one unblocked row **Active**;
-4. update **Active stage** and **Last confirmed** at the top; and
+4. update **Active phase** and **Last confirmed** at the top; and
 5. revise the copy-ready current prompt if the next deliverable changed.
 
-Do not mark a stage complete from planning, mocked UI alone, or an unverified
+Do not mark a phase complete from planning, mocked UI alone, or an unverified
 implementation. Local edits and passing checks also do not imply that work is
 committed, pushed, merged, deployed, or operating in the stable application.

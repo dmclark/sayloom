@@ -30,6 +30,10 @@ current directory such as `docs/agents/`. Unfinished collateral lives under
 `-superseded` to filenames; moving a file between these directories is the
 lifecycle transition.
 
+One temporary exception is the Evidence Collection contract: it remains at its
+existing path, prominently marked superseded, until runtime retirement removes
+the implementation paths that still link to it. It grants no current authority.
+
 This map is the canonical lifecycle inventory for `docs/`. When a document's
 lifecycle changes, move both the file and its entry here. Historical Markdown
 documents also keep a prominent warning at the top so direct links remain safe.
@@ -40,13 +44,11 @@ itself rather than being duplicated here.
 
 | Document | Authority |
 | --- | --- |
-| [Personal corrections execution guide](personal-corrections-execution-guide.md) | Current execution order for the private single-user Personal corrections flywheel. |
-| [Personal corrections stage 1 implementation specification](personal-corrections-implementation-spec.md) | Proposed executable storage, interaction, retrieval, privacy, migration, export, and ticket boundaries; requires confirmation before implementation. |
+| [Personal Corrections ownership and state portability decision](adr/0002-personal-corrections-ownership-and-state-portability.md) | Accepted local ownership, durable authorization, development-state portability, deletion, and implementation-sequence contract. |
+| [Personal Corrections execution guide](personal-corrections-execution-guide.md) | Current four-phase execution order: state-root migration, Evidence Collection retirement, Personal Corrections, then new-state inheritance. |
+| [Personal Corrections implementation specification](personal-corrections-implementation-spec.md) | Confirmed target storage, review and approval, Smart retrieval, state-local deletion, export, migration, and inheritance boundary; implementation remains pending. |
+| [Product implementation plan](product-implementation-plan.md) | Approved broader capability plan reconciled to the four-phase Personal Corrections sequence. |
 | [Raycast Target Management redesign implementation specification](raycast-target-management-implementation-spec.md) | Review-ready implementation contract for installed-application discovery, managed target lifecycle, readiness, safety, migration, and isolated real-device acceptance. |
-| [Automatic correction prototype specification](automatic-correction-prototype-spec.md) | Focused definition of done for the automatic-correction prototype. |
-| [Intended-meaning evidence collection contract](intended-meaning-evidence-collection-contract.md) | Confirmed interaction, privacy, participant-package, and evaluation-view boundary for prospective evidence collection; issue reconciliation is required before further implementation. |
-| [Evaluation and automatic-correction prototype map](evaluation-mvp-map.md) | Current milestone order and separation of Cleanup and Smart evaluation. |
-| [Automatic strategy evaluation harness](automatic-strategy-evaluation-harness.md) | Frozen harness contract for automatic-strategy evaluation; grants no operational authorization. |
 | [Agent issue-tracker guidance](agents/issue-tracker.md), [triage labels](agents/triage-labels.md), [domain-doc guidance](agents/domain.md), and [workflow preferences](agents/workflow-preferences.md) | Current repository workflow guidance within each file's scope. |
 
 ## Active references
@@ -55,7 +57,7 @@ itself rather than being duplicated here.
 | --- | --- |
 | [Development screenshot](images/sayloom-development.png) | Supporting image used by the root README, not an authority. |
 | [Correction modes and fallback routing decision](adr/0001-correction-modes-and-fallback-routing.md) | Verified implementation and routing history. Its Conservative/Smart product boundary is superseded and must not authorize new work. |
-| [Product implementation plan](product-implementation-plan.md) | Broader capability history pending reconciliation. Its separate Cleanup/Smart evidence path and permanent Conservative mode are superseded. |
+| [Automatic correction prototype specification](automatic-correction-prototype-spec.md), [evaluation map](evaluation-mvp-map.md), and [automatic strategy evaluation harness](automatic-strategy-evaluation-harness.md) | Deferred research references only. Renewed research requires a new approved evaluation purpose and contract; these files grant no current collection, provider, evaluation, or pilot authority. |
 
 ## Draft collateral
 
@@ -68,13 +70,14 @@ itself rather than being duplicated here.
 
 | Document | Superseded or completed by |
 | --- | --- |
+| [Intended-meaning evidence collection contract](intended-meaning-evidence-collection-contract.md) | ADR-0002 and the live Personal Corrections direction. Retained at its current path pending runtime retirement; grants no collection or evaluation authority. |
 | [Correction benchmark pipeline](archive/correction-benchmark-pipeline.md) | Fixed eight-arm Smart scaffold; superseded for prototype acceptance by the automatic-strategy specification, map, and harness. |
-| [Cleanup resilience and local evaluation design](archive/cleanup-resilience-evaluation.md) | Abandoned source-preserving corpus and benchmark path; the current evaluation model is defined by the product contract, prototype specification, evidence contract, and evaluation map. |
+| [Cleanup resilience and local evaluation design](archive/cleanup-resilience-evaluation.md) | Abandoned source-preserving corpus and benchmark path. No current evaluation model is authorized; renewed research requires a new approved purpose and contract. |
 | [Cleanup benchmark protocol version 1](archive/cleanup-evaluation-benchmark-v1.json) | Historical machine-readable artifact from the abandoned source-preserving evaluation path. |
 | [Cleanup benchmark protocol version 2](archive/cleanup-evaluation-benchmark-v2.json) | Historical machine-readable protocol from the retired benchmark and canary toolchain; non-operational. |
 | [Cleanup evaluation corpus contract](archive/cleanup-evaluation-corpus-contract.md) | Historical contract retained for provenance after its benchmark consumers were removed; non-operational. |
 | [Cleanup evaluation successor protocol](archive/cleanup-evaluation-successor-protocol.md) | Historical narrative protocol from the retired benchmark and canary toolchain; non-operational. |
-| [Product roadmap](archive/roadmap.md) | `PRODUCT.md` and the current evaluation/prototype map. |
+| [Product roadmap](archive/roadmap.md) | `PRODUCT.md`, ADR-0002, and the current Personal Corrections execution guide. |
 | [UX shape plan](archive/shape-plan.md) | `PRODUCT.md`; retained as historical UX evidence. |
 | [Transcript fidelity specification](archive/transcript-fidelity-spec.md) | `PRODUCT.md`; retained as historical research evidence. |
 | [First correction model and experiment matrix](archive/first-correction-model-and-experiment-matrix.md) | Automatic-strategy specification, map, and harness. |
