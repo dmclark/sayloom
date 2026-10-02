@@ -118,25 +118,10 @@ executes that worktree's own runtime scripts.
 
 The local default is the `development` profile and displays **Sayloom Development**. A release process can explicitly select release branding with `LOCAL_TEXT_PROFILE=release`. Application startup performs no database migrations or seed writes. If the database is absent or at the wrong schema revision, `/health` reports `setup_required` with HTTP 503 rather than changing it.
 
-## Participant-package administration (temporary)
-
-The participant package lives at the absolute, user-owned external directory configured by
-`LOCAL_TEXT_EVIDENCE_PACKAGE_DIRECTORY`, outside Git and
-application state. Only the explicit administration script can create or approve it. Create the
-package, then approve the exact manifest digest returned by that command; the readiness response is
-content-free and never returns the package path. The script reads
-`LOCAL_TEXT_EVIDENCE_PACKAGE_DIRECTORY` from this checkout's development environment file; it does
-not need to be exported in the invoking shell.
-
-```sh
-scripts/dev.py evidence-package create
-scripts/dev.py evidence-package approve DIGEST
-scripts/dev.py evidence-package ready
-```
-
-The browser and normal application runtime do not use or expose the package. Package creation,
-validation, and administration remain temporarily for removal in issue #143. Package artifacts use
-owner-only permissions, create-exclusive writes, and immediate reread/hash verification.
+Evidence Collection is fully retired. The Workspace, normal runtime, administration
+commands, development configuration, and participant-package tooling contain no live collection
+surface. Historical research documents remain for provenance and grant no authority to resume
+collection or evaluation.
 
 The provider-free [automatic-strategy evaluation harness](docs/automatic-strategy-evaluation-harness.md)
 is the current Smart evaluation contract. It supersedes the historical fixed

@@ -124,11 +124,10 @@ is deferred. Any renewed research requires a new explicitly approved evaluation
 purpose and contract; ordinary use and saved corrections do not authorize
 research reuse.
 
-Evidence Collection is retired from the Workspace and normal runtime. Its UI,
-APIs, arming, leases, receipts, and delivery gates are unavailable. Historical
-documentation and Git history remain. Participant-package administration is a
-temporary implementation detail retained only for follow-up issue #143; it does
-not authorize collection or affect ordinary preparation, Copy, or delivery.
+Evidence Collection is fully retired. Its UI, APIs, arming, leases, receipts,
+delivery gates, participant-package implementation, administration, and
+configuration are unavailable. Historical documentation and Git history remain
+for provenance and grant no authority to resume collection or evaluation.
 
 ## Review and CART display
 
@@ -245,9 +244,8 @@ this contract. The expanded Cleanup baseline, user-scoped learning, hosted
 accounts, hosted provider management, and the hosted service are not
 implemented unless later technical evidence says otherwise.
 
-The checkout no longer contains Evidence Collection Workspace or normal runtime
-behavior. Participant-package creation, validation, administration, and
-dedicated package tests remain temporarily for follow-up issue #143.
+The checkout contains no live Evidence Collection Workspace, runtime,
+participant-package, administration, or configuration behavior.
 
 Implementation and product design use **Prepared** for the generated result and
 reserve **Outgoing** for the exact selected delivery value.

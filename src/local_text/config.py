@@ -30,7 +30,6 @@ class Settings:
     cleanup_route_attempt_seconds: tuple[float, ...] | None = None
     database_path: Path | None = None
     raycast_directory: Path | None = None
-    evidence_package_directory: Path | None = None
     provider_traffic_diagnostics_file: Path | None = field(default=None, repr=False)
 
     @property
@@ -114,11 +113,6 @@ def load_settings() -> Settings:
         ),
         raycast_directory=(
             Path(value) if (value := os.getenv("LOCAL_TEXT_RAYCAST_DIRECTORY")) else None
-        ),
-        evidence_package_directory=(
-            Path(value)
-            if (value := os.getenv("LOCAL_TEXT_EVIDENCE_PACKAGE_DIRECTORY"))
-            else None
         ),
         provider_traffic_diagnostics_file=(
             Path(value)

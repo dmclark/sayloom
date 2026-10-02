@@ -30,9 +30,10 @@ current directory such as `docs/agents/`. Unfinished collateral lives under
 `-superseded` to filenames; moving a file between these directories is the
 lifecycle transition.
 
-One temporary exception is the Evidence Collection contract: it remains at its
-existing path, prominently marked superseded, until runtime retirement removes
-the implementation paths that still link to it. It grants no current authority.
+One historical exception is the retired Evidence Collection contract: it remains
+at its existing path rather than under `docs/archive/` so established links keep
+their provenance. Its prominent warning states that no live tooling remains and
+that it grants no current authority.
 
 This map is the canonical lifecycle inventory for `docs/`. When a document's
 lifecycle changes, move both the file and its entry here. Historical Markdown
@@ -70,7 +71,7 @@ itself rather than being duplicated here.
 
 | Document | Superseded or completed by |
 | --- | --- |
-| [Intended-meaning evidence collection contract](intended-meaning-evidence-collection-contract.md) | ADR-0002 and the live Personal Corrections direction. Retired historical contract retained at its current path; participant-package tooling remains temporarily for issue #143 and grants no collection or evaluation authority. |
+| [Intended-meaning evidence collection contract](intended-meaning-evidence-collection-contract.md) | ADR-0002 and the live Personal Corrections direction. Retired historical contract retained at its current path; no live collection or participant-package tooling remains, and it grants no collection or evaluation authority. |
 | [Correction benchmark pipeline](archive/correction-benchmark-pipeline.md) | Fixed eight-arm Smart scaffold; superseded for prototype acceptance by the automatic-strategy specification, map, and harness. |
 | [Cleanup resilience and local evaluation design](archive/cleanup-resilience-evaluation.md) | Abandoned source-preserving corpus and benchmark path. No current evaluation model is authorized; renewed research requires a new approved purpose and contract. |
 | [Cleanup benchmark protocol version 1](archive/cleanup-evaluation-benchmark-v1.json) | Historical machine-readable artifact from the abandoned source-preserving evaluation path. |

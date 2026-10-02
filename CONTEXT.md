@@ -73,9 +73,9 @@ text.
 _Avoid_: Cleanup qualification, unversioned experimentation
 
 **Participant package**:
-Legacy, user-controlled external research storage retained temporarily for administration and
-validation only. The Workspace and normal runtime neither write nor read it. Its presence does not
-authorize collection; issue #143 owns its removal.
+Historical term for the retired user-controlled external Evidence Collection storage. No live
+package implementation, administration, configuration, or runtime behavior remains. Historical
+references do not authorize renewed collection or evaluation.
 _Avoid_: Current product state, active collection, application state
 
 **Evaluation view**:

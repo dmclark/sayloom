@@ -1022,28 +1022,6 @@ def db_command(state: State, arguments: argparse.Namespace) -> int:
     fail(f"unsupported database command {operation!r}")
 
 
-def evidence_package_command(state: State, arguments: argparse.Namespace) -> int:
-    configuration = state_configuration(state)
-    package_directory = configuration.get("LOCAL_TEXT_EVIDENCE_PACKAGE_DIRECTORY")
-    if not package_directory:
-        fail("LOCAL_TEXT_EVIDENCE_PACKAGE_DIRECTORY is not configured")
-    package = Path(package_directory)
-    operation = arguments.evidence_package_command
-    if operation == "create":
-        return run_admin(state, "evidence-package-create", str(package))
-    if operation == "approve":
-        return run_admin(
-            state,
-            "evidence-package-approve",
-            str(package),
-            "--digest",
-            arguments.digest,
-        )
-    if operation == "ready":
-        return run_admin(state, "evidence-package-ready", str(package))
-    fail(f"unsupported evidence package command {operation!r}")
-
-
 def command(arguments: argparse.Namespace) -> int:
     root = arguments.state_root.expanduser().resolve()
     operation = arguments.command or "status"
@@ -1114,8 +1092,6 @@ def command(arguments: argparse.Namespace) -> int:
         return 0
     if operation == "db":
         return db_command(state, arguments)
-    if operation == "evidence-package":
-        return evidence_package_command(state, arguments)
     fail(f"unsupported command {operation!r}")
 
 
@@ -1145,11 +1121,6 @@ database commands:
   scripts/dev.py db seed         create or validate deterministic seed data
   scripts/dev.py db init         apply migrations and seed data
   scripts/dev.py db --help       show import and other database commands
-
-evidence package commands:
-  scripts/dev.py evidence-package create
-  scripts/dev.py evidence-package approve DIGEST
-  scripts/dev.py evidence-package ready
 
 state data:
   ${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/
@@ -1259,23 +1230,6 @@ status and prune are read-only unless prune receives --apply.
     )
     confirm.add_argument("source", type=Path)
     confirm.add_argument("--digest", required=True)
-
-    evidence_package = subparsers.add_parser(
-        "evidence-package", help="administer this checkout's external evidence package"
-    )
-    evidence_package.add_argument("--state", help=argparse.SUPPRESS)
-    evidence_commands = evidence_package.add_subparsers(
-        dest="evidence_package_command",
-        required=True,
-        title="evidence package commands",
-        metavar="COMMAND",
-    )
-    evidence_commands.add_parser("create", help="create an unapproved evidence package")
-    approve = evidence_commands.add_parser(
-        "approve", help="approve an unchanged evidence package"
-    )
-    approve.add_argument("digest")
-    evidence_commands.add_parser("ready", help="report content-free package readiness")
     result.usage = "scripts/dev.py [COMMAND] [OPTIONS]"
     return result
 
