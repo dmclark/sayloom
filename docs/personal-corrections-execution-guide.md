@@ -1,7 +1,7 @@
 # Personal Corrections execution guide
 
 - **Status:** Current execution guide
-- **Active phase:** 1 — Development-state root migration
+- **Active phase:** 2b — Participant-package retirement
 - **Initial user:** One implicit private local user
 - **Last confirmed:** 2026-10-01
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
@@ -54,16 +54,15 @@ Personal correction informs a later Smart request
 Inspect recurrence and export private discovery data
 ```
 
-The current runtime still contains Evidence Collection Workspace and API
-surfaces, arming and lease logic, participant-package tooling, dedicated tests,
-and development-state paths under macOS Application Support. The partial
-Personal Corrections foundation does not make the newly confirmed sequence
-complete.
+The state-root migration and Evidence Collection Workspace/runtime retirement
+are complete. Collection UI, APIs, arming, leases, receipts, and delivery gates
+are absent. Participant-package creation, validation, administration,
+configuration, and dedicated tests remain temporarily for issue #143. The
+partial Personal Corrections foundation does not make the newly confirmed
+sequence complete.
 
-The immediate next deliverable is the explicit migration from the current
-Application Support state root to
-`${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/`. Normal startup must
-not perform that migration. Evidence Collection retirement follows it.
+The immediate next deliverable is participant-package retirement in issue #143.
+Personal Corrections implementation follows it.
 
 ## Current contract
 
@@ -197,9 +196,10 @@ gate is met and its evidence is recorded in this guide or its linked issue.
 
 | Phase | Status | Deliverable | Exit gate |
 | ---: | --- | --- | --- |
-| 1 | **Active** | Development-state root migration | An explicit, verified migration moves registered state data to `${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/`; normal startup never migrates. |
-| 2 | Blocked by phase 1 | Evidence Collection retirement | Workspace and runtime APIs, arming and lease logic, participant-package tooling, and dedicated tests are removed while historical docs and Git remain. |
-| 3 | Blocked by phase 2 | Personal Corrections | Explicit Original → Intended review and approval, durable `local` ownership, cross-session Smart reuse, management, current-state deletion, registered-state purge, and private export work end to end. Complete durable-deletion acceptance additionally requires a confirmed managed-backup policy. |
+| 1 | Complete | Development-state root migration | An explicit, verified migration moves registered state data to `${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/`; normal startup never migrates. |
+| 2a | Complete | Evidence Collection Workspace/runtime retirement | UI, APIs, session behavior, arming, leases, receipts, delivery gates, runtime exposure, and dedicated runtime tests are removed while ordinary preparation, Copy, and delivery remain. |
+| 2b | **Active** | Participant-package retirement | Issue #143 removes package creation, validation, administration, configuration, and dedicated package tests while preserving historical docs and Git. |
+| 3 | Blocked by phase 2b | Personal Corrections | Explicit Original → Intended review and approval, durable `local` ownership, cross-session Smart reuse, management, current-state deletion, registered-state purge, and private export work end to end. Complete durable-deletion acceptance additionally requires a confirmed managed-backup policy. |
 | 4 | Blocked by phase 3 | New-state inheritance | A new state inherits and verifies a transactional snapshot from the explicitly activated eligible source; failures prevent activation, no-source creation reports empty, and existing states remain untouched. |
 
 ### Existing partial implementation evidence

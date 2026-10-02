@@ -1,10 +1,7 @@
-import json
 import re
 import sqlite3
 import subprocess
-import threading
 from dataclasses import replace
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -56,7 +53,7 @@ def test_generation_is_deterministic_outgoing_only_and_never_submits() -> None:
     assert "outgoing_text" in first.content
     assert "waiting_for_evidence" not in first.content
     assert "sleep 0.25" not in first.content
-    assert "Complete intended-meaning confirmation in Sayloom, then retry." in first.content
+    assert 'if [ "$http_status" = "409" ]' not in first.content
     assert "kp:return" not in first.content
     assert "key code 36" not in first.content
     assert "LC_ALL=en_US.UTF-8 /usr/bin/pbcopy" in first.content
@@ -68,87 +65,6 @@ def test_generation_is_deterministic_outgoing_only_and_never_submits() -> None:
     assert "write text outgoingText newline NO" in iterm.content
     assert 'pbcopy < "$outgoing_file"' not in iterm.content
     subprocess.run(["/bin/sh", "-n"], input=iterm.content, text=True, check=True)
-
-
-def test_generated_target_requires_explicit_second_invocation_after_conflict(
-    tmp_path: Path,
-) -> None:
-    requests: list[tuple[str, str]] = []
-
-    class StateHandler(BaseHTTPRequestHandler):
-        def write_json(self, status: int, body: dict[str, object]) -> None:
-            encoded = json.dumps(body).encode()
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(encoded)))
-            self.end_headers()
-            self.wfile.write(encoded)
-
-        def do_GET(self) -> None:
-            requests.append(("GET", self.path))
-            if self.path != "/api/outgoing-state":
-                self.send_error(404)
-                return
-            if len(requests) == 1:
-                self.write_json(
-                    409,
-                    {"detail": "Complete intended-meaning confirmation in Sayloom, then retry."},
-                )
-                return
-            self.write_json(200, {"outgoing_text": "Synthetic outgoing text"})
-
-        def log_message(self, _format: str, *_args: object) -> None:
-            pass
-
-    server = ThreadingHTTPServer(("127.0.0.1", 0), StateHandler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    command_path = tmp_path / "target.sh"
-    target_output = tmp_path / "target-output.txt"
-    synthetic_osascript = tmp_path / "synthetic-osascript"
-    synthetic_osascript.write_text('#!/bin/sh\n/bin/cat "$2" > "$SYNTHETIC_TARGET_OUTPUT"\n')
-    synthetic_osascript.chmod(0o700)
-    generated = generate_command(
-        "synthetic",
-        definition(send_strategy=SendStrategy.ITERM_WRITE),
-    ).content
-    command_path.write_text(generated.replace("/usr/bin/osascript", str(synthetic_osascript), 1))
-    environment = {
-        "HOME": str(tmp_path),
-        "LOCAL_TEXT_BASE_URL": f"http://127.0.0.1:{server.server_port}",
-        "PATH": "/usr/bin:/bin",
-        "SYNTHETIC_TARGET_OUTPUT": str(target_output),
-        "TMPDIR": str(tmp_path),
-    }
-    try:
-        blocked = subprocess.run(
-            ["/bin/sh", str(command_path)],
-            text=True,
-            capture_output=True,
-            env=environment,
-        )
-        assert not target_output.exists()
-        released = subprocess.run(
-            ["/bin/sh", str(command_path)],
-            text=True,
-            capture_output=True,
-            env=environment,
-        )
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join()
-
-    assert blocked.returncode == 1
-    assert blocked.stderr == "Complete intended-meaning confirmation in Sayloom, then retry.\n"
-    assert "Synthetic outgoing text" not in blocked.stderr
-    assert released.returncode == 0
-    assert released.stderr == ""
-    assert target_output.read_text() == "Synthetic outgoing text"
-    assert requests == [
-        ("GET", "/api/outgoing-state"),
-        ("GET", "/api/outgoing-state"),
-    ]
 
 
 def test_adapter_installs_exact_preview_idempotently_and_refuses_collisions(

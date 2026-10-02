@@ -259,16 +259,6 @@ def test_raycast_fetch_preserves_utf8_outgoing_text() -> None:
 
 
 @pytest.mark.skipif(not Path("/usr/bin/plutil").exists(), reason="requires macOS plutil")
-def test_raycast_fetch_requires_retry_after_evidence_conflict() -> None:
-    detail = "Complete intended-meaning confirmation in Sayloom, then retry."
-    with OutgoingStateServer({"detail": detail}, status=409) as url:
-        result = run_fetch(url)
-
-    assert result.returncode == 1
-    assert result.stderr == f"{detail}\n".encode()
-
-
-@pytest.mark.skipif(not Path("/usr/bin/plutil").exists(), reason="requires macOS plutil")
 def test_raycast_fetch_refuses_empty_or_malformed_state() -> None:
     with OutgoingStateServer({"outgoing_text": "  \n"}) as url:
         empty = run_fetch(url)

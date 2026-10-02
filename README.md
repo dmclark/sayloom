@@ -95,9 +95,9 @@ executes that worktree's own runtime scripts.
 
 The local default is the `development` profile and displays **Sayloom Development**. A release process can explicitly select release branding with `LOCAL_TEXT_PROFILE=release`. Application startup performs no database migrations or seed writes. If the database is absent or at the wrong schema revision, `/health` reports `setup_required` with HTTP 503 rather than changing it.
 
-## External evidence package administration
+## Participant-package administration (temporary)
 
-The evidence package lives at the absolute, user-owned external directory configured by
+The participant package lives at the absolute, user-owned external directory configured by
 `LOCAL_TEXT_EVIDENCE_PACKAGE_DIRECTORY`, outside Git and
 application state. Only the explicit administration script can create or approve it. Create the
 package, then approve the exact manifest digest returned by that command; the readiness response is
@@ -111,7 +111,8 @@ scripts/dev.py evidence-package approve DIGEST
 scripts/dev.py evidence-package ready
 ```
 
-The browser has no package creation, migration, repair, or approval interface. Package artifacts use
+The browser and normal application runtime do not use or expose the package. Package creation,
+validation, and administration remain temporarily for removal in issue #143. Package artifacts use
 owner-only permissions, create-exclusive writes, and immediate reread/hash verification.
 
 The provider-free [automatic-strategy evaluation harness](docs/automatic-strategy-evaluation-harness.md)
@@ -120,12 +121,6 @@ is the current Smart evaluation contract. It supersedes the historical fixed
 for prototype acceptance. It remains independent of the retired Cleanup
 benchmark toolchain; archived Cleanup evidence does not validate Smart
 correction or authorize a private run.
-
-When the externally administered intended-meaning package is approved and ready, the Workspace can
-arm **Evidence Collection** after a fresh Voiceitt-source attestation. Arming lasts only for that
-browser session and remains independent of correction mode. While armed, Smart first conceals any
-candidate and asks for Intended wording; only after the new observation is immutably written and
-verified does Smart run from the frozen Original and contemporaneous eligible context.
 
 ## Cleanup providers
 
@@ -212,7 +207,7 @@ remain exclusively bound by the selected state manifest.
 
 ## Durable prompt configuration
 
-SQLite in the external profile state directory is authoritative for the seeded prompt, immutable custom prompt versions, exact durable default selection, the cleanup default, target definitions and target-operation errors, seed state, and one-time import status. Workspace cleanup and Evidence Collection requests omit a page-session prompt override, so the server resolves the durable active prompt and returns its exact ID and content hash. Every active prompt is wrapped in the fixed source-preserving product contract before it is sent to a provider, so neither a legacy seed nor a custom version can widen accepted output. Expanded prompt management is intentionally outside the Workspace surface.
+SQLite in the external profile state directory is authoritative for the seeded prompt, immutable custom prompt versions, exact durable default selection, the cleanup default, target definitions and target-operation errors, seed state, and one-time import status. Workspace cleanup requests omit a page-session prompt override, so the server resolves the durable active prompt and returns its exact ID and content hash. Every active prompt is wrapped in the fixed source-preserving product contract before it is sent to a provider, so neither a legacy seed nor a custom version can widen accepted output. Expanded prompt management is intentionally outside the Workspace surface.
 
 The **Settings** destination places the persisted default correction mode before durable target management. The saved correction default is snapshotted when the next Original begins; changing it does not reprocess or change the active draft. Conservative results offer a one-shot **Run Smart correction** action, while a Smart default runs automatically without a redundant action. Settings manages target definitions for Amp, iTerm, Supacode, and VS Code plus bounded user-authored targets. **Save definition** never installs. **Install/Regenerate command** explicitly writes one generated command to the configured Raycast Script Commands directory, and Disable/Remove state their command-removal consequences. Generated commands consume only the current outgoing-state API, never press Return, and leave hotkey assignment to Raycast and the user. Application and macOS permission state remains **Not verified** until it is exercised on the Mac that runs Raycast. The fixed **Dev: Open Sayloom** command and four fixed Gate 1 send commands remain available during managed-command verification.
 
