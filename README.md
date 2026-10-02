@@ -27,6 +27,9 @@ Requirements: macOS, Python 3.12+, and [uv](https://docs.astral.sh/uv/).
 
 ```sh
 uv sync --locked
+scripts/dev.py \
+  --state-root "$HOME/Library/Application Support/local-text/dev-states" \
+  prune --apply  # optional, separate cleanup of archived states
 scripts/dev.py migrate-state-root  # once for states in macOS Application Support
 scripts/dev.py init
 scripts/dev.py
@@ -42,11 +45,16 @@ No command falls back to shared operating data.
 Development states now live under
 `${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/`. The explicit
 `migrate-state-root` command moves every registration from the former
-`~/Library/Application Support/local-text/dev-states/` root. Stop registered
-development services before running it. The command copies all states into a
-hidden staging directory, verifies each manifest and every filesystem entry,
-then switches registration as one guarded operation. An interrupted switch
-blocks ordinary state commands until the same migration command completes it.
+`~/Library/Application Support/local-text/dev-states/` root. You may run the
+legacy-root `prune --apply` command shown above first to remove eligible
+archived states; migration never invokes pruning. After validating all source
+and destination registrations, migration stops only the registered development
+services it will move and verifies that they are stopped. It copies all states
+into a hidden staging directory, verifies each manifest and every filesystem entry, then
+switches registration as one guarded operation and removes their stale
+LaunchAgent plists. Migrated services remain stopped; run `scripts/dev.py
+restart` from each checkout you want to start. An interrupted switch blocks
+ordinary state commands until the same migration command completes it.
 Rerunning after success reports that the destination is already in use;
 rerunning after an interruption resumes from verified matching data. A
 same-named destination with different registration or data is rejected and is

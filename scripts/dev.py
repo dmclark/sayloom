@@ -299,11 +299,64 @@ def write_migration_marker(marker: Path, source_root: Path, states: list[State])
     temporary.replace(marker)
 
 
+def preflight_state_root_migration(
+    source_root: Path, destination_root: Path
+) -> tuple[list[State], list[tuple[State, Path]]]:
+    states = sorted(registered_states(source_root), key=lambda state: state.name)
+    marker = destination_root / MIGRATION_MARKER_NAME
+    if not states:
+        if marker.exists():
+            fail("migration is incomplete and its source states are unavailable")
+        return states, []
+
+    marker_payload = {
+        "source_root": str(source_root),
+        "states": [state.name for state in states],
+    }
+    if marker.exists():
+        try:
+            if json.loads(marker.read_text()) != marker_payload:
+                fail("incomplete migration marker does not match this migration")
+        except (OSError, json.JSONDecodeError) as error:
+            fail(f"invalid incomplete migration marker: {error}")
+
+    missing: list[tuple[State, Path]] = []
+    for state in states:
+        destination = destination_root / state.name
+        if destination.exists() or destination.is_symlink():
+            verify_migrated_state(state, destination, divergent=True)
+        else:
+            missing.append((state, destination))
+    return states, missing
+
+
+def stop_migration_services(states: list[State]) -> None:
+    loaded = [state for state in states if service_is_loaded(state)]
+    for state in loaded:
+        try:
+            stop_service(state)
+        except (OSError, subprocess.CalledProcessError) as error:
+            fail(f"could not stop development service {state.name!r}: {error}")
+    remaining = [state.name for state in loaded if service_is_loaded(state)]
+    if remaining:
+        fail("development services did not stop: " + ", ".join(remaining))
+
+
 def migrate_state_root(source_root: Path, destination_root: Path) -> None:
     source_root = source_root.expanduser().resolve()
     destination_root = destination_root.expanduser().resolve()
     if source_root == destination_root:
         fail("source and destination state roots must differ")
+
+    states, _missing = preflight_state_root_migration(source_root, destination_root)
+    if not states:
+        if registered_states(destination_root):
+            print("Development-state registration already uses the destination root.")
+        else:
+            print("No registered development states require migration.")
+        return
+
+    stop_migration_services(states)
 
     destination_root.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(destination_root, 0o700)
@@ -312,40 +365,9 @@ def migrate_state_root(source_root: Path, destination_root: Path) -> None:
         os.chmod(lock_path, 0o600)
         fcntl.flock(lock, fcntl.LOCK_EX)
         marker = destination_root / MIGRATION_MARKER_NAME
-        states = sorted(registered_states(source_root), key=lambda state: state.name)
-        if not states:
-            if marker.exists():
-                fail("migration is incomplete and its source states are unavailable")
-            if registered_states(destination_root):
-                print("Development-state registration already uses the destination root.")
-            else:
-                print("No registered development states require migration.")
-            return
-
-        loaded = [state.name for state in states if service_is_loaded(state)]
-        if loaded:
-            fail(
-                "stop the running development services before migration: " + ", ".join(loaded)
-            )
-
-        marker_payload = {
-            "source_root": str(source_root),
-            "states": [state.name for state in states],
-        }
-        if marker.exists():
-            try:
-                if json.loads(marker.read_text()) != marker_payload:
-                    fail("incomplete migration marker does not match this migration")
-            except (OSError, json.JSONDecodeError) as error:
-                fail(f"invalid incomplete migration marker: {error}")
-
-        missing: list[tuple[State, Path]] = []
-        for state in states:
-            destination = destination_root / state.name
-            if destination.exists() or destination.is_symlink():
-                verify_migrated_state(state, destination, divergent=True)
-            else:
-                missing.append((state, destination))
+        locked_states, missing = preflight_state_root_migration(source_root, destination_root)
+        if locked_states != states:
+            fail("source registrations changed during migration preflight")
 
         staging = destination_root / MIGRATION_STAGING_NAME
         if staging.exists():
@@ -378,11 +400,17 @@ def migrate_state_root(source_root: Path, destination_root: Path) -> None:
             for state in states:
                 verify_migrated_state(state, destination_root / state.name)
 
+            for state in states:
+                plist_path(state).unlink(missing_ok=True)
             marker.unlink()
             for state in states:
                 shutil.rmtree(state.state_directory)
             print(
                 f"Migrated {len(states)} registered development states to {destination_root}."
+            )
+            print(
+                "Development services remain stopped; run scripts/dev.py restart from each "
+                "checkout you want to start."
             )
         except OSError as error:
             fail(f"state-root migration failed: {error}")

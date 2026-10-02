@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -80,6 +81,21 @@ def write_foreign_state(
     manifest_path = directory / "state.json"
     manifest_path.write_text(json.dumps(manifest))
     return manifest_path
+
+
+def load_dev_module(name: str) -> ModuleType:
+    scripts = str(REPOSITORY_ROOT / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        specification = importlib.util.spec_from_file_location(
+            name, REPOSITORY_ROOT / "scripts/dev.py"
+        )
+        assert specification is not None and specification.loader is not None
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+        return module
+    finally:
+        sys.path.remove(scripts)
 
 
 def test_state_root_migration_preserves_every_registered_state_and_is_rerunnable(
@@ -170,6 +186,138 @@ def test_state_root_migration_refuses_to_overwrite_divergent_destination(
     assert "divergent destination state 'selected'" in result.stderr
     assert source_payload.read_text() == "source value\n"
     assert destination_payload.read_text() == "divergent destination value\n"
+
+
+def test_state_root_migration_rejects_divergence_before_service_shutdown(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = load_dev_module("sayloom_preflight_before_shutdown")
+    source_root = tmp_path / "legacy-states"
+    destination_root = tmp_path / "xdg-states"
+    write_foreign_state(
+        source_root,
+        name="selected",
+        repository=tmp_path / "selected-checkout",
+        port=unused_port(),
+    )
+    write_foreign_state(
+        destination_root,
+        name="selected",
+        repository=tmp_path / "selected-checkout",
+        port=unused_port(),
+    )
+    (source_root / "selected/value.txt").write_text("source\n")
+    (destination_root / "selected/value.txt").write_text("destination\n")
+    monkeypatch.setattr(
+        module,
+        "stop_service",
+        lambda _state: pytest.fail("shutdown must follow all migration preflight checks"),
+    )
+
+    with pytest.raises(SystemExit, match="divergent destination state 'selected'"):
+        module.migrate_state_root(source_root, destination_root)
+
+
+def test_state_root_migration_stops_only_registered_services_before_copy_and_cleans_plists(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    module = load_dev_module("sayloom_migration_service_shutdown")
+    source_root = tmp_path / "legacy-states"
+    destination_root = tmp_path / "xdg-states"
+    manifest_path = write_foreign_state(
+        source_root,
+        name="selected",
+        repository=tmp_path / "selected-checkout",
+        port=unused_port(),
+    )
+    state = module.registered_states(source_root)[0]
+    stable_label = "local.local-text"
+    loaded = {state.label: True, stable_label: True}
+    events: list[str] = []
+    plist = tmp_path / "LaunchAgents" / f"{state.label}.plist"
+    plist.parent.mkdir()
+    plist.write_text(str(source_root))
+
+    monkeypatch.setattr(module, "service_is_loaded", lambda candidate: loaded[candidate.label])
+
+    def stop_registered(candidate) -> bool:
+        events.append(f"stop {candidate.label}")
+        loaded[candidate.label] = False
+        return True
+
+    original_copytree = module.shutil.copytree
+
+    def copy_after_shutdown(source: Path, destination: Path, **arguments) -> Path:
+        assert loaded[state.label] is False
+        events.append("copy")
+        return original_copytree(source, destination, **arguments)
+
+    monkeypatch.setattr(module, "stop_service", stop_registered)
+    monkeypatch.setattr(module.shutil, "copytree", copy_after_shutdown)
+    monkeypatch.setattr(module, "plist_path", lambda _state: plist)
+    monkeypatch.setattr(
+        module,
+        "install_service",
+        lambda _state: pytest.fail("migration must not restart development services"),
+    )
+
+    module.migrate_state_root(source_root, destination_root)
+
+    assert events == [f"stop {state.label}", "copy"]
+    assert f"stop {stable_label}" not in events
+    assert loaded == {state.label: False, stable_label: True}
+    assert not plist.exists()
+    assert not manifest_path.exists()
+    assert (destination_root / "selected/state.json").exists()
+    assert "Development services remain stopped" in capsys.readouterr().out
+
+
+def test_state_root_migration_stop_failure_makes_no_migration_mutation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = load_dev_module("sayloom_migration_stop_failure")
+    source_root = tmp_path / "legacy-states"
+    destination_root = tmp_path / "xdg-states"
+    manifest_path = write_foreign_state(
+        source_root,
+        name="selected",
+        repository=tmp_path / "selected-checkout",
+        port=unused_port(),
+    )
+    monkeypatch.setattr(module, "service_is_loaded", lambda _state: True)
+    monkeypatch.setattr(module, "stop_service", lambda _state: True)
+
+    with pytest.raises(SystemExit, match="development services did not stop: selected"):
+        module.migrate_state_root(source_root, destination_root)
+
+    assert manifest_path.exists()
+    assert not destination_root.exists()
+
+
+def test_state_root_migration_copy_failure_preserves_source_registration(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = load_dev_module("sayloom_migration_copy_failure")
+    source_root = tmp_path / "legacy-states"
+    destination_root = tmp_path / "xdg-states"
+    manifest_path = write_foreign_state(
+        source_root,
+        name="selected",
+        repository=tmp_path / "selected-checkout",
+        port=unused_port(),
+    )
+    monkeypatch.setattr(module, "service_is_loaded", lambda _state: False)
+    monkeypatch.setattr(
+        module.shutil,
+        "copytree",
+        lambda *_arguments, **_keywords: (_ for _ in ()).throw(OSError("synthetic copy failure")),
+    )
+
+    with pytest.raises(SystemExit, match="synthetic copy failure"):
+        module.migrate_state_root(source_root, destination_root)
+
+    assert manifest_path.exists()
+    assert not (destination_root / "selected").exists()
 
 
 def test_state_root_migration_blocks_incomplete_registration_and_recovers_on_rerun(
