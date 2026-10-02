@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -80,6 +81,335 @@ def write_foreign_state(
     manifest_path = directory / "state.json"
     manifest_path.write_text(json.dumps(manifest))
     return manifest_path
+
+
+def load_dev_module(name: str) -> ModuleType:
+    scripts = str(REPOSITORY_ROOT / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        specification = importlib.util.spec_from_file_location(
+            name, REPOSITORY_ROOT / "scripts/dev.py"
+        )
+        assert specification is not None and specification.loader is not None
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+        return module
+    finally:
+        sys.path.remove(scripts)
+
+
+def test_state_root_migration_preserves_every_registered_state_and_is_rerunnable(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "application-support/dev-states"
+    destination_root = tmp_path / "xdg-data/local-text/dev-states"
+    for name in ("first", "second"):
+        write_foreign_state(
+            source_root,
+            name=name,
+            repository=tmp_path / f"{name}-checkout",
+            port=unused_port(),
+        )
+    payload = source_root / "first/nested/private-data.bin"
+    payload.parent.mkdir()
+    payload.write_bytes(b"\x00synthetic state data\xff")
+    environment = source_root / "second/environment"
+    environment.write_text("LOCAL_TEXT_GEMINI_MODEL=synthetic-model\n")
+    environment.chmod(0o600)
+
+    migrated = run_dev(
+        destination_root,
+        "migrate-state-root",
+        "--source-root",
+        str(source_root),
+    )
+
+    assert migrated.returncode == 0, migrated.stderr
+    assert "Migrated 2 registered development states" in migrated.stdout
+    assert payload.parent.parent.exists() is False
+    assert (destination_root / "first/nested/private-data.bin").read_bytes() == (
+        b"\x00synthetic state data\xff"
+    )
+    assert (destination_root / "second/environment").read_text() == (
+        "LOCAL_TEXT_GEMINI_MODEL=synthetic-model\n"
+    )
+    assert (destination_root / "second/environment").stat().st_mode & 0o777 == 0o600
+    for name in ("first", "second"):
+        manifest = json.loads((destination_root / name / "state.json").read_text())
+        assert manifest["state_directory"] == str((destination_root / name).resolve())
+
+    rerun = run_dev(
+        destination_root,
+        "migrate-state-root",
+        "--source-root",
+        str(source_root),
+    )
+
+    assert rerun.returncode == 0, rerun.stderr
+    assert "already uses the destination root" in rerun.stdout
+    listed = run_dev(destination_root, "list")
+    assert listed.returncode == 0, listed.stderr
+    assert "first" in listed.stdout
+    assert "second" in listed.stdout
+
+
+def test_state_root_migration_refuses_to_overwrite_divergent_destination(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "application-support/dev-states"
+    destination_root = tmp_path / "xdg-data/local-text/dev-states"
+    write_foreign_state(
+        source_root,
+        name="selected",
+        repository=tmp_path / "selected-checkout",
+        port=unused_port(),
+    )
+    write_foreign_state(
+        destination_root,
+        name="selected",
+        repository=tmp_path / "selected-checkout",
+        port=unused_port(),
+    )
+    source_payload = source_root / "selected/value.txt"
+    destination_payload = destination_root / "selected/value.txt"
+    source_payload.write_text("source value\n")
+    destination_payload.write_text("divergent destination value\n")
+
+    result = run_dev(
+        destination_root,
+        "migrate-state-root",
+        "--source-root",
+        str(source_root),
+    )
+
+    assert result.returncode != 0
+    assert "divergent destination state 'selected'" in result.stderr
+    assert source_payload.read_text() == "source value\n"
+    assert destination_payload.read_text() == "divergent destination value\n"
+
+
+def test_state_root_migration_rejects_divergence_before_service_shutdown(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = load_dev_module("sayloom_preflight_before_shutdown")
+    source_root = tmp_path / "legacy-states"
+    destination_root = tmp_path / "xdg-states"
+    write_foreign_state(
+        source_root,
+        name="selected",
+        repository=tmp_path / "selected-checkout",
+        port=unused_port(),
+    )
+    write_foreign_state(
+        destination_root,
+        name="selected",
+        repository=tmp_path / "selected-checkout",
+        port=unused_port(),
+    )
+    (source_root / "selected/value.txt").write_text("source\n")
+    (destination_root / "selected/value.txt").write_text("destination\n")
+    monkeypatch.setattr(
+        module,
+        "stop_service",
+        lambda _state: pytest.fail("shutdown must follow all migration preflight checks"),
+    )
+
+    with pytest.raises(SystemExit, match="divergent destination state 'selected'"):
+        module.migrate_state_root(source_root, destination_root)
+
+
+def test_state_root_migration_stops_only_registered_services_before_copy_and_cleans_plists(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    module = load_dev_module("sayloom_migration_service_shutdown")
+    source_root = tmp_path / "legacy-states"
+    destination_root = tmp_path / "xdg-states"
+    manifest_path = write_foreign_state(
+        source_root,
+        name="selected",
+        repository=tmp_path / "selected-checkout",
+        port=unused_port(),
+    )
+    state = module.registered_states(source_root)[0]
+    stable_label = "local.local-text"
+    loaded = {state.label: True, stable_label: True}
+    events: list[str] = []
+    plist = tmp_path / "LaunchAgents" / f"{state.label}.plist"
+    plist.parent.mkdir()
+    plist.write_text(str(source_root))
+
+    monkeypatch.setattr(module, "service_is_loaded", lambda candidate: loaded[candidate.label])
+
+    def stop_registered(candidate) -> bool:
+        events.append(f"stop {candidate.label}")
+        loaded[candidate.label] = False
+        return True
+
+    original_copytree = module.shutil.copytree
+
+    def copy_after_shutdown(source: Path, destination: Path, **arguments) -> Path:
+        assert loaded[state.label] is False
+        events.append("copy")
+        return original_copytree(source, destination, **arguments)
+
+    monkeypatch.setattr(module, "stop_service", stop_registered)
+    monkeypatch.setattr(module.shutil, "copytree", copy_after_shutdown)
+    monkeypatch.setattr(module, "plist_path", lambda _state: plist)
+    monkeypatch.setattr(
+        module,
+        "install_service",
+        lambda _state: pytest.fail("migration must not restart development services"),
+    )
+
+    module.migrate_state_root(source_root, destination_root)
+
+    assert events == [f"stop {state.label}", "copy"]
+    assert f"stop {stable_label}" not in events
+    assert loaded == {state.label: False, stable_label: True}
+    assert not plist.exists()
+    assert not manifest_path.exists()
+    assert (destination_root / "selected/state.json").exists()
+    assert "Development services remain stopped" in capsys.readouterr().out
+
+
+def test_state_root_migration_stop_failure_makes_no_migration_mutation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = load_dev_module("sayloom_migration_stop_failure")
+    source_root = tmp_path / "legacy-states"
+    destination_root = tmp_path / "xdg-states"
+    manifest_path = write_foreign_state(
+        source_root,
+        name="selected",
+        repository=tmp_path / "selected-checkout",
+        port=unused_port(),
+    )
+    monkeypatch.setattr(module, "service_is_loaded", lambda _state: True)
+    monkeypatch.setattr(module, "stop_service", lambda _state: True)
+
+    with pytest.raises(SystemExit, match="development services did not stop: selected"):
+        module.migrate_state_root(source_root, destination_root)
+
+    assert manifest_path.exists()
+    assert not destination_root.exists()
+
+
+def test_state_root_migration_copy_failure_preserves_source_registration(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = load_dev_module("sayloom_migration_copy_failure")
+    source_root = tmp_path / "legacy-states"
+    destination_root = tmp_path / "xdg-states"
+    manifest_path = write_foreign_state(
+        source_root,
+        name="selected",
+        repository=tmp_path / "selected-checkout",
+        port=unused_port(),
+    )
+    monkeypatch.setattr(module, "service_is_loaded", lambda _state: False)
+    monkeypatch.setattr(
+        module.shutil,
+        "copytree",
+        lambda *_arguments, **_keywords: (_ for _ in ()).throw(OSError("synthetic copy failure")),
+    )
+
+    with pytest.raises(SystemExit, match="synthetic copy failure"):
+        module.migrate_state_root(source_root, destination_root)
+
+    assert manifest_path.exists()
+    assert not (destination_root / "selected").exists()
+
+
+def test_state_root_migration_blocks_incomplete_registration_and_recovers_on_rerun(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source_root = tmp_path / "application-support/dev-states"
+    destination_root = tmp_path / "xdg-data/local-text/dev-states"
+    for name in ("first", "second"):
+        write_foreign_state(
+            source_root,
+            name=name,
+            repository=tmp_path / f"{name}-checkout",
+            port=unused_port(),
+        )
+        (source_root / name / "value.txt").write_text(f"{name} value\n")
+
+    scripts = str(REPOSITORY_ROOT / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        specification = importlib.util.spec_from_file_location(
+            "sayloom_state_root_migration", REPOSITORY_ROOT / "scripts/dev.py"
+        )
+        assert specification is not None and specification.loader is not None
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+    finally:
+        sys.path.remove(scripts)
+    monkeypatch.setattr(module, "service_is_loaded", lambda _state: False)
+    original_rename = Path.rename
+    committed = 0
+
+    def interrupt_second_registration(path: Path, target: Path) -> Path:
+        nonlocal committed
+        if path.parent.name == module.MIGRATION_STAGING_NAME:
+            committed += 1
+            if committed == 2:
+                raise OSError("synthetic interruption")
+        return original_rename(path, target)
+
+    with monkeypatch.context() as interruption:
+        interruption.setattr(Path, "rename", interrupt_second_registration)
+        with pytest.raises(SystemExit, match="synthetic interruption"):
+            module.migrate_state_root(source_root, destination_root)
+
+    blocked = run_dev(destination_root, "list")
+    assert blocked.returncode != 0
+    assert "migration is incomplete" in blocked.stderr
+    assert (source_root / "first/value.txt").read_text() == "first value\n"
+    assert (source_root / "second/value.txt").read_text() == "second value\n"
+
+    recovered = run_dev(
+        destination_root,
+        "migrate-state-root",
+        "--source-root",
+        str(source_root),
+    )
+
+    assert recovered.returncode == 0, recovered.stderr
+    assert "Migrated 2 registered development states" in recovered.stdout
+    assert (destination_root / "first/value.txt").read_text() == "first value\n"
+    assert (destination_root / "second/value.txt").read_text() == "second value\n"
+    assert not source_root.joinpath("first").exists()
+    assert not source_root.joinpath("second").exists()
+
+
+def test_development_state_default_uses_xdg_data_home(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    xdg_data = tmp_path / "xdg-data"
+    environment = {
+        **os.environ,
+        "HOME": str(home),
+        "XDG_DATA_HOME": str(xdg_data),
+    }
+
+    result = subprocess.run(
+        [
+            str(REPOSITORY_ROOT / "scripts/dev.py"),
+            "create",
+            "xdg-state",
+            "--port",
+            str(unused_port()),
+        ],
+        cwd=REPOSITORY_ROOT,
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (xdg_data / "local-text/dev-states/xdg-state/state.json").is_file()
+    assert not (home / "Library/Application Support/local-text/dev-states").exists()
 
 
 def test_admin_initializes_and_requires_an_unchanged_import_preview(tmp_path: Path) -> None:
@@ -1033,6 +1363,7 @@ def test_help_lists_checkout_service_database_and_cleanup_commands() -> None:
         "activate",
         "logs",
         "list",
+        "migrate-state-root",
         "remove",
         "prune",
         "db",
@@ -1346,3 +1677,39 @@ def test_runtime_helpers_require_explicit_state_selection(tmp_path: Path) -> Non
     assert "LOCAL_TEXT_STATE_DIRECTORY" not in startup
     assert "local_text.admin" not in startup
     assert "alembic" not in startup
+    assert "migrate-state-root" not in startup
+
+
+def test_normal_runtime_does_not_migrate_legacy_state_files(tmp_path: Path) -> None:
+    legacy_root = tmp_path / "application-support/dev-states"
+    destination_root = tmp_path / "xdg-data/local-text/dev-states"
+    manifest_path = write_foreign_state(
+        legacy_root,
+        name="legacy",
+        repository=REPOSITORY_ROOT,
+        port=unused_port(),
+    )
+    manifest = json.loads(manifest_path.read_text())
+
+    result = subprocess.run(
+        [
+            str(REPOSITORY_ROOT / "scripts/run-development.py"),
+            "--state-root",
+            str(destination_root),
+            "--state",
+            "legacy",
+            "--label",
+            manifest["label"],
+            "--port",
+            str(manifest["port"]),
+        ],
+        cwd=REPOSITORY_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "unknown state 'legacy'" in result.stderr
+    assert manifest_path.is_file()
+    assert not (destination_root / "legacy").exists()

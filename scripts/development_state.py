@@ -9,12 +9,17 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 STATE_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,47}")
-DEFAULT_STATE_ROOT = Path.home() / "Library/Application Support/local-text/dev-states"
+LEGACY_STATE_ROOT = Path.home() / "Library/Application Support/local-text/dev-states"
+DEFAULT_STATE_ROOT = (
+    Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share")
+    / "local-text/dev-states"
+)
 DEFAULT_CONFIG_ROOT = Path.home() / ".config/local-text/development"
 DEVELOPMENT_PORT = 7523
 DEVELOPMENT_PORT_END = 7622
 PRODUCTION_PORT = 7532
 MANIFEST_NAME = "state.json"
+MIGRATION_MARKER_NAME = ".state-root-migration-incomplete"
 ALLOWED_ENVIRONMENT_KEYS = {
     "LOCAL_TEXT_CLEANUP_PAID_DATA_ACKNOWLEDGEMENT",
     "LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS",
@@ -106,6 +111,7 @@ def validate_state(
 
 
 def load_state(root: Path, name: str) -> State:
+    require_complete_state_root(root)
     manifest_path = state_path(root, name) / MANIFEST_NAME
     if not manifest_path.is_file():
         fail(f"unknown state {name!r}; create it explicitly first")
@@ -126,6 +132,7 @@ def write_state(state: State) -> None:
 
 
 def registered_states(root: Path) -> list[State]:
+    require_complete_state_root(root)
     states: list[State] = []
     for manifest_path in root.glob(f"*/{MANIFEST_NAME}"):
         try:
@@ -147,6 +154,11 @@ def registered_states(root: Path) -> list[State]:
             )
         )
     return states
+
+
+def require_complete_state_root(root: Path) -> None:
+    if (root / MIGRATION_MARKER_NAME).exists():
+        fail("development-state migration is incomplete; rerun scripts/dev.py migrate-state-root")
 
 
 def states_on_port(root: Path, port: int) -> list[State]:
