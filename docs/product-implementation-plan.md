@@ -23,10 +23,10 @@ also exists. Complete meaning-bearing change review, live Personal Corrections,
 state portability, hosted identity, managed hosted provider access, and the
 hosted service remain implementation gaps.
 
-The current runtime still contains Evidence Collection Workspace and runtime
-APIs, arming and lease logic, participant-package tooling, dedicated tests, and
-development-state paths under macOS Application Support. Those are current
-implementation facts pending migration and retirement, not target direction.
+Evidence Collection is retired from the Workspace and normal runtime. Its UI,
+APIs, arming, leases, receipts, delivery gates, and dedicated runtime tests are
+gone. Participant-package creation, validation, administration, configuration,
+and dedicated package tests remain temporarily for follow-up issue #143.
 
 ## Current implementation sequence
 
@@ -35,9 +35,10 @@ Implementation proceeds in this order:
 1. **State-root migration:** explicitly migrate registered development-state
    data to `${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/`. Normal
    startup never migrates files or schemas.
-2. **Evidence Collection retirement:** remove it from the Workspace and runtime
-   APIs, including arming and lease logic, participant-package tooling, and
-   dedicated tests. Preserve historical documentation and Git history.
+2. **Evidence Collection retirement:** Workspace and runtime retirement is
+   complete in issue #142. Follow-up issue #143 removes participant-package
+   tooling and its dedicated tests. Preserve historical documentation and Git
+   history.
 3. **Personal Corrections:** implement explicit Original → Intended review and
    approval, durable `owner_id = "local"`, cross-session live Smart use,
    management, state-scoped live-database deletion, registered-state purge, and

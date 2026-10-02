@@ -3,7 +3,6 @@
 from dataclasses import asdict, dataclass, replace
 from enum import StrEnum
 from threading import Lock
-from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -37,8 +36,6 @@ class OutgoingStateUpdate(BaseModel):
     outgoing_kind: OutgoingKind
     status: PublishedStatus
     correction_mode: CorrectionMode = CorrectionMode.CONSERVATIVE
-    evidence_lease_token: UUID | None = None
-    evidence_receipt: UUID | None = None
 
     @model_validator(mode="after")
     def selected_text_is_current(self) -> "OutgoingStateUpdate":
@@ -68,17 +65,10 @@ class OutgoingState:
     outgoing_kind: OutgoingKind = OutgoingKind.EMPTY
     status: PublishedStatus = PublishedStatus.UNCHANGED
     correction_mode: CorrectionMode = CorrectionMode.CONSERVATIVE
-    evidence_lease_token: UUID | None = None
-    evidence_receipt: UUID | None = None
     revision: int = 0
 
     def public(self) -> dict[str, object]:
-        value = asdict(self)
-        if self.evidence_lease_token is None:
-            value.pop("evidence_lease_token")
-        if self.evidence_receipt is None:
-            value.pop("evidence_receipt")
-        return value
+        return asdict(self)
 
 
 class OutgoingStateStore:

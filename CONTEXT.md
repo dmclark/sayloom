@@ -72,23 +72,11 @@ frontier's incremental value over Cleanup and the complete Smart-to-Cleanup resu
 text.
 _Avoid_: Cleanup qualification, unversioned experimentation
 
-**Evidence Collection**:
-An optional, visibly armed research interaction that prospectively records actual
-Voiceitt-generated Original and producer-confirmed Intended text before any candidate Prepared text
-is exposed. It is independent of Cleanup and Smart and is not a correction mode.
-_Avoid_: Evidence mode, automatic learning, correction mode
-
-**Evidence observation**:
-One prospectively frozen Original with its contemporaneously available evidence and the producer's
-pre-exposure Intended-text judgment or content-free exclusion disposition. Observations remain
-distinct even when an exact-repeat relationship is suggested.
-_Avoid_: Training example, transcript, grouped case
-
 **Participant package**:
-One approved, user-controlled external collection that retains a single participant's immutable
-private observations and content-free audit records. The initial evaluation uses one package;
-future multi-participant evaluation combines frozen snapshots only through an authorized manifest.
-_Avoid_: Account, application state, mixed-user corpus
+Legacy, user-controlled external research storage retained temporarily for administration and
+validation only. The Workspace and normal runtime neither write nor read it. Its presence does not
+authorize collection; issue #143 owns its removal.
+_Avoid_: Current product state, active collection, application state
 
 **Evaluation view**:
 A task-specific frozen projection of approved evidence. Cleanup and Smart views may reference the
