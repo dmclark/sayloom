@@ -48,14 +48,6 @@ fetch_outgoing_text() {
     "$LOCAL_TEXT_BASE_URL/api/outgoing-state") \
     || fail_command "outgoing state is unavailable"
 
-  if [ "$http_status" = "409" ]; then
-    conflict=$(/usr/bin/plutil -extract detail raw -o - "$state_file" 2>/dev/null) \
-      || fail_command "outgoing state is malformed"
-    [ "$conflict" = "Complete intended-meaning confirmation in Sayloom, then retry." ] \
-      || fail_command "outgoing state is malformed"
-    printf '%s\n' "$conflict" >&2
-    exit 1
-  fi
   [ "$http_status" = "200" ] || fail_command "outgoing state is unavailable"
 
   value_type=$(/usr/bin/plutil -type outgoing_text "$state_file" 2>/dev/null) \

@@ -30,7 +30,6 @@ def test_health_reports_development_profile(initialized_settings: Settings) -> N
     assert response.status_code == 200
     health = response.json()
     cleanup_configuration = health.pop("cleanup_configuration")
-    evidence_collection = health.pop("evidence_collection")
     assert health == {
         "status": "ok",
         "profile": "development",
@@ -46,12 +45,6 @@ def test_health_reports_development_profile(initialized_settings: Settings) -> N
     assert cleanup_configuration["available"] is False
     assert cleanup_configuration["routes"] == []
     assert cleanup_configuration["validation_error"] is None
-    assert evidence_collection == {
-        "ready": False,
-        "reason": "unconfigured",
-        "package_version": None,
-        "contract_version": None,
-    }
 
 
 def test_health_reports_missing_schema_without_creating_database(tmp_path: Path) -> None:
@@ -162,9 +155,9 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     )
     assert 'id="cleanup-enabled"' not in response.text
     assert "Clean automatically" not in response.text
-    assert "Experimental — not yet evidence-backed" in response.text
-    assert "Learn about the pilot" in response.text
-    assert "Enrollment is not currently open." in response.text
+    assert "Experimental Smart correction" in response.text
+    assert "Learn about Smart correction" in response.text
+    assert "Formal evaluation and enrollment are not currently open." in response.text
     assert 'id="run-smart-correction"' not in response.text
     assert 'id="nav-settings"' in response.text
     assert response.text.index('id="correction-settings-title"') < response.text.index(
@@ -175,23 +168,8 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="smart-repair-review"' in response.text
     assert 'id="smart-repair-list"' in response.text
     assert 'id="copy-outgoing"' in response.text
-    assert (
-        "Editing Intended records the correct meaning; it does not replace Original or directly "
-        "determine Prepared."
-        in response.text
-    )
-    for disposition in (
-        "ready_as_is",
-        "presentation_cleanup_needed",
-        "edit_intended",
-        "not_voiceitt",
-        "cannot_reliably_reconstruct",
-        "exclude",
-    ):
-        option = response.text.split(f'<option value="{disposition}">', maxsplit=1)[1].split(
-            "</option>", maxsplit=1
-        )[0]
-        assert " — " in option
+    assert "Evidence Collection" not in response.text
+    assert "evidence-collection" not in response.text
     assert (
         "Select a repair to inspect its corresponding wording and sentence context."
         in response.text
@@ -228,7 +206,7 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     )[1]
 
 
-def test_obsolete_capture_interfaces_are_absent(
+def test_obsolete_capture_and_evidence_collection_interfaces_are_absent(
     initialized_settings: Settings,
 ) -> None:
     client = TestClient(create_app(initialized_settings))
@@ -257,6 +235,11 @@ def test_obsolete_capture_interfaces_are_absent(
     assert removed_smart_endpoint.status_code == 404
     assert client.get("/api/evaluation/cases").status_code == 404
     assert client.post("/api/evaluation/cases", json={}).status_code == 404
+    assert "/api/evidence-collection" not in script.text
+    assert "evidence_collection" not in configuration.json()
+    assert client.post("/api/evidence-collection/arm", json={}).status_code == 404
+    assert client.post("/api/evidence-collection/trigger", json={}).status_code == 404
+    assert client.post("/api/evidence-collection/confirm", json={}).status_code == 404
 
 
 def test_status_errors_use_one_accessible_privacy_safe_dialog(
@@ -404,7 +387,6 @@ def test_config_reports_cleanup_without_exposing_key(initialized_settings: Setti
 
     configuration = response.json()
     cleanup_configuration = configuration.pop("cleanup_configuration")
-    evidence_collection = configuration.pop("evidence_collection")
     assert configuration == {
         "display_name": "Sayloom Development",
         "profile": "development",
@@ -419,7 +401,6 @@ def test_config_reports_cleanup_without_exposing_key(initialized_settings: Setti
         {"provider": "gemini", "model": "gemini-2.5-flash"},
     ]
     assert cleanup_configuration["paid_data_acknowledgement"] is None
-    assert evidence_collection["ready"] is False
     assert "not-a-real-key" not in response.text
 
 
@@ -1354,9 +1335,24 @@ def test_outgoing_state_accepts_canonical_contract_and_smart_mode(
             "status": "prepared",
         },
     )
+    evidence_outgoing = client.put(
+        "/api/outgoing-state",
+        json={
+            "cleanup_enabled": True,
+            "original_text": "synthetic original",
+            "prepared_text": "Synthetic original.",
+            "outgoing_text": "Synthetic original.",
+            "outgoing_kind": "prepared",
+            "status": "prepared",
+            "correction_mode": "smart",
+            "evidence_lease_token": "00000000-0000-4000-8000-000000000001",
+            "evidence_receipt": "00000000-0000-4000-8000-000000000002",
+        },
+    )
 
     assert legacy_cleanup.status_code == 422
     assert legacy_outgoing.status_code == 422
+    assert evidence_outgoing.status_code == 422
 
 
 def test_outgoing_state_rejects_text_not_present_in_either_editor(
@@ -1643,7 +1639,6 @@ const fetch = async (url, options = {}) => {
   if (url === "/api/config") return response({
     preparation_default: "conservative",
     cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
-    evidence_collection: { ready: false },
   });
   if (url === "/api/preferences/preparation-default") {
     return response({ preparation_default: body.preparation_default });
@@ -1804,7 +1799,6 @@ const fetch = async (url, options = {}) => {
   if (url === "/api/config") return response({
     preparation_default: "smart",
     cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
-    evidence_collection: { ready: false },
   });
   if (url === "/api/cleanup") {
     const body = JSON.parse(options.body);
@@ -2008,7 +2002,7 @@ def test_browser_smart_repair_queue_selects_span_and_does_not_gate_outgoing(
     assert 'elements.smartTaskContext.addEventListener("input"' in script
     assert 'elements.activePromptSelector.addEventListener("change"' not in script
     assert 'elements.copyOutgoing.addEventListener("click"' in script
-    assert "navigator.clipboard.writeText(outgoing.outgoing_text)" in script
+    assert "navigator.clipboard.writeText(selectedOutgoingState().outgoing_text)" in script
 
     selected_state = script.split("function selectedOutgoingState()", maxsplit=1)[1].split(
         "function renderCountsAndSelection()", maxsplit=1
