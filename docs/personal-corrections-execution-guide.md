@@ -1,9 +1,9 @@
 # Personal Corrections execution guide
 
 - **Status:** Current execution guide
-- **Active phase:** 2b — Participant-package retirement
+- **Active phase:** 2b — Participant-package retirement integration
 - **Initial user:** One implicit private local user
-- **Last confirmed:** 2026-10-01
+- **Last confirmed:** 2026-10-02
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
 - **Domain vocabulary:** [`CONTEXT.md`](../CONTEXT.md)
@@ -55,14 +55,21 @@ Inspect recurrence and export private discovery data
 ```
 
 The state-root migration and Evidence Collection Workspace/runtime retirement
-are complete. Collection UI, APIs, arming, leases, receipts, and delivery gates
-are absent. Participant-package creation, validation, administration,
-configuration, and dedicated tests remain temporarily for issue #143. The
-partial Personal Corrections foundation does not make the newly confirmed
-sequence complete.
+are complete on `main`. Collection UI, APIs, arming, leases, receipts, and
+delivery gates are absent. Participant-package retirement is implemented and
+verified in commit
+[`5301155`](https://github.com/dmclark/sayloom/commit/5301155e31b56cd0f32d9340314fc3559239dd88)
+on `feat/143-retire-evidence-packages`, and issue #143 is closed. That commit is
+not merged into `main`, where package creation, validation, administration,
+configuration, and dedicated tests remain. Its affected checks passed with 95
+tests, the full suite passed with 357 tests, and Ruff and diff checks passed.
+Controlled restart and live health verification remain blocked by an
+unsupported entry in the shared external development environment; that file was
+not inspected or modified.
 
-The immediate next deliverable is participant-package retirement in issue #143.
-Personal Corrections implementation follows it.
+The immediate next deliverable is to integrate the verified issue #143 change
+onto current `main` without regressing the phase 1 migration. Personal
+Corrections implementation follows only after that integration is delivered.
 
 ## Current contract
 
@@ -198,7 +205,7 @@ gate is met and its evidence is recorded in this guide or its linked issue.
 | ---: | --- | --- | --- |
 | 1 | Complete | Development-state root migration | An explicit, verified migration moves registered state data to `${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/`; normal startup never migrates. |
 | 2a | Complete | Evidence Collection Workspace/runtime retirement | UI, APIs, session behavior, arming, leases, receipts, delivery gates, runtime exposure, and dedicated runtime tests are removed while ordinary preparation, Copy, and delivery remain. |
-| 2b | **Active** | Participant-package retirement | Issue #143 removes package creation, validation, administration, configuration, and dedicated package tests while preserving historical docs and Git. |
+| 2b | **Active — integration pending** | Participant-package retirement | Issue #143 has a verified implementation in commit `5301155`, but it is not merged into `main`. Integrate it while preserving historical docs, Git, and the completed state-root migration. |
 | 3 | Blocked by phase 2b | Personal Corrections | Explicit Original → Intended review and approval, durable `local` ownership, cross-session Smart reuse, management, current-state deletion, registered-state purge, and private export work end to end. Complete durable-deletion acceptance additionally requires a confirmed managed-backup policy. |
 | 4 | Blocked by phase 3 | New-state inheritance | A new state inherits and verifies a transactional snapshot from the explicitly activated eligible source; failures prevent activation, no-source creation reports empty, and existing states remain untouched. |
 
@@ -288,16 +295,24 @@ issue.
 
 ## Copy-ready prompts
 
-### Use now: implement phase 1
+### Use now: integrate phase 2b
 
 ```text
 Use docs/personal-corrections-execution-guide.md and ADR-0002 as the confirmed
-execution authority. Implement only phase 1: an explicit, verified migration of
-registered development states from the current macOS Application Support root
-to ${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/. Preserve
-registration, fail safely before activation, and prove normal startup never
-migrates files or schemas. Do not retire Evidence Collection or implement
-Personal Corrections or inheritance in the same change.
+execution authority. Integrate the verified participant-package retirement from
+commit 5301155 onto current origin/main, which includes the completed
+development-state migration from PR #145. Preserve the Evidence Collection
+Workspace/runtime retirement and historical documentation while removing the
+remaining live package creation, validation, administration, configuration,
+and dedicated tests. Resolve overlap with the migration rather than replacing
+its admin and development-state behavior. Run the affected admin/configuration
+checks, the full suite, Ruff, and diff checks. Perform the controlled restart
+and live health check only against a dedicated isolated development state;
+otherwise report them as unavailable without inspecting or changing the stable
+application or its private configuration.
+Prepare the integration for review, update this guide to phase 3 only after the
+retirement is delivered, and do not begin Personal Corrections in the same
+thread.
 ```
 
 ### After the specification is confirmed: reconcile tickets
