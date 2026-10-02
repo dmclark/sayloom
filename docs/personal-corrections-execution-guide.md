@@ -61,8 +61,10 @@ dedicated tests are absent. Historical documents remain for provenance only.
 The partial Personal Corrections foundation does not make the newly confirmed
 sequence complete.
 
-The immediate next deliverable is Personal Corrections implementation. Evidence
-Collection must not be reintroduced as part of that work.
+The local profile foundation and bound missed-repair review are complete. The
+immediate next deliverable is [#13](https://github.com/dmclark/sayloom/issues/13):
+explicit approval and durable save of the reviewed Personal Correction episode.
+Evidence Collection must not be reintroduced as part of that work.
 
 ## Current contract
 
@@ -216,21 +218,26 @@ gate is met and its evidence is recorded in this guide or its linked issue.
   ambiguity, edit and disable behavior, and representative desktop and narrow
   layouts. Normal startup against the predecessor schema remains non-mutating
   and reports `setup_required`.
+- [#109](https://github.com/dmclark/sayloom/issues/109) binds one frozen
+  pre-edit Original to its latest settled post-edit revision, derives ordered
+  lexical candidates and bounded editable sentence evidence, invalidates stale
+  reviews, and writes nothing. Focused API and browser checks cover asymmetric
+  additions, removals, replacements, prompt-version changes, desktop and narrow
+  layouts, and the 500-code-point review boundary.
 
 This evidence describes current partial implementation only. It does not
 satisfy phase 3 or justify skipping phases 1 and 2.
 
-## Ticket reconciliation plan
+## Ticket status
 
-This table records intended disposition, not completed GitHub mutation. Creating
-or editing issues requires a separately authorized tracker operation.
+This table records the active flywheel's current issue disposition.
 
-| Issue | Intended disposition |
+| Issue | Current disposition |
 | --- | --- |
-| New Personal Corrections flywheel umbrella | **Proposed:** reconcile it to phase 3 and its internal blocking edges. |
-| [#109](https://github.com/dmclark/sayloom/issues/109) | Revise around missed-repair capture and bounded observed/intended correction episodes. Remove #45 as a blocker. |
-| [#12](https://github.com/dmclark/sayloom/issues/12) | Revise around durable owner `local`, Personal Corrections management, first-profile creation through explicit approved save, and the runtime profile boundary. |
-| [#13](https://github.com/dmclark/sayloom/issues/13) | Revise or split around explicit save, deduplication, occurrence history, deletion, and export. It must accept user-supplied missed repairs rather than require model-proposed confirmation. |
+| [#131](https://github.com/dmclark/sayloom/issues/131) | **In progress:** phase 3 umbrella; close only after the first usefulness demonstration. |
+| [#109](https://github.com/dmclark/sayloom/issues/109) | **Complete:** bound missed-repair review and bounded observed/intended sentence evidence are delivered without approval writes. |
+| [#12](https://github.com/dmclark/sayloom/issues/12) | **Complete:** durable owner `local`, Personal Corrections management, and the runtime profile boundary are delivered. |
+| [#13](https://github.com/dmclark/sayloom/issues/13) | **Next:** explicitly approve and atomically save selected user-supplied mappings as one bounded Personal Correction episode. |
 | [#45](https://github.com/dmclark/sayloom/issues/45) | Retain as later positive confirmation of model-proposed repairs. It does not block the personal flywheel. |
 | [#9](https://github.com/dmclark/sayloom/issues/9) | Keep as broader Smart and personalization history; do not use its superseded fixed-arm sequence as the current path. |
 | [#46](https://github.com/dmclark/sayloom/issues/46) | Keep open but defer the automatic-strategy evaluation path until a later explicit decision. |
@@ -288,15 +295,17 @@ issue.
 
 ## Copy-ready prompts
 
-### Use now: implement phase 3
+### Use now: implement explicit approval and save
 
 ```text
 Use docs/personal-corrections-execution-guide.md and ADR-0002 as the confirmed
-execution authority. Implement only phase 3: the confirmed Personal Corrections
-flywheel. Preserve the completed development-state migration and Evidence
-Collection retirement, and do not implement new-state inheritance in the same
-change. Follow the confirmed implementation specification and reconciled GitHub
-tickets for phase 3's internal blocking order.
+execution authority. Implement only #13: explicit approval and atomic durable
+save of selected mappings from the bound #109 review as one Personal Correction
+episode. Preserve #109's stale-state and no-write boundaries, the completed
+development-state migration, and Evidence Collection retirement. Do not add
+Smart retrieval, deletion/export, new-state inheritance, or evaluation behavior
+in the same change. Follow the confirmed implementation specification and #13's
+acceptance criteria.
 ```
 
 ### After the specification is confirmed: reconcile tickets
