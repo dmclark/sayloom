@@ -27,6 +27,7 @@ Requirements: macOS, Python 3.12+, and [uv](https://docs.astral.sh/uv/).
 
 ```sh
 uv sync --locked
+scripts/dev.py migrate-state-root  # once for states in macOS Application Support
 scripts/dev.py init
 scripts/dev.py
 ```
@@ -37,6 +38,20 @@ state, names it from the sanitized Git branch, allocates an available loopback
 port, then explicitly migrates and seeds its database. `create [NAME]` remains
 available when an uninitialized state, custom name, or `--port` is required.
 No command falls back to shared operating data.
+
+Development states now live under
+`${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/`. The explicit
+`migrate-state-root` command moves every registration from the former
+`~/Library/Application Support/local-text/dev-states/` root. Stop registered
+development services before running it. The command copies all states into a
+hidden staging directory, verifies each manifest and every filesystem entry,
+then switches registration as one guarded operation. An interrupted switch
+blocks ordinary state commands until the same migration command completes it.
+Rerunning after success reports that the destination is already in use;
+rerunning after an interruption resumes from verified matching data. A
+same-named destination with different registration or data is rejected and is
+never overwritten. This command does not run database-schema migrations; those
+remain explicit `db` operations.
 
 Running `scripts/dev.py` without a command reports the current checkout's state,
 configuration, schema, service, and port. `restart` verifies the repository,
@@ -144,7 +159,7 @@ file inside the external state directory:
 
 ```text
 ~/.config/local-text/development/environment
-~/Library/Application Support/local-text/dev-states/STATE_NAME/environment
+${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/STATE_NAME/environment
 ```
 
 The shared file is loaded first. The state-specific file is loaded second and
