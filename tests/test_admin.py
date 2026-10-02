@@ -1036,9 +1036,9 @@ def test_help_lists_checkout_service_database_and_cleanup_commands() -> None:
         "remove",
         "prune",
         "db",
-        "evidence-package",
     ):
         assert command_name in result.stdout
+    assert "evidence-package" not in result.stdout
     assert "Running without a command is equivalent to status" in result.stdout
 
     logs_help = run_dev(Path("unused"), "logs", "--help")
@@ -1053,12 +1053,6 @@ def test_help_lists_checkout_service_database_and_cleanup_commands() -> None:
     assert "exact request and response content, including dictated/transcribed text" in (
         normalized_help
     )
-
-    package_help = run_dev(Path("unused"), "evidence-package", "--help")
-    assert package_help.returncode == 0
-    for command_name in ("create", "approve", "ready"):
-        assert command_name in package_help.stdout
-    assert "import" not in package_help.stdout.lower()
 
 
 def test_provider_traffic_diagnostics_marker_is_temporary_and_exclusively_locked(
@@ -1151,14 +1145,23 @@ def test_state_rejects_unknown_and_root_escaping_selection(tmp_path: Path) -> No
     assert "outside the development-state root" in escaped.stderr
 
 
-def test_runtime_environment_rejects_state_overrides(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "LOCAL_TEXT_DATABASE_PATH=/tmp/other.sqlite3",
+        "LOCAL_TEXT_EVIDENCE_PACKAGE_DIRECTORY=/tmp/retired-evidence-package",
+    ],
+)
+def test_runtime_environment_rejects_unsupported_configuration(
+    tmp_path: Path, entry: str
+) -> None:
     state_root = tmp_path / "states"
     assert run_dev(state_root, "create", "selected").returncode == 0
     manifest = json.loads((state_root / "selected/state.json").read_text())
     home = tmp_path / "home"
     environment_path = home / ".config/local-text/development/environment"
     environment_path.parent.mkdir(parents=True)
-    environment_path.write_text("LOCAL_TEXT_DATABASE_PATH=/tmp/other.sqlite3\n")
+    environment_path.write_text(f"{entry}\n")
     environment_path.chmod(0o600)
     environment = {**os.environ, "HOME": str(home)}
     rejected = subprocess.run(
@@ -1192,11 +1195,7 @@ def test_runtime_environment_passes_supported_runtime_configuration(
     config_root = tmp_path / "home/.config/local-text/development"
     environment_path = config_root / "environment"
     environment_path.parent.mkdir(parents=True)
-    evidence_package_directory = tmp_path / "synthetic-participant-package"
-    environment_path.write_text(
-        f"LOCAL_TEXT_EVIDENCE_PACKAGE_DIRECTORY={evidence_package_directory}\n"
-        "LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS=18,12\n"
-    )
+    environment_path.write_text("LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS=18,12\n")
     environment_path.chmod(0o600)
 
     scripts = str(REPOSITORY_ROOT / "scripts")
@@ -1242,9 +1241,6 @@ def test_runtime_environment_passes_supported_runtime_configuration(
     with pytest.raises(RuntimeError, match="execution intercepted"):
         module.main()
 
-    assert captured_environment["LOCAL_TEXT_EVIDENCE_PACKAGE_DIRECTORY"] == str(
-        evidence_package_directory
-    )
     assert captured_environment["LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS"] == "18,12"
     assert captured_environment["LOCAL_TEXT_PROVIDER_TRAFFIC_DIAGNOSTICS_FILE"] == str(
         state_root / "selected/.provider-traffic-diagnostics"

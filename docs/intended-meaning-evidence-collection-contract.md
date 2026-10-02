@@ -1,6 +1,6 @@
 # Intended-meaning evidence collection contract
 
-- **Status:** Retired historical contract; participant-package tooling remains pending issue #143
+- **Status:** Retired historical contract; no live tooling remains
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Superseded by:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
 - **Decision source:**
@@ -12,10 +12,10 @@
 
 > **Retired historical contract:** Do not use this document to authorize
 > collection, evaluation, package administration, provider execution, or new
-> implementation. Evidence Collection is absent from the Workspace and normal
-> runtime. Participant-package administration remains temporarily for issue
-> #143 only. Any renewed research requires a new explicitly approved evaluation
-> purpose and contract.
+> implementation. Evidence Collection and its participant-package tooling are
+> absent from the Workspace, runtime, administration, and configuration. Any
+> renewed research requires a new explicitly approved evaluation purpose and
+> contract.
 
 This specification defines the bounded browser interaction and **participant
 evidence package** used to collect evidence for separate Cleanup and Smart

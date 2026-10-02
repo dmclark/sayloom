@@ -12,12 +12,6 @@ from alembic.config import Config as AlembicConfig
 
 from local_text.config import Settings, load_settings
 from local_text.database import ApplicationDatabase
-from local_text.evidence_package import (
-    EvidencePackageError,
-    approve_package,
-    check_readiness,
-    create_package,
-)
 from local_text.legacy_import import LegacyImportError, preview_legacy_configuration
 from local_text.prompt_store import PromptStore
 from local_text.target_store import TargetStore
@@ -52,27 +46,6 @@ def _print(value: dict[str, object]) -> None:
 
 
 def _run(args: argparse.Namespace) -> int:
-    if args.command == "evidence-package-create":
-        result = create_package(args.path)
-        _print(
-            {
-                "package_id": str(result.package_id),
-                "participant_id": str(result.participant_id),
-                "approval_digest": result.approval_digest,
-            }
-        )
-        return 0
-
-    if args.command == "evidence-package-approve":
-        result = approve_package(args.path, args.digest)
-        _print({"package_id": str(result.package_id), "approved": result.approved})
-        return 0
-
-    if args.command == "evidence-package-ready":
-        readiness = check_readiness(args.path)
-        _print(readiness.to_dict())
-        return 0 if readiness.ready else 1
-
     config = load_settings()
     database = _database(config)
 
@@ -165,22 +138,6 @@ def _parser() -> argparse.ArgumentParser:
     confirm = subparsers.add_parser("import-confirm", help="confirm an unchanged preview")
     confirm.add_argument("source", type=Path)
     confirm.add_argument("--digest", required=True)
-
-    package_create = subparsers.add_parser(
-        "evidence-package-create", help="create an unapproved external evidence package"
-    )
-    package_create.add_argument("path", type=Path)
-
-    package_approve = subparsers.add_parser(
-        "evidence-package-approve", help="approve an unchanged external evidence package"
-    )
-    package_approve.add_argument("path", type=Path)
-    package_approve.add_argument("--digest", required=True)
-
-    package_ready = subparsers.add_parser(
-        "evidence-package-ready", help="report content-free external package readiness"
-    )
-    package_ready.add_argument("path", type=Path)
     return parser
 
 
@@ -188,7 +145,6 @@ def main() -> None:
     try:
         raise SystemExit(_run(_parser().parse_args()))
     except (
-        EvidencePackageError,
         LegacyImportError,
         RuntimeError,
     ) as exc:

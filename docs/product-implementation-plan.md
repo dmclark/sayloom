@@ -1,6 +1,6 @@
 # Sayloom product implementation plan
 
-- **Status:** Approved sequence; implementation pending
+- **Status:** Approved sequence; Personal Corrections next
 - **Audience:** Product, design, engineering, research, and delivery contributors
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
@@ -23,10 +23,9 @@ also exists. Complete meaning-bearing change review, live Personal Corrections,
 state portability, hosted identity, managed hosted provider access, and the
 hosted service remain implementation gaps.
 
-Evidence Collection is retired from the Workspace and normal runtime. Its UI,
-APIs, arming, leases, receipts, delivery gates, and dedicated runtime tests are
-gone. Participant-package creation, validation, administration, configuration,
-and dedicated package tests remain temporarily for follow-up issue #143.
+Evidence Collection is fully retired. Its Workspace, runtime, participant-package
+implementation, administration, configuration, and dedicated tests are gone.
+Historical documents and Git history remain for provenance only.
 
 ## Current implementation sequence
 
@@ -35,10 +34,10 @@ Implementation proceeds in this order:
 1. **State-root migration:** explicitly migrate registered development-state
    data to `${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/`. Normal
    startup never migrates files or schemas.
-2. **Evidence Collection retirement:** Workspace and runtime retirement is
-   complete in issue #142. Follow-up issue #143 removes participant-package
-   tooling and its dedicated tests. Preserve historical documentation and Git
-   history.
+2. **Evidence Collection retirement:** complete. Issue #142 removed Workspace
+   and runtime behavior; issue #143 removed participant-package tooling,
+   configuration, administration, and dedicated tests. Historical documentation
+   and Git history remain.
 3. **Personal Corrections:** implement explicit Original → Intended review and
    approval, durable `owner_id = "local"`, cross-session live Smart use,
    management, state-scoped live-database deletion, registered-state purge, and

@@ -86,11 +86,10 @@ complete durable deletion until that policy is confirmed and verified.
 ### Retire Evidence Collection before adding Personal Corrections
 
 Evidence Collection is superseded product direction. A later implementation
-phase removes it from the Workspace and runtime APIs, including arming and
-lease logic, participant-package tooling, and dedicated tests. Historical
-documents and Git history remain intact. Until that phase is implemented, the
-runtime surfaces and current Application Support paths remain current
-implementation facts and must not be documented as already removed.
+phase was required to remove it from the Workspace and runtime APIs, including
+arming and lease logic, participant-package tooling, and dedicated tests. That
+retirement is complete. Historical documents and Git history remain intact and
+grant no authority to resume collection or evaluation.
 
 Implementation proceeds in this order:
 
@@ -113,8 +112,8 @@ Implementation proceeds in this order:
   boundary is explicit and administrative.
 - Live-database deletion does not establish deletion from managed backups or
   user-created exports; complete durable deletion remains an unresolved claim.
-- Evidence Collection code and operational paths remain temporarily present
-  until their separately authorized retirement phase.
+- Evidence Collection code and operational paths are retired; historical
+  records remain for provenance only.
 
 ## Alternatives considered
 
