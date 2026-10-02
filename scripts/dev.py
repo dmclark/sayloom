@@ -17,7 +17,7 @@ import tempfile
 import time
 from collections import deque
 from contextlib import ExitStack, contextmanager
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
 from urllib import parse, request
 
@@ -25,6 +25,9 @@ from development_state import (
     APPLICATION_ENVIRONMENT_KEYS,
     DEFAULT_STATE_ROOT,
     DEVELOPMENT_PORT,
+    LEGACY_STATE_ROOT,
+    MANIFEST_NAME,
+    MIGRATION_MARKER_NAME,
     PRODUCTION_PORT,
     State,
     available_port,
@@ -50,6 +53,10 @@ from raycast_aliases import AliasPlan, apply_plan, plan_install
 class HelpFormatter(argparse.RawDescriptionHelpFormatter):
     def __init__(self, prog: str) -> None:
         super().__init__(prog, max_help_position=26, width=88)
+
+
+MIGRATION_LOCK_NAME = ".state-root-migration.lock"
+MIGRATION_STAGING_NAME = ".state-root-migration-staging"
 
 
 def positive_line_count(value: str) -> int:
@@ -222,6 +229,194 @@ def create_state(root: Path, name: str | None = None, port: int | None = None) -
     )
     write_state(state)
     return state
+
+
+def state_tree_entries(root: Path) -> dict[str, tuple[object, ...]]:
+    entries: dict[str, tuple[object, ...]] = {}
+
+    def visit(directory: Path, prefix: Path) -> None:
+        for entry in os.scandir(directory):
+            relative = prefix / entry.name
+            if relative == Path(MANIFEST_NAME):
+                continue
+            metadata = entry.stat(follow_symlinks=False)
+            mode = stat.S_IMODE(metadata.st_mode)
+            if stat.S_ISLNK(metadata.st_mode):
+                entries[str(relative)] = ("symlink", mode, os.readlink(entry.path))
+            elif stat.S_ISDIR(metadata.st_mode):
+                entries[str(relative)] = ("directory", mode)
+                visit(Path(entry.path), relative)
+            elif stat.S_ISREG(metadata.st_mode):
+                digest = hashlib.sha256()
+                with open(entry.path, "rb") as source:
+                    for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                        digest.update(chunk)
+                entries[str(relative)] = ("file", mode, metadata.st_size, digest.hexdigest())
+            else:
+                fail(f"state contains unsupported filesystem entry: {relative}")
+
+    visit(root, Path())
+    return entries
+
+
+def verify_migrated_state(
+    state: State,
+    destination: Path,
+    *,
+    registration_directory: Path | None = None,
+    divergent: bool = False,
+) -> None:
+    prefix = (
+        f"divergent destination state {state.name!r}"
+        if divergent
+        else f"verification failed for state {state.name!r}"
+    )
+    try:
+        manifest = json.loads((destination / MANIFEST_NAME).read_text())
+        registered_at = registration_directory or destination
+        expected = asdict(replace(state, state_directory=str(registered_at.resolve())))
+        if manifest != expected:
+            fail(f"{prefix}: registration differs")
+        if state_tree_entries(Path(state.state_directory)) != state_tree_entries(destination):
+            fail(f"{prefix}: state data differs")
+    except (OSError, TypeError, json.JSONDecodeError) as error:
+        fail(f"{prefix}: {error}")
+
+
+def write_migration_marker(marker: Path, source_root: Path, states: list[State]) -> None:
+    temporary = marker.with_suffix(".tmp")
+    temporary.unlink(missing_ok=True)
+    payload = {
+        "source_root": str(source_root),
+        "states": sorted(state.name for state in states),
+    }
+    with temporary.open("x") as output:
+        json.dump(payload, output, indent=2)
+        output.write("\n")
+        output.flush()
+        os.fsync(output.fileno())
+    os.chmod(temporary, 0o600)
+    temporary.replace(marker)
+
+
+def preflight_state_root_migration(
+    source_root: Path, destination_root: Path
+) -> tuple[list[State], list[tuple[State, Path]]]:
+    states = sorted(registered_states(source_root), key=lambda state: state.name)
+    marker = destination_root / MIGRATION_MARKER_NAME
+    if not states:
+        if marker.exists():
+            fail("migration is incomplete and its source states are unavailable")
+        return states, []
+
+    marker_payload = {
+        "source_root": str(source_root),
+        "states": [state.name for state in states],
+    }
+    if marker.exists():
+        try:
+            if json.loads(marker.read_text()) != marker_payload:
+                fail("incomplete migration marker does not match this migration")
+        except (OSError, json.JSONDecodeError) as error:
+            fail(f"invalid incomplete migration marker: {error}")
+
+    missing: list[tuple[State, Path]] = []
+    for state in states:
+        destination = destination_root / state.name
+        if destination.exists() or destination.is_symlink():
+            verify_migrated_state(state, destination, divergent=True)
+        else:
+            missing.append((state, destination))
+    return states, missing
+
+
+def stop_migration_services(states: list[State]) -> None:
+    loaded = [state for state in states if service_is_loaded(state)]
+    for state in loaded:
+        try:
+            stop_service(state)
+        except (OSError, subprocess.CalledProcessError) as error:
+            fail(f"could not stop development service {state.name!r}: {error}")
+    remaining = [state.name for state in loaded if service_is_loaded(state)]
+    if remaining:
+        fail("development services did not stop: " + ", ".join(remaining))
+
+
+def migrate_state_root(source_root: Path, destination_root: Path) -> None:
+    source_root = source_root.expanduser().resolve()
+    destination_root = destination_root.expanduser().resolve()
+    if source_root == destination_root:
+        fail("source and destination state roots must differ")
+
+    states, _missing = preflight_state_root_migration(source_root, destination_root)
+    if not states:
+        if registered_states(destination_root):
+            print("Development-state registration already uses the destination root.")
+        else:
+            print("No registered development states require migration.")
+        return
+
+    stop_migration_services(states)
+
+    destination_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(destination_root, 0o700)
+    lock_path = destination_root / MIGRATION_LOCK_NAME
+    with lock_path.open("a+") as lock:
+        os.chmod(lock_path, 0o600)
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        marker = destination_root / MIGRATION_MARKER_NAME
+        locked_states, missing = preflight_state_root_migration(source_root, destination_root)
+        if locked_states != states:
+            fail("source registrations changed during migration preflight")
+
+        staging = destination_root / MIGRATION_STAGING_NAME
+        if staging.exists():
+            shutil.rmtree(staging)
+        staging.mkdir(mode=0o700)
+        try:
+            for state, destination in missing:
+                staged = staging / state.name
+                shutil.copytree(
+                    state.state_directory,
+                    staged,
+                    symlinks=True,
+                    copy_function=shutil.copy2,
+                )
+                migrated = replace(state, state_directory=str(destination.resolve()))
+                manifest = staged / MANIFEST_NAME
+                manifest.write_text(json.dumps(asdict(migrated), indent=2) + "\n")
+                os.chmod(manifest, 0o600)
+                verify_migrated_state(
+                    state,
+                    staged,
+                    registration_directory=destination,
+                )
+
+            if not marker.exists():
+                write_migration_marker(marker, source_root, states)
+
+            for state, destination in missing:
+                (staging / state.name).rename(destination)
+            for state in states:
+                verify_migrated_state(state, destination_root / state.name)
+
+            for state in states:
+                plist_path(state).unlink(missing_ok=True)
+            marker.unlink()
+            for state in states:
+                shutil.rmtree(state.state_directory)
+            print(
+                f"Migrated {len(states)} registered development states to {destination_root}."
+            )
+            print(
+                "Development services remain stopped; run scripts/dev.py restart from each "
+                "checkout you want to start."
+            )
+        except OSError as error:
+            fail(f"state-root migration failed: {error}")
+        finally:
+            if not marker.exists():
+                shutil.rmtree(staging, ignore_errors=True)
 
 
 def clean_environment() -> dict[str, str]:
@@ -853,6 +1048,10 @@ def command(arguments: argparse.Namespace) -> int:
     root = arguments.state_root.expanduser().resolve()
     operation = arguments.command or "status"
 
+    if operation == "migrate-state-root":
+        migrate_state_root(arguments.source_root, root)
+        return 0
+
     if operation == "create":
         state = create_state(root, arguments.name, arguments.port)
         print_state(state)
@@ -936,6 +1135,8 @@ def parser() -> argparse.ArgumentParser:
   scripts/dev.py logs --provider-traffic
                                 temporarily log and follow exact provider traffic
   scripts/dev.py list            show every registered development state
+  scripts/dev.py migrate-state-root
+                                migrate all legacy registrations to the XDG root
   scripts/dev.py prune           preview archived-worktree and orphaned-state cleanup
 
 database commands:
@@ -951,9 +1152,9 @@ evidence package commands:
   scripts/dev.py evidence-package ready
 
 state data:
-  ~/Library/Application Support/local-text/dev-states/
+  ${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/
 
-normal application startup never migrates or seeds the database.
+state-root and database migrations are explicit; normal startup performs neither.
 status and prune are read-only unless prune receives --apply.
 """,
         formatter_class=HelpFormatter,
@@ -1013,6 +1214,17 @@ status and prune are read-only unless prune receives --apply.
     )
 
     subparsers.add_parser("list", help="list every registered state")
+
+    state_root_migration = subparsers.add_parser(
+        "migrate-state-root",
+        help="verify and migrate all legacy state registrations to the XDG data root",
+    )
+    state_root_migration.add_argument(
+        "--source-root",
+        type=Path,
+        default=LEGACY_STATE_ROOT,
+        help="legacy state root (default: macOS Application Support)",
+    )
 
     remove_parser = subparsers.add_parser("remove", help="remove this checkout's state and data")
     selection = remove_parser.add_mutually_exclusive_group()
