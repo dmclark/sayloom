@@ -568,6 +568,48 @@ main { padding-top: 8px; }
 }
 .personal-correction-card footer { display: flex; align-items: center; gap: 12px; }
 .personal-correction-card footer span { color: var(--muted); font-size: 0.68rem; }
+
+.missed-repair-action { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.missed-repair-action > span { color: var(--muted); font-size: 0.68rem; }
+.missed-repair-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 1px solid var(--night);
+  border-radius: 4px;
+  color: var(--ink);
+  background: var(--paper-bright);
+  box-shadow: 0 28px 90px rgba(11, 18, 27, 0.38);
+}
+.missed-repair-dialog::backdrop { background: rgba(11, 18, 27, 0.64); backdrop-filter: blur(3px); }
+.missed-repair-sheet { display: grid; gap: 18px; padding: 24px 28px 28px; }
+.missed-repair-sheet header p,
+.missed-repair-candidates > p { margin: 4px 0 0; color: var(--muted); font-size: 0.78rem; }
+.missed-repair-review-state { margin: 0; padding-block: 8px; border-block: 1px solid var(--line); font-size: 0.78rem; }
+.missed-repair-review-state[data-state="stale"],
+.missed-repair-review-state[data-state="error"] { color: var(--night); font-weight: 700; }
+.missed-repair-candidates { min-width: 0; margin: 0; padding: 0; border: 0; }
+.missed-repair-candidates legend,
+.missed-repair-evidence h3 { padding: 0; font: 500 1.05rem/1.2 "Iowan Old Style", Palatino, serif; }
+.missed-repair-candidates ol { display: grid; gap: 10px; margin: 12px 0 0; padding: 0; list-style: none; }
+.missed-repair-candidate {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding-block: 10px;
+  border-top: 1px solid var(--line);
+}
+.missed-repair-mapping-arrow { color: var(--muted); }
+.missed-repair-mapping-field { display: grid; gap: 4px; min-width: 0; color: var(--muted); font-size: 0.75rem; font-weight: 700; }
+.missed-repair-mapping-field input { min-width: 0; width: 100%; color: var(--ink); font-size: 1rem; font-weight: 400; }
+.missed-repair-evidence { display: grid; gap: 7px; }
+.missed-repair-evidence textarea { min-height: 76px; resize: vertical; }
+.missed-repair-evidence textarea.is-over-limit { min-height: 190px; }
+.missed-repair-retained { display: flex; align-items: center; gap: 7px; font-size: 0.75rem; font-weight: 700; }
+.field-count { justify-self: end; color: var(--muted); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
+.field-count.is-over-limit { color: var(--night); font-weight: 800; }
+.missed-repair-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .target-settings { padding-inline: 0; }
 .target-settings > .settings-section-heading { padding-inline: 20px; }
 .target-grid {
@@ -875,7 +917,7 @@ textarea {
   caret-color: var(--blue);
 }
 
-textarea::placeholder { color: #9a988f; font-style: italic; }
+textarea::placeholder { color: var(--muted); font-style: italic; }
 .prepared-panel textarea { cursor: text; caret-color: var(--blue-dark); }
 
 .panel-footer {
@@ -1237,6 +1279,12 @@ textarea::placeholder { color: #9a988f; font-style: italic; }
   .correction-settings label { min-width: 0; }
   .personal-correction-fields { grid-template-columns: 1fr; }
   .personal-correction-card header { align-items: flex-start; flex-direction: column; }
+  .missed-repair-dialog { width: calc(100vw - 18px); max-height: calc(100dvh - 18px); }
+  .missed-repair-sheet { padding-inline: 18px; }
+  .missed-repair-candidate { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
+  .missed-repair-candidate > input { grid-row: 1 / 3; margin-top: 24px; }
+  .missed-repair-mapping-field { grid-column: 2; }
+  .missed-repair-mapping-arrow { display: none; }
   .smart-task-context {
     align-items: stretch;
     flex-direction: column;

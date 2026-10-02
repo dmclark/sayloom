@@ -394,6 +394,7 @@ def test_config_reports_cleanup_without_exposing_key(initialized_settings: Setti
         "preparation_default": "conservative",
         "cleanup_available": True,
         "cleanup_model": "gemini-3.5-flash",
+        "active_prompt_version_id": 1,
     }
     assert cleanup_configuration["status"] == "gemini_only"
     assert cleanup_configuration["routes"] == [

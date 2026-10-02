@@ -1315,12 +1315,15 @@ def _lexical_tokens(text: str) -> tuple[_LexicalToken, ...]:
 def _lexical_edits(
     original_text: str,
     prepared_text: str,
+    *,
+    omit_leading_fillers: bool = True,
 ) -> tuple[tuple[str, int, int, int, int], ...]:
     original = _lexical_tokens(original_text)
     prepared = _lexical_tokens(prepared_text)
     removable_prefix = 0
     while (
-        removable_prefix < len(original)
+        omit_leading_fillers
+        and removable_prefix < len(original)
         and original[removable_prefix].forms & SMART_UNREVIEWED_LEADING_FILLERS
     ):
         removable_prefix += 1
@@ -1372,7 +1375,7 @@ def _sentence_context(text: str, span: TextSpan) -> str:
     )
 
 
-def _lexical_repairs(original_text: str, prepared_text: str) -> list[LexicalRepair]:
+def lexical_repairs(original_text: str, prepared_text: str) -> list[LexicalRepair]:
     original_tokens = _lexical_tokens(original_text)
     prepared_tokens = _lexical_tokens(prepared_text)
     reasons = {
@@ -1383,7 +1386,7 @@ def _lexical_repairs(original_text: str, prepared_text: str) -> list[LexicalRepa
     operations = {"insert": "addition", "delete": "removal", "replace": "replacement"}
     repairs: list[LexicalRepair] = []
     for position, (tag, i1, i2, j1, j2) in enumerate(
-        _lexical_edits(original_text, prepared_text), start=1
+        _lexical_edits(original_text, prepared_text, omit_leading_fillers=False), start=1
     ):
         original_span = _text_span(original_text, original_tokens, i1, i2)
         prepared_span = _text_span(prepared_text, prepared_tokens, j1, j2)
@@ -1400,6 +1403,50 @@ def _lexical_repairs(original_text: str, prepared_text: str) -> list[LexicalRepa
             )
         )
     return repairs
+
+
+def missed_repair_sentences(before: str, after: str) -> tuple[str, str]:
+    """Return only the sentence containing the changed range on each revision."""
+    prefix = 0
+    prefix_limit = min(len(before), len(after))
+    while prefix < prefix_limit and before[prefix] == after[prefix]:
+        prefix += 1
+
+    suffix = 0
+    before_remaining = len(before) - prefix
+    after_remaining = len(after) - prefix
+    while (
+        suffix < before_remaining
+        and suffix < after_remaining
+        and before[-suffix - 1] == after[-suffix - 1]
+    ):
+        suffix += 1
+
+    def containing_sentence(text: str, changed_end: int) -> str:
+        if changed_end == prefix:
+            before_change = text[:prefix].rstrip()
+            after_change = text[prefix:].lstrip()
+            if before_change.endswith((".", "!", "?", "\n")) and after_change:
+                return ""
+        start = max(text.rfind(mark, 0, prefix) for mark in ".!?\n") + 1
+        changed_boundaries = [
+            position + 1
+            for mark in ".!?\n"
+            if (position := text.find(mark, prefix, changed_end)) >= 0
+        ]
+        if changed_boundaries:
+            return text[start : min(changed_boundaries)].strip()
+        ends = [
+            position + 1
+            for mark in ".!?\n"
+            if (position := text.find(mark, changed_end)) >= 0
+        ]
+        return text[start : min(ends, default=len(text))].strip()
+
+    return (
+        containing_sentence(before, len(before) - suffix),
+        containing_sentence(after, len(after) - suffix),
+    )
 
 
 @dataclass(frozen=True)
@@ -1560,7 +1607,7 @@ class CleanupService:
                 model=selected_model,
                 attempts=attempts,
                 lexical_repairs=(
-                    _lexical_repairs(original_text, prepared_text)
+                    lexical_repairs(original_text, prepared_text)
                     if correction_mode is CorrectionMode.SMART
                     else None
                 ),

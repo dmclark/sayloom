@@ -30,6 +30,8 @@ from local_text.cleanup import (
     OpenAIAdapter,
     PreparationMode,
     SequentialCleanupProvider,
+    lexical_repairs,
+    missed_repair_sentences,
 )
 from local_text.config import Profile, Settings, load_settings
 from local_text.database import ApplicationDatabase
@@ -254,6 +256,16 @@ class PersonalCorrectionEntryUpdateRequest(PersonalCorrectionEntryCreateRequest)
     enabled: bool
 
 
+class PersonalCorrectionCandidateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    before_text: str = Field(max_length=100_000)
+    after_text: str = Field(max_length=100_000)
+    source_mode: CorrectionMode
+    prompt_version_id: int = Field(ge=1)
+    correction_contract_version: str = Field(pattern=r"^personal-correction-v1$")
+
+
 def _prompt_response(prompt: PromptRecord, *, active: bool) -> dict[str, object]:
     created_at = prompt.created_at
     if created_at.tzinfo is None:
@@ -444,6 +456,7 @@ def create_app(
             if cleanup_configuration.routes
             else runtime.gemini_model,
             "cleanup_configuration": cleanup_configuration.public(),
+            "active_prompt_version_id": prompts.active().id,
         }
 
     @application.put("/api/preferences/preparation-default")
@@ -541,6 +554,45 @@ def create_app(
         except PersonalCorrectionError as exc:
             personal_correction_failure(exc)
         return personal_correction_response(record)
+
+    @application.post("/api/personal-corrections/candidates")
+    def personal_correction_candidates(
+        request: PersonalCorrectionCandidateRequest, response: Response
+    ) -> dict[str, object]:
+        require_configuration()
+        response.headers["Cache-Control"] = "no-store"
+        try:
+            active_prompt_version_id = prompts.active().id
+        except SeedStateError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "stale_personal_correction_result",
+                    "message": "The result used by this review is no longer current.",
+                    "retry_action": "Run correction again before opening this review.",
+                },
+            ) from exc
+        if request.prompt_version_id != active_prompt_version_id:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "stale_personal_correction_result",
+                    "message": "The result used by this review is no longer current.",
+                    "retry_action": "Run correction again before opening this review.",
+                },
+            )
+        observed_sentence, intended_sentence = missed_repair_sentences(
+            request.before_text, request.after_text
+        )
+        return {
+            "candidates": [
+                repair.model_dump(mode="json")
+                for repair in lexical_repairs(request.before_text, request.after_text)
+            ],
+            "observed_sentence": observed_sentence,
+            "intended_sentence": intended_sentence,
+            "applicability_context": None,
+        }
 
     @application.post("/api/cleanup", response_model=CleanupResult)
     async def clean_text(request: CleanupRequest) -> CleanupResult:
