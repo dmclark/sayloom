@@ -35,7 +35,15 @@ keep runtime and secret material outside Git.
   checks, not application tests. Run each affected test group once after the final relevant edit, and
   rerun it only after a subsequent change could affect it. One integration owner runs any requested
   full baseline once after constituent work is resolved; never overlap broad verification owners or
-  start acceptance verification while implementation or baseline repair remains unresolved.
+  start acceptance verification while implementation or baseline repair remains unresolved. For UI
+  verification, use synthetic data in an isolated runtime and prefer DOM inspection, browser logs,
+  targeted tests, and accessibility snapshots. Reserve screenshots for genuinely visual concerns
+  such as layout, styling, clipping, responsive behavior, and modals; capture only the relevant
+  components and viewports, including representative important states and breakpoints. When
+  applicable, verify desktop and 390px widths. Inspect every retained screenshot, reuse unchanged
+  captures, and do not propose unsolicited visual alternatives. Ask before inspecting more than
+  three screenshots in one task. Report how many were inspected and what each verified, assert
+  behavior separately, and clean up temporary captures and other run-created resources.
 - Stop and report before broadening a fix when it breaks unrelated fixtures, leaves its owning
   module, or its affected suite still fails after two targeted correction attempts.
 - Resolve ambiguous completion from the current owner and `git status`/`git diff`, not a duplicate
