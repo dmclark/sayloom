@@ -212,3 +212,44 @@ class PersonalCorrectionAlias(Base):
     alias_key: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PersonalCorrectionEpisode(Base):
+    __tablename__ = "personal_correction_episodes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(20), nullable=False)
+    approval_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    observed_sentence: Mapped[str | None] = mapped_column(Text)
+    intended_sentence: Mapped[str | None] = mapped_column(Text)
+    source_mode: Mapped[str] = mapped_column(String(20), nullable=False)
+    prompt_version_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    correction_contract_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PersonalCorrectionEpisodeMapping(Base):
+    __tablename__ = "personal_correction_episode_mappings"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(20), nullable=False)
+    episode_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    operation: Mapped[str] = mapped_column(String(20), nullable=False)
+    observed_text: Mapped[str] = mapped_column(Text, nullable=False)
+    intended_text: Mapped[str] = mapped_column(Text, nullable=False)
+    entry_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    alias_id: Mapped[str] = mapped_column(String(36), nullable=False)
+
+
+class PersonalCorrectionEvent(Base):
+    __tablename__ = "personal_correction_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    owner_id: Mapped[str] = mapped_column(String(20), nullable=False)
+    entry_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    alias_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    episode_id: Mapped[str | None] = mapped_column(String(36))
+    use_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

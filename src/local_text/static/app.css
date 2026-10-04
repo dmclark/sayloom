@@ -590,7 +590,7 @@ main { padding-top: 8px; }
 .missed-repair-review-state[data-state="error"] { color: var(--night); font-weight: 700; }
 .missed-repair-candidates { min-width: 0; margin: 0; padding: 0; border: 0; }
 .missed-repair-candidates legend,
-.missed-repair-evidence h3 { padding: 0; font: 500 1.05rem/1.2 "Iowan Old Style", Palatino, serif; }
+.missed-repair-saved-result h3 { padding: 0; font: 500 1.05rem/1.2 "Iowan Old Style", Palatino, serif; }
 .missed-repair-candidates ol { display: grid; gap: 10px; margin: 12px 0 0; padding: 0; list-style: none; }
 .missed-repair-candidate {
   display: grid;
@@ -603,12 +603,25 @@ main { padding-top: 8px; }
 .missed-repair-mapping-arrow { color: var(--muted); }
 .missed-repair-mapping-field { display: grid; gap: 4px; min-width: 0; color: var(--muted); font-size: 0.75rem; font-weight: 700; }
 .missed-repair-mapping-field input { min-width: 0; width: 100%; color: var(--ink); font-size: 1rem; font-weight: 400; }
-.missed-repair-evidence { display: grid; gap: 7px; }
-.missed-repair-evidence textarea { min-height: 76px; resize: vertical; }
-.missed-repair-evidence textarea.is-over-limit { min-height: 190px; }
-.missed-repair-retained { display: flex; align-items: center; gap: 7px; font-size: 0.75rem; font-weight: 700; }
-.field-count { justify-self: end; color: var(--muted); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
+.missed-repair-sentences { display: grid; gap: 14px; }
+.missed-repair-sentence,
+.missed-repair-context-field { display: grid; gap: 7px; }
+.missed-repair-field-heading,
+.missed-repair-field-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.missed-repair-field-heading label,
+.missed-repair-context-field > label { color: var(--ink); font-size: 0.78rem; font-weight: 800; }
+.missed-repair-context-field > label span { color: var(--muted); font-size: 0.68rem; font-weight: 500; }
+.missed-repair-sentence textarea,
+.missed-repair-context-field textarea { width: 100%; min-height: 76px; resize: vertical; }
+.missed-repair-sentence textarea.is-over-limit { min-height: 190px; }
+.missed-repair-sentence textarea:disabled { color: var(--muted); background: var(--paper); opacity: 0.72; }
+.removed-field-state { color: var(--night); font-size: 0.7rem; font-weight: 800; }
+.field-count { margin-left: auto; color: var(--muted); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
 .field-count.is-over-limit { color: var(--night); font-weight: 800; }
+.missed-repair-saved-result { padding: 14px; border: 1px solid var(--blue); background: rgba(219, 234, 246, 0.35); }
+.missed-repair-saved-result h3,
+.missed-repair-saved-result p { margin: 0; }
+.missed-repair-saved-result p + p { margin-top: 7px; color: var(--muted); font-size: 0.74rem; }
 .missed-repair-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .target-settings { padding-inline: 0; }
 .target-settings > .settings-section-heading { padding-inline: 20px; }

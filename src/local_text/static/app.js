@@ -88,15 +88,24 @@
     closeMissedRepair: document.querySelector("#close-missed-repair"),
     dismissMissedRepair: document.querySelector("#dismiss-missed-repair"),
     missedRepairReviewState: document.querySelector("#missed-repair-review-state"),
+    missedRepairSentences: document.querySelector("#missed-repair-sentences"),
+    missedRepairCandidates: document.querySelector("#missed-repair-candidates"),
     missedRepairCandidateList: document.querySelector("#missed-repair-candidate-list"),
     retainObservedSentence: document.querySelector("#retain-observed-sentence"),
     observedSentence: document.querySelector("#observed-sentence"),
     observedSentenceCount: document.querySelector("#observed-sentence-count"),
+    observedSentenceRemoved: document.querySelector("#observed-sentence-removed"),
     retainIntendedSentence: document.querySelector("#retain-intended-sentence"),
     intendedSentence: document.querySelector("#intended-sentence"),
     intendedSentenceCount: document.querySelector("#intended-sentence-count"),
+    intendedSentenceRemoved: document.querySelector("#intended-sentence-removed"),
+    missedRepairContextField: document.querySelector("#missed-repair-context-field"),
     missedRepairContext: document.querySelector("#missed-repair-context"),
     missedRepairApproval: document.querySelector("#missed-repair-approval"),
+    missedRepairSavedResult: document.querySelector("#missed-repair-saved-result"),
+    missedRepairSavedObserved: document.querySelector("#missed-repair-saved-observed"),
+    missedRepairSavedIntended: document.querySelector("#missed-repair-saved-intended"),
+    missedRepairSavedContext: document.querySelector("#missed-repair-saved-context"),
     targetList: document.querySelector("#target-list"),
     targetAddItem: document.querySelector("#target-add-item"),
     newTarget: document.querySelector("#new-target"),
@@ -399,7 +408,7 @@
 
   function markMissedRepairStale(reason) {
     if (!missedRepairBinding) return;
-    if (["loading", "reviewing", "stale"].includes(missedRepairBinding.state)) {
+    if (["loading", "reviewing", "saving", "stale"].includes(missedRepairBinding.state)) {
       missedRepairBinding.state = "stale";
       elements.missedRepairReviewState.dataset.state = "stale";
       elements.missedRepairReviewState.textContent = reason;
@@ -443,26 +452,69 @@
 
   function updateSentenceLimitState() {
     const fields = [
-      [elements.retainObservedSentence, elements.observedSentence, elements.observedSentenceCount],
-      [elements.retainIntendedSentence, elements.intendedSentence, elements.intendedSentenceCount],
+      [elements.retainObservedSentence, elements.observedSentence, elements.observedSentenceCount,
+        elements.observedSentenceRemoved],
+      [elements.retainIntendedSentence, elements.intendedSentence, elements.intendedSentenceCount,
+        elements.intendedSentenceRemoved],
     ];
     let overLimit = false;
-    fields.forEach(([retained, field, count]) => {
-      field.disabled = !retained.checked || missedRepairBinding?.state === "stale";
+    fields.forEach(([retained, field, count, removed]) => {
+      const included = retained.dataset.included === "true";
+      field.disabled = !included || missedRepairBinding?.state === "stale";
+      retained.textContent = included ? "Remove from saved episode" : "Include in saved episode";
+      removed.hidden = included;
       const length = Array.from(field.value).length;
-      const fieldOverLimit = retained.checked && length > 500;
+      const fieldOverLimit = included && length > 500;
       overLimit ||= fieldOverLimit;
       field.classList.toggle("is-over-limit", fieldOverLimit);
-      count.textContent = retained.checked ? `${length} / 500 code points` : "Removed";
+      count.textContent = included ? `${length} / 500 code points` : "";
       count.classList.toggle("is-over-limit", fieldOverLimit);
     });
     if (missedRepairBinding?.state === "reviewing") {
       elements.missedRepairReviewState.dataset.state = overLimit ? "error" : "ready";
       elements.missedRepairReviewState.textContent = overLimit
-        ? "Shorten or remove each sentence over 500 code points before approval."
-        : "Review is current. Approval and saving are delivered in the next stage.";
+        ? "Shorten or remove each sentence over 500 code points before saving."
+        : "Review is current. Select one valid replacement to save.";
     }
-    elements.missedRepairApproval.disabled = true;
+    updateMissedRepairApprovalState();
+  }
+
+  function selectedMissedRepairMapping() {
+    const selected = Array.from(elements.missedRepairCandidateList.children)
+      .filter((item) => item.children[0].checked);
+    if (selected.length !== 1 || selected[0].dataset.operation !== "replacement") return null;
+    const item = selected[0];
+    return {
+      operation: "replacement",
+      observed_text: item.children[1].children[1].value,
+      intended_text: item.children[3].children[1].value,
+    };
+  }
+
+  function validPersonalCorrectionText(value, maximum) {
+    const length = Array.from(value).length;
+    return Boolean(value.trim()) && length <= maximum && !/[\u0000-\u001f\u007f-\u009f]/u.test(value);
+  }
+
+  function updateMissedRepairApprovalState() {
+    const mapping = selectedMissedRepairMapping();
+    const sentencesValid = [
+      [elements.retainObservedSentence, elements.observedSentence],
+      [elements.retainIntendedSentence, elements.intendedSentence],
+    ].every(([toggle, field]) => (
+      toggle.dataset.included !== "true" || validPersonalCorrectionText(field.value, 500)
+    ));
+    const contextValid = !elements.missedRepairContext.value
+      || validPersonalCorrectionText(elements.missedRepairContext.value, 500);
+    const mappingValid = mapping
+      && validPersonalCorrectionText(mapping.observed_text, 200)
+      && validPersonalCorrectionText(mapping.intended_text, 200);
+    const ready = missedRepairBinding?.state === "reviewing"
+      && sentencesValid && contextValid && mappingValid;
+    elements.missedRepairApproval.disabled = !ready;
+    if (missedRepairBinding?.state === "reviewing" && !missedRepairBinding.saveFailed) {
+      elements.missedRepairApproval.textContent = "Save Personal Correction";
+    }
   }
 
   function renderMissedRepairCandidates(candidates) {
@@ -484,6 +536,7 @@
       observedField.className = "missed-repair-mapping-field";
       observedLabel.textContent = "Observed";
       observed.type = "text";
+      observed.maxLength = 200;
       observed.value = candidate.original_span.text;
       observed.placeholder = "No observed text";
       observed.setAttribute("aria-label", `Observed text for ${candidate.operation} ${candidate.queue_position}`);
@@ -493,6 +546,7 @@
       intendedField.className = "missed-repair-mapping-field";
       intendedLabel.textContent = "Intended";
       intended.type = "text";
+      intended.maxLength = 200;
       intended.value = candidate.prepared_span.text;
       intended.placeholder = "No intended text";
       intended.setAttribute("aria-label", `Intended text for ${candidate.operation} ${candidate.queue_position}`);
@@ -500,6 +554,16 @@
       intendedField.append(intendedLabel, intended);
       item.dataset.operation = candidate.operation;
       item.append(selected, observedField, arrow, intendedField);
+      selected.addEventListener("change", () => {
+        if (selected.checked) {
+          Array.from(elements.missedRepairCandidateList.children).forEach((other) => {
+            if (other !== item) other.children[0].checked = false;
+          });
+        }
+        updateMissedRepairApprovalState();
+      });
+      observed.addEventListener("input", updateMissedRepairApprovalState);
+      intended.addEventListener("input", updateMissedRepairApprovalState);
       elements.missedRepairCandidateList.append(item);
     });
   }
@@ -550,12 +614,20 @@
         || !["string", "object"].includes(typeof result.applicability_context)
       ) throw malformedResponseError("Correction candidate review", response.status);
       binding.state = "reviewing";
+      binding.approvalId = crypto.randomUUID();
+      binding.saveFailed = false;
       renderMissedRepairCandidates(result.candidates);
-      elements.retainObservedSentence.checked = true;
+      elements.retainObservedSentence.dataset.included = "true";
       elements.observedSentence.value = result.observed_sentence;
-      elements.retainIntendedSentence.checked = true;
+      elements.retainIntendedSentence.dataset.included = "true";
       elements.intendedSentence.value = result.intended_sentence;
       elements.missedRepairContext.value = result.applicability_context || "";
+      elements.missedRepairSavedResult.hidden = true;
+      elements.missedRepairSentences.hidden = false;
+      elements.missedRepairCandidates.hidden = false;
+      elements.missedRepairContextField.hidden = false;
+      elements.missedRepairApproval.hidden = false;
+      elements.dismissMissedRepair.textContent = "Dismiss";
       updateSentenceLimitState();
     } catch (error) {
       if (binding !== missedRepairBinding || binding.state === "stale") return;
@@ -577,6 +649,84 @@
     missedRepairBinding = null;
     elements.missedRepairDialog.close();
     renderMissedRepairAction();
+  }
+
+  function toggleMissedRepairSentence(toggle) {
+    if (!["reviewing"].includes(missedRepairBinding?.state)) return;
+    toggle.dataset.included = String(toggle.dataset.included !== "true");
+    updateSentenceLimitState();
+  }
+
+  async function saveMissedRepairReview() {
+    const binding = missedRepairBinding;
+    const mapping = selectedMissedRepairMapping();
+    if (
+      !binding || binding.state !== "reviewing" || !mapping
+      || binding.postRevision !== draftRevision
+      || binding.postEdit !== elements.original.value
+      || !sameMissedRepairTransformation(binding)
+      || elements.missedRepairApproval.disabled
+    ) {
+      markMissedRepairStale("This review is stale because the draft changed.");
+      return;
+    }
+    binding.state = "saving";
+    binding.saveFailed = false;
+    elements.missedRepairReviewState.dataset.state = "saving";
+    elements.missedRepairReviewState.textContent = "Saving Personal Correction…";
+    elements.missedRepairApproval.disabled = true;
+    elements.missedRepairApproval.textContent = "Saving…";
+    try {
+      const response = await fetch("/api/personal-corrections/episodes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          approval_id: binding.approvalId,
+          source_mode: binding.mode,
+          prompt_version_id: binding.promptVersionId,
+          correction_contract_version: "personal-correction-v1",
+          observed_sentence: elements.retainObservedSentence.dataset.included === "true"
+            ? elements.observedSentence.value : null,
+          intended_sentence: elements.retainIntendedSentence.dataset.included === "true"
+            ? elements.intendedSentence.value : null,
+          applicability_context: elements.missedRepairContext.value || null,
+          mapping,
+        }),
+      });
+      if (!response.ok) throw await safeHttpError(response, "Personal Correction approval");
+      const result = await readJson(response, "Personal Correction approval");
+      if (binding !== missedRepairBinding || binding.state === "stale") return;
+      if (!result?.correction || !result?.mapping) {
+        throw malformedResponseError("Personal Correction approval", response.status);
+      }
+      binding.state = "saved";
+      elements.missedRepairReviewState.dataset.state = "saved";
+      elements.missedRepairReviewState.textContent = "Personal Correction saved.";
+      elements.missedRepairSavedObserved.textContent = result.mapping.observed_text;
+      elements.missedRepairSavedIntended.textContent = result.correction.intended_term;
+      elements.missedRepairSavedContext.textContent = result.correction.applicability_context
+        ? `Applies when: ${result.correction.applicability_context}`
+        : "No applicability context saved.";
+      elements.missedRepairSentences.hidden = true;
+      elements.missedRepairCandidates.hidden = true;
+      elements.missedRepairContextField.hidden = true;
+      elements.missedRepairSavedResult.hidden = false;
+      elements.missedRepairApproval.hidden = true;
+      elements.dismissMissedRepair.textContent = "Close";
+      renderMissedRepairAction();
+    } catch (error) {
+      if (binding !== missedRepairBinding || binding.state === "stale") return;
+      if (error?.code === "stale_personal_correction_result") {
+        markMissedRepairStale("This review is stale because the prompt version changed.");
+        return;
+      }
+      binding.state = "reviewing";
+      binding.saveFailed = true;
+      elements.missedRepairReviewState.dataset.state = "error";
+      elements.missedRepairReviewState.textContent = "Save failed. Nothing partial was saved; retry while this review is current.";
+      elements.missedRepairApproval.textContent = "Retry Save Personal Correction";
+      updateMissedRepairApprovalState();
+    }
   }
 
   function renderCorrectionMode() {
@@ -1401,6 +1551,7 @@
   });
   elements.copyOutgoing.addEventListener("click", copyOutgoing);
   elements.openMissedRepair.addEventListener("click", openMissedRepairReview);
+  elements.missedRepairApproval.addEventListener("click", saveMissedRepairReview);
   elements.closeMissedRepair.addEventListener("click", dismissMissedRepairReview);
   elements.dismissMissedRepair.addEventListener("click", dismissMissedRepairReview);
   elements.missedRepairDialog.addEventListener("cancel", (event) => {
@@ -1413,9 +1564,13 @@
   [elements.observedSentence, elements.intendedSentence].forEach(
     (field) => field.addEventListener("input", updateSentenceLimitState),
   );
-  [elements.retainObservedSentence, elements.retainIntendedSentence].forEach(
-    (field) => field.addEventListener("change", updateSentenceLimitState),
+  elements.retainObservedSentence.addEventListener(
+    "click", () => toggleMissedRepairSentence(elements.retainObservedSentence),
   );
+  elements.retainIntendedSentence.addEventListener(
+    "click", () => toggleMissedRepairSentence(elements.retainIntendedSentence),
+  );
+  elements.missedRepairContext.addEventListener("input", updateMissedRepairApprovalState);
   elements.clear.addEventListener("click", () => {
     window.clearTimeout(cleanupTimer);
     window.clearTimeout(publicationTimer);

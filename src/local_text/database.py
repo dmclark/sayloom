@@ -11,7 +11,7 @@ from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.engine import URL
 from sqlalchemy.orm import Session, sessionmaker
 
-SCHEMA_REVISION = "0004_personal_corrections_foundation"
+SCHEMA_REVISION = "0005_personal_correction_approval"
 
 
 class SchemaState(StrEnum):

@@ -196,8 +196,12 @@ def test_browser_capture_contract_covers_binding_limits_staleness_and_no_save(
     assert 'id="prepared-text"' in page and "readonly" in page
     assert 'id="open-missed-repair"' in page
     assert 'id="missed-repair-dialog"' in page
-    assert 'id="retain-observed-sentence"' in page
-    assert 'id="retain-intended-sentence"' in page
+    review = page.split('id="missed-repair-dialog"', maxsplit=1)[1]
+    assert review.index("Original sentence") < review.index("Candidate mappings")
+    assert review.index("Intended sentence") < review.index("Candidate mappings")
+    assert review.index("Candidate mappings") < review.index("Applicability context")
+    assert review.count("Remove from saved episode") == 2
+    assert "Removed — will not be saved" in review
     assert 'id="missed-repair-context"' in page
     assert 'id="missed-repair-approval"' in page and "disabled" in page
     assert 'selected.checked = false' in script
@@ -209,7 +213,12 @@ def test_browser_capture_contract_covers_binding_limits_staleness_and_no_save(
     assert 'missedRepairBinding.state = "available"' in script
     assert 'missedRepairBinding = null;' in script
     assert 'fetch("/api/personal-corrections/candidates"' in script
-    assert '/api/personal-corrections/episodes' not in script
+    assert 'fetch("/api/personal-corrections/episodes"' in script
+    assert "crypto.randomUUID()" in script
+    assert 'binding.state = "saving"' in script
+    assert 'binding.state = "saved"' in script
+    assert "Retry Save Personal Correction" in script
+    assert "Save Personal Correction" in page
 
     stale_reasons = (
         "Original changed again",
@@ -321,7 +330,8 @@ const window = {
   addEventListener() {}, confirm() { return true; },
 };
 const navigator = { clipboard: { async writeText() {} } };
-const context = { document, window, navigator, fetch, AbortController, Promise, console };
+const crypto = { randomUUID() { return "00000000-0000-4000-8000-000000000001"; } };
+const context = { document, window, navigator, fetch, crypto, AbortController, Promise, console };
 async function settle() { await new Promise((resolve) => setImmediate(resolve)); }
 async function runCleanupTimer() {
   const timer = timers.filter((item) => item.delay === 700).at(-1);
@@ -342,8 +352,7 @@ async function runCleanupTimer() {
   await elements["#open-missed-repair"].dispatch("click"); await settle();
   const candidateRequest = requests.filter((item) => item.url.endsWith("/candidates")).at(-1).body;
   const overLimit = elements["#missed-repair-review-state"].dataset.state;
-  elements["#retain-observed-sentence"].checked = false;
-  await elements["#retain-observed-sentence"].dispatch("change");
+  await elements["#retain-observed-sentence"].dispatch("click");
   const afterRemoval = elements["#missed-repair-review-state"].dataset.state;
   const selectedByDefault = elements["#missed-repair-candidate-list"].children
     .map((item) => item.children[0].checked);

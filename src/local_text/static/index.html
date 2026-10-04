@@ -422,35 +422,51 @@
         <header class="error-sheet-header">
           <div>
             <h2 id="missed-repair-title">This is what I meant</h2>
-            <p>Review only the wording Sayloom missed. Nothing is saved from this review.</p>
+            <p>Review one replacement and every private field before saving a Personal Correction.</p>
           </div>
           <button id="close-missed-repair" class="dialog-close" type="button" aria-label="Dismiss Personal correction review">×</button>
         </header>
         <p id="missed-repair-review-state" class="missed-repair-review-state" role="status" aria-live="polite"></p>
-        <fieldset class="missed-repair-candidates">
+        <section id="missed-repair-sentences" class="missed-repair-sentences" aria-label="Saved episode sentences">
+          <div class="missed-repair-sentence">
+            <div class="missed-repair-field-heading">
+              <label for="observed-sentence">Original sentence</label>
+              <button id="retain-observed-sentence" class="button button-quiet" type="button" data-included="true">Remove from saved episode</button>
+            </div>
+            <textarea id="observed-sentence" aria-label="Original sentence"></textarea>
+            <div class="missed-repair-field-meta">
+              <span id="observed-sentence-removed" class="removed-field-state" hidden>Removed — will not be saved</span>
+              <span id="observed-sentence-count" class="field-count"></span>
+            </div>
+          </div>
+          <div class="missed-repair-sentence">
+            <div class="missed-repair-field-heading">
+              <label for="intended-sentence">Intended sentence</label>
+              <button id="retain-intended-sentence" class="button button-quiet" type="button" data-included="true">Remove from saved episode</button>
+            </div>
+            <textarea id="intended-sentence" aria-label="Intended sentence"></textarea>
+            <div class="missed-repair-field-meta">
+              <span id="intended-sentence-removed" class="removed-field-state" hidden>Removed — will not be saved</span>
+              <span id="intended-sentence-count" class="field-count"></span>
+            </div>
+          </div>
+        </section>
+        <fieldset id="missed-repair-candidates" class="missed-repair-candidates">
           <legend>Candidate mappings</legend>
-          <p>Select only mappings that express your intended wording.</p>
+          <p>Select exactly one non-empty replacement that expresses your intended wording.</p>
           <ol id="missed-repair-candidate-list"></ol>
         </fieldset>
-        <section class="missed-repair-evidence" aria-labelledby="missed-repair-evidence-title">
-          <h3 id="missed-repair-evidence-title">Optional evidence</h3>
-          <label class="missed-repair-retained">
-            <input id="retain-observed-sentence" type="checkbox" checked>
-            <span>Include observed sentence</span>
-          </label>
-          <textarea id="observed-sentence" aria-label="Observed sentence"></textarea>
-          <span id="observed-sentence-count" class="field-count"></span>
-          <label class="missed-repair-retained">
-            <input id="retain-intended-sentence" type="checkbox" checked>
-            <span>Include intended sentence</span>
-          </label>
-          <textarea id="intended-sentence" aria-label="Intended sentence"></textarea>
-          <span id="intended-sentence-count" class="field-count"></span>
+        <section id="missed-repair-context-field" class="missed-repair-context-field">
           <label for="missed-repair-context">Applicability context <span>Optional · remove by leaving blank</span></label>
           <textarea id="missed-repair-context" maxlength="500" aria-label="Applicability context" placeholder="When should this wording apply?"></textarea>
         </section>
+        <section id="missed-repair-saved-result" class="missed-repair-saved-result" hidden aria-labelledby="missed-repair-saved-title">
+          <h3 id="missed-repair-saved-title">Saved Personal Correction</h3>
+          <p><strong id="missed-repair-saved-observed"></strong> <span aria-hidden="true">→</span> <strong id="missed-repair-saved-intended"></strong></p>
+          <p id="missed-repair-saved-context"></p>
+        </section>
         <div class="missed-repair-actions">
-          <button id="missed-repair-approval" class="button button-primary" type="button" disabled>Approval is not available yet</button>
+          <button id="missed-repair-approval" class="button button-primary" type="button" disabled>Save Personal Correction</button>
           <button id="dismiss-missed-repair" class="button button-quiet" type="button">Dismiss</button>
         </div>
       </form>

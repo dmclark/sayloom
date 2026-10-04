@@ -22,7 +22,7 @@ from local_text.personal_corrections import (
 )
 
 PREDECESSOR_REVISION = "0003_unified_preparation_default"
-PERSONAL_CORRECTIONS_REVISION = "0004_personal_corrections_foundation"
+PERSONAL_CORRECTIONS_REVISION = "0005_personal_correction_approval"
 
 
 def migrated_database(path: Path) -> ApplicationDatabase:
@@ -202,7 +202,7 @@ def test_populated_migration_downgrade_requires_admin_acknowledgement_and_reupgr
 
     with sqlite3.connect(database.path) as connection:
         assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
-            PERSONAL_CORRECTIONS_REVISION,
+            "0004_personal_corrections_foundation",
         )
         assert connection.execute(
             "SELECT COUNT(*) FROM personal_correction_profiles"
