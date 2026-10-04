@@ -4,7 +4,7 @@ import unicodedata
 from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
@@ -13,6 +13,9 @@ from local_text.database import ApplicationDatabase
 from local_text.models import (
     PersonalCorrectionAlias,
     PersonalCorrectionEntry,
+    PersonalCorrectionEpisode,
+    PersonalCorrectionEpisodeMapping,
+    PersonalCorrectionEvent,
     PersonalCorrectionProfile,
     utc_now,
 )
@@ -63,6 +66,28 @@ class PersonalCorrectionProfileRecord:
     entries: tuple[PersonalCorrectionEntryRecord, ...] = ()
 
 
+@dataclass(frozen=True)
+class PersonalCorrectionMappingRecord:
+    ordinal: int
+    operation: str
+    observed_text: str
+    intended_text: str
+
+
+@dataclass(frozen=True)
+class PersonalCorrectionApprovalRecord:
+    id: str
+    approval_id: str
+    observed_sentence: str | None
+    intended_sentence: str | None
+    source_mode: str
+    prompt_version_id: int
+    correction_contract_version: str
+    created_at: datetime
+    mapping: PersonalCorrectionMappingRecord
+    correction: PersonalCorrectionEntryRecord
+
+
 def normalize_correction_text(value: str) -> str:
     normalized = unicodedata.normalize("NFKC", value).replace("’", "'").casefold()
     return " ".join(normalized.split())
@@ -101,6 +126,12 @@ def _validated_entry(
         else:
             context = _validated_text(context, maximum=500, field="applicability context")
     return intended_term, normalize_correction_text(intended_term), validated_aliases, context
+
+
+def _optional_text(value: str | None, *, maximum: int, field: str) -> str | None:
+    if value is None or not normalize_correction_text(value):
+        return None
+    return _validated_text(value, maximum=maximum, field=field)
 
 
 class PersonalCorrectionStore:
@@ -196,6 +227,210 @@ class PersonalCorrectionStore:
             raise PersonalCorrectionConflictError(
                 "an entry with the same normalized intended term already exists"
             ) from exc
+
+    def approve_replacement(
+        self,
+        *,
+        approval_id: str,
+        observed_text: str,
+        intended_text: str,
+        observed_sentence: str | None,
+        intended_sentence: str | None,
+        applicability_context: str | None,
+        source_mode: str,
+        prompt_version_id: int,
+        correction_contract_version: str,
+    ) -> tuple[PersonalCorrectionApprovalRecord, bool]:
+        try:
+            approval_id = str(UUID(approval_id))
+        except (TypeError, ValueError) as exc:
+            raise PersonalCorrectionError("approval ID must be a UUID") from exc
+        observed_text = _validated_text(observed_text, maximum=200, field="observed text")
+        intended_text = _validated_text(intended_text, maximum=200, field="intended text")
+        observed_sentence = _optional_text(
+            observed_sentence, maximum=500, field="observed sentence"
+        )
+        intended_sentence = _optional_text(
+            intended_sentence, maximum=500, field="intended sentence"
+        )
+        context = _optional_text(
+            applicability_context, maximum=500, field="applicability context"
+        )
+        if source_mode not in {"conservative", "smart"}:
+            raise PersonalCorrectionError("source mode is invalid")
+        if prompt_version_id < 1:
+            raise PersonalCorrectionError("prompt version is invalid")
+        if correction_contract_version != "personal-correction-v1":
+            raise PersonalCorrectionError("correction contract version is invalid")
+
+        intended_key = normalize_correction_text(intended_text)
+        alias_key = normalize_correction_text(observed_text)
+        with self.database.session_factory.begin() as session:
+            existing_episode = session.scalar(
+                select(PersonalCorrectionEpisode).where(
+                    PersonalCorrectionEpisode.owner_id == LOCAL_OWNER_ID,
+                    PersonalCorrectionEpisode.approval_id == approval_id,
+                )
+            )
+            if existing_episode is not None:
+                record = self._approval_record(session, existing_episode)
+                expected = (
+                    observed_sentence,
+                    intended_sentence,
+                    source_mode,
+                    prompt_version_id,
+                    correction_contract_version,
+                    observed_text,
+                    intended_text,
+                )
+                actual = (
+                    record.observed_sentence,
+                    record.intended_sentence,
+                    record.source_mode,
+                    record.prompt_version_id,
+                    record.correction_contract_version,
+                    record.mapping.observed_text,
+                    record.mapping.intended_text,
+                )
+                if actual != expected:
+                    raise PersonalCorrectionConflictError(
+                        "approval ID is already bound to another correction"
+                    )
+                return record, False
+
+            now = utc_now()
+            profile = session.get(PersonalCorrectionProfile, LOCAL_OWNER_ID)
+            if profile is None:
+                profile = PersonalCorrectionProfile(
+                    owner_id=LOCAL_OWNER_ID,
+                    enabled=True,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(profile)
+                session.flush()
+
+            entry = session.scalar(
+                select(PersonalCorrectionEntry).where(
+                    PersonalCorrectionEntry.owner_id == LOCAL_OWNER_ID,
+                    PersonalCorrectionEntry.intended_key == intended_key,
+                )
+            )
+            if entry is None:
+                entry = PersonalCorrectionEntry(
+                    id=str(uuid4()),
+                    owner_id=LOCAL_OWNER_ID,
+                    intended_term=intended_text,
+                    intended_key=intended_key,
+                    applicability_context=context,
+                    enabled=True,
+                    revision=1,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(entry)
+                session.flush()
+            elif entry.applicability_context and context and entry.applicability_context != context:
+                raise PersonalCorrectionConflictError(
+                    "existing applicability context requires explicit resolution"
+                )
+            elif entry.applicability_context is None and context is not None:
+                entry.applicability_context = context
+                entry.revision += 1
+                entry.updated_at = now
+
+            alias = session.scalar(
+                select(PersonalCorrectionAlias).where(
+                    PersonalCorrectionAlias.owner_id == LOCAL_OWNER_ID,
+                    PersonalCorrectionAlias.entry_id == entry.id,
+                    PersonalCorrectionAlias.alias_key == alias_key,
+                )
+            )
+            if alias is None:
+                alias = PersonalCorrectionAlias(
+                    id=str(uuid4()),
+                    owner_id=LOCAL_OWNER_ID,
+                    entry_id=entry.id,
+                    observed_alias=observed_text,
+                    alias_key=alias_key,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(alias)
+                session.flush()
+
+            episode = PersonalCorrectionEpisode(
+                id=str(uuid4()),
+                owner_id=LOCAL_OWNER_ID,
+                approval_id=approval_id,
+                observed_sentence=observed_sentence,
+                intended_sentence=intended_sentence,
+                source_mode=source_mode,
+                prompt_version_id=prompt_version_id,
+                correction_contract_version=correction_contract_version,
+                created_at=now,
+            )
+            session.add(episode)
+            session.flush()
+            session.add(
+                PersonalCorrectionEpisodeMapping(
+                    id=str(uuid4()),
+                    owner_id=LOCAL_OWNER_ID,
+                    episode_id=episode.id,
+                    ordinal=1,
+                    operation="replacement",
+                    observed_text=observed_text,
+                    intended_text=intended_text,
+                    entry_id=entry.id,
+                    alias_id=alias.id,
+                )
+            )
+            session.add(
+                PersonalCorrectionEvent(
+                    owner_id=LOCAL_OWNER_ID,
+                    entry_id=entry.id,
+                    alias_id=alias.id,
+                    episode_id=episode.id,
+                    use_id=approval_id,
+                    event_type="alias_observed",
+                    occurred_at=now,
+                )
+            )
+            session.flush()
+            return self._approval_record(session, episode), True
+
+    def _approval_record(self, session, episode) -> PersonalCorrectionApprovalRecord:
+        mapping = session.scalar(
+            select(PersonalCorrectionEpisodeMapping).where(
+                PersonalCorrectionEpisodeMapping.owner_id == LOCAL_OWNER_ID,
+                PersonalCorrectionEpisodeMapping.episode_id == episode.id,
+            )
+        )
+        assert mapping is not None
+        entry = session.scalar(
+            select(PersonalCorrectionEntry).where(
+                PersonalCorrectionEntry.owner_id == LOCAL_OWNER_ID,
+                PersonalCorrectionEntry.id == mapping.entry_id,
+            )
+        )
+        assert entry is not None
+        return PersonalCorrectionApprovalRecord(
+            id=episode.id,
+            approval_id=episode.approval_id,
+            observed_sentence=episode.observed_sentence,
+            intended_sentence=episode.intended_sentence,
+            source_mode=episode.source_mode,
+            prompt_version_id=episode.prompt_version_id,
+            correction_contract_version=episode.correction_contract_version,
+            created_at=_utc(episode.created_at),
+            mapping=PersonalCorrectionMappingRecord(
+                ordinal=mapping.ordinal,
+                operation=mapping.operation,
+                observed_text=mapping.observed_text,
+                intended_text=mapping.intended_text,
+            ),
+            correction=self._entry_records(session, [entry])[0],
+        )
 
     def update_entry(
         self,

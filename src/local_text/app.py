@@ -7,7 +7,8 @@ from datetime import UTC
 from hashlib import sha256
 from html import escape
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
+from uuid import UUID
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Response, status
@@ -16,6 +17,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy.exc import SQLAlchemyError
 
 from local_text.cleanup import (
     GEMINI_37_FLASH,
@@ -266,6 +268,27 @@ class PersonalCorrectionCandidateRequest(BaseModel):
     correction_contract_version: str = Field(pattern=r"^personal-correction-v1$")
 
 
+class PersonalCorrectionReplacementRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    operation: Literal["replacement"]
+    observed_text: str = Field(min_length=1, max_length=200)
+    intended_text: str = Field(min_length=1, max_length=200)
+
+
+class PersonalCorrectionApprovalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    approval_id: UUID
+    source_mode: CorrectionMode
+    prompt_version_id: int = Field(ge=1)
+    correction_contract_version: Literal["personal-correction-v1"]
+    observed_sentence: str | None = Field(default=None, max_length=500)
+    intended_sentence: str | None = Field(default=None, max_length=500)
+    applicability_context: str | None = Field(default=None, max_length=500)
+    mapping: PersonalCorrectionReplacementRequest
+
+
 def _prompt_response(prompt: PromptRecord, *, active: bool) -> dict[str, object]:
     created_at = prompt.created_at
     if created_at.tzinfo is None:
@@ -385,6 +408,7 @@ def create_app(
         if request.url.path.startswith("/api/personal-corrections"):
             return JSONResponse(
                 status_code=422,
+                headers={"Cache-Control": "no-store"},
                 content={
                     "detail": {
                         "code": "invalid_personal_correction_request",
@@ -472,10 +496,15 @@ def create_app(
 
     def personal_correction_failure(exc: PersonalCorrectionError) -> None:
         if isinstance(exc, PersonalCorrectionNotFoundError):
-            raise HTTPException(status_code=404, detail="Personal correction does not exist")
+            raise HTTPException(
+                status_code=404,
+                detail="Personal correction does not exist",
+                headers={"Cache-Control": "no-store"},
+            )
         if isinstance(exc, PersonalCorrectionRevisionConflictError):
             raise HTTPException(
                 status_code=409,
+                headers={"Cache-Control": "no-store"},
                 detail={
                     "code": "stale_personal_correction_revision",
                     "message": "This Personal correction changed since it was opened.",
@@ -485,6 +514,7 @@ def create_app(
         if isinstance(exc, PersonalCorrectionConflictError):
             raise HTTPException(
                 status_code=409,
+                headers={"Cache-Control": "no-store"},
                 detail={
                     "code": "personal_correction_conflict",
                     "message": "A conflicting Personal correction already exists.",
@@ -493,6 +523,7 @@ def create_app(
             )
         raise HTTPException(
             status_code=422,
+            headers={"Cache-Control": "no-store"},
             detail={
                 "code": "invalid_personal_correction",
                 "message": "The Personal correction contains an invalid value.",
@@ -566,6 +597,7 @@ def create_app(
         except SeedStateError as exc:
             raise HTTPException(
                 status_code=409,
+                headers={"Cache-Control": "no-store"},
                 detail={
                     "code": "stale_personal_correction_result",
                     "message": "The result used by this review is no longer current.",
@@ -575,6 +607,7 @@ def create_app(
         if request.prompt_version_id != active_prompt_version_id:
             raise HTTPException(
                 status_code=409,
+                headers={"Cache-Control": "no-store"},
                 detail={
                     "code": "stale_personal_correction_result",
                     "message": "The result used by this review is no longer current.",
@@ -593,6 +626,61 @@ def create_app(
             "intended_sentence": intended_sentence,
             "applicability_context": None,
         }
+
+    @application.post("/api/personal-corrections/episodes")
+    def approve_personal_correction(
+        request: PersonalCorrectionApprovalRequest, response: Response
+    ) -> dict[str, object]:
+        require_configuration()
+        response.headers["Cache-Control"] = "no-store"
+        try:
+            active_prompt_version_id = prompts.active().id
+        except SeedStateError as exc:
+            raise HTTPException(
+                status_code=409,
+                headers={"Cache-Control": "no-store"},
+                detail={
+                    "code": "stale_personal_correction_result",
+                    "message": "The result used by this review is no longer current.",
+                    "retry_action": "Run correction again before opening this review.",
+                },
+            ) from exc
+        if request.prompt_version_id != active_prompt_version_id:
+            raise HTTPException(
+                status_code=409,
+                headers={"Cache-Control": "no-store"},
+                detail={
+                    "code": "stale_personal_correction_result",
+                    "message": "The result used by this review is no longer current.",
+                    "retry_action": "Run correction again before opening this review.",
+                },
+            )
+        try:
+            record, created = personal_corrections.approve_replacement(
+                approval_id=str(request.approval_id),
+                observed_text=request.mapping.observed_text,
+                intended_text=request.mapping.intended_text,
+                observed_sentence=request.observed_sentence,
+                intended_sentence=request.intended_sentence,
+                applicability_context=request.applicability_context,
+                source_mode=request.source_mode,
+                prompt_version_id=request.prompt_version_id,
+                correction_contract_version=request.correction_contract_version,
+            )
+        except PersonalCorrectionError as exc:
+            personal_correction_failure(exc)
+        except SQLAlchemyError as exc:
+            raise HTTPException(
+                status_code=503,
+                headers={"Cache-Control": "no-store"},
+                detail={
+                    "code": "personal_correction_save_unavailable",
+                    "message": "The Personal Correction could not be saved.",
+                    "retry_action": "Retry while this review is current.",
+                },
+            ) from exc
+        response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        return personal_correction_response(record)
 
     @application.post("/api/cleanup", response_model=CleanupResult)
     async def clean_text(request: CleanupRequest) -> CleanupResult:
