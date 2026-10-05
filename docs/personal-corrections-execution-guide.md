@@ -28,6 +28,34 @@ order. Formal evaluation is deferred. Renewing it requires a new approved
 evaluation purpose and contract; an older research document or open issue does
 not authorize resumption.
 
+## Live implementation surface
+
+Use this map to enter the running product without treating product history as
+runtime ownership. It is a navigation aid, not a second specification; follow
+the linked current contract for behavior and acceptance criteria.
+
+| Boundary | Live owner paths | Current responsibility |
+| --- | --- | --- |
+| Schema and migrations | [`migrations/env.py`](../migrations/env.py), [`migrations/versions/`](../migrations/versions/), [`src/local_text/models.py`](../src/local_text/models.py), [`src/local_text/database.py`](../src/local_text/database.py) | Alembic revision chain and SQLAlchemy table definitions; `ApplicationDatabase` reports schema readiness and never migrates during normal startup. Personal Corrections are introduced by [`0004_personal_corrections_foundation.py`](../migrations/versions/0004_personal_corrections_foundation.py) and [`0005_personal_correction_approval.py`](../migrations/versions/0005_personal_correction_approval.py). |
+| Persistence and domain logic | [`src/local_text/personal_corrections.py`](../src/local_text/personal_corrections.py), [`src/local_text/prompt_store.py`](../src/local_text/prompt_store.py), [`src/local_text/cleanup.py`](../src/local_text/cleanup.py), [`src/local_text/prompts.py`](../src/local_text/prompts.py), [`src/local_text/state.py`](../src/local_text/state.py), [`src/local_text/target_store.py`](../src/local_text/target_store.py), and [`src/local_text/target_adapter.py`](../src/local_text/target_adapter.py) | Transactional stores and typed domain contracts for the local Personal Corrections profile and approval episode, prompt/default state, cleanup and Smart processing, outgoing state, and target lifecycle. |
+| API and application composition | [`src/local_text/app.py`](../src/local_text/app.py) | FastAPI application, lifespan and provider wiring, privacy-safe API errors, static-file mount, and HTTP routes. Personal Corrections routes select the implicit `local` owner in the application/store boundary; callers do not submit profile rows or an owner. |
+| Browser UI | [`src/local_text/static/index.html`](../src/local_text/static/index.html), [`src/local_text/static/app.js`](../src/local_text/static/app.js), and [`src/local_text/static/app.css`](../src/local_text/static/app.css) | Workspace and Settings markup, client-side draft/review invalidation and API calls, Personal Corrections controls, and responsive presentation. |
+| Configuration and operations | [`src/local_text/config.py`](../src/local_text/config.py), [`src/local_text/admin.py`](../src/local_text/admin.py), [`scripts/dev.py`](../scripts/dev.py), [`scripts/development_state.py`](../scripts/development_state.py), [`scripts/run-development.py`](../scripts/run-development.py), [`launchd/local.local-text.development.plist.template`](../launchd/local.local-text.development.plist.template), and [`raycast/`](../raycast/) | Profile and environment validation, explicit schema/seed administration, checkout-scoped development-state lifecycle and controlled restart, launchd service template, and generated local Raycast delivery commands. Normal application startup does not migrate or seed. |
+| Focused tests | [`tests/test_personal_corrections.py`](../tests/test_personal_corrections.py), [`tests/test_personal_correction_approval.py`](../tests/test_personal_correction_approval.py), [`tests/test_app.py`](../tests/test_app.py), [`tests/test_preparation_default_migration.py`](../tests/test_preparation_default_migration.py), and [`tests/conftest.py`](../tests/conftest.py) | Synthetic coverage for Personal Corrections schema, store, API, approval transaction, stale-state and browser behavior; broader API and migration regression coverage; and isolated database fixtures. |
+
+### Historical and provenance boundary
+
+The paths above are live runtime or focused-test surfaces. They are distinct
+from [`docs/archive/`](archive/), which preserves superseded plans, benchmark
+protocols, and research records, and from the retained
+[Evidence Collection contract](intended-meaning-evidence-collection-contract.md).
+Those documents—and relevant Git history—must be preserved when a task needs
+provenance, but must not be read as active functionality or authority to restore
+Evidence Collection, participant packages, collection, or evaluation. Consult
+the [documentation map](README.md) for each document's lifecycle; retain
+historical references rather than deleting or implementing them unless a new
+approved current contract explicitly changes that boundary.
+
 ## Current position
 
 Sayloom can generate Smart Prepared text, show its server-derived repair queue,

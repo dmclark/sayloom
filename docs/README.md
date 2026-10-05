@@ -46,7 +46,7 @@ itself rather than being duplicated here.
 | Document | Authority |
 | --- | --- |
 | [Personal Corrections ownership and state portability decision](adr/0002-personal-corrections-ownership-and-state-portability.md) | Accepted local ownership, durable authorization, development-state portability, deletion, and implementation-sequence contract. |
-| [Personal Corrections execution guide](personal-corrections-execution-guide.md) | Current four-phase execution order: state-root migration, Evidence Collection retirement, Personal Corrections, then new-state inheritance. |
+| [Personal Corrections execution guide](personal-corrections-execution-guide.md) | Current four-phase execution order—state-root migration, Evidence Collection retirement, Personal Corrections, then new-state inheritance—and the live implementation-surface ownership map for navigating that work. |
 | [Personal Corrections implementation specification](personal-corrections-implementation-spec.md) | Confirmed target storage, review and approval, Smart retrieval, live-database deletion, export, migration, and inheritance boundary; managed-backup deletion remains unresolved and implementation remains pending. |
 | [Product implementation plan](product-implementation-plan.md) | Approved broader capability plan reconciled to the four-phase Personal Corrections sequence. |
 | [Raycast Target Management redesign implementation specification](raycast-target-management-implementation-spec.md) | Review-ready implementation contract for installed-application discovery, managed target lifecycle, readiness, safety, migration, and isolated real-device acceptance. |
