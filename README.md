@@ -257,8 +257,7 @@ Confirmation rereads the allowlisted source and rejects a stale digest. The writ
 ## Development
 
 ```sh
-uv run ruff check .
-uv run pytest
+scripts/check
 ```
 
 Do not use hot reload for validated coding tasks. Use the controlled

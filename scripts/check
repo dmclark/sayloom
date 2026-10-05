@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+uv sync --locked
+uv run ruff check .
+
+# Amp orb commands inherit SIGINT as ignored, but the test suite exercises SIGINT handling.
+uv run python -c '
+import os
+import signal
+
+signal.signal(signal.SIGINT, signal.SIG_DFL)
+os.execvp("uv", ["uv", "run", "pytest"])
+'
+
+node --check src/local_text/static/app.js
