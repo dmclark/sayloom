@@ -4,7 +4,7 @@
 - **Scope:** Live-dictation continuity, cleanup reliability evidence, provider configuration visibility, and explicit route testing
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Architecture context:** [ADR-0001](adr/0001-correction-modes-and-fallback-routing.md)
-- **Domain vocabulary:** [`CONTEXT.md`](../CONTEXT.md)
+- **Domain vocabulary:** [`GLOSSARY.md`](../GLOSSARY.md)
 - **Confirmed:** 2026-10-04
 
 ## Purpose

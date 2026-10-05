@@ -1,4 +1,4 @@
-# Sayloom context
+# Sayloom glossary
 
 Sayloom prepares imperfect text while preserving the user's authority over intended meaning. This
 glossary names the product artifacts, correction boundaries, evidence tracks, and delivery

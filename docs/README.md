@@ -6,7 +6,7 @@ limited to the scope stated in that document.
 
 [`PRODUCT.md`](../PRODUCT.md) is the sole authority for product vision,
 positioning, roadmap direction, audience, and scope. The root-level
-[`CONTEXT.md`](../CONTEXT.md) defines current domain vocabulary,
+[`GLOSSARY.md`](../GLOSSARY.md) defines current domain vocabulary,
 [`README.md`](../README.md) describes the current implementation and development
 workflow, and [`DESIGN.md`](../DESIGN.md) contains the repository's design-system
 reference. GitHub Issues own actionable work, and the private **Sayloom** Project

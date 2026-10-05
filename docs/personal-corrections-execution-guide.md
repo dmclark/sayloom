@@ -6,7 +6,7 @@
 - **Last confirmed:** 2026-10-02
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
-- **Domain vocabulary:** [`CONTEXT.md`](../CONTEXT.md)
+- **Domain vocabulary:** [`GLOSSARY.md`](../GLOSSARY.md)
 
 ## Purpose
 

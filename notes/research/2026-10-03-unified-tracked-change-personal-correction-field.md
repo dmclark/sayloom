@@ -45,7 +45,7 @@ The field is a review projection over these authoritative values:
 
 The domain distinguishes Intended text as wording confirmed or rewritten by the
 user, while a Repair is a reviewable lexical addition, removal, or replacement
-([domain glossary](../../CONTEXT.md#language)). The storage contract likewise
+([domain glossary](../../GLOSSARY.md#language)). The storage contract likewise
 requires operation-specific shapes: addition = null observed/non-empty intended,
 removal = non-empty observed/null intended, and replacement = both non-empty
 ([implementation specification](../../docs/personal-corrections-implementation-spec.md#personal_correction_episode_mappings)).

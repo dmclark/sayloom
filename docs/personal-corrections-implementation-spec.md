@@ -5,7 +5,7 @@
 - **Execution authority:** [Personal corrections execution guide](personal-corrections-execution-guide.md)
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
-- **Domain vocabulary:** [`CONTEXT.md`](../CONTEXT.md)
+- **Domain vocabulary:** [`GLOSSARY.md`](../GLOSSARY.md)
 - **Confirmed:** 2026-10-01
 
 ## Purpose
