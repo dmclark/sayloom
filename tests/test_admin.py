@@ -1389,6 +1389,17 @@ def test_help_lists_checkout_service_database_and_cleanup_commands() -> None:
     )
 
 
+def test_help_describes_configuration_preflight() -> None:
+    top_level_help = run_dev(Path("unused"), "--help")
+    assert top_level_help.returncode == 0
+    assert "preflight" in top_level_help.stdout
+    assert "check configuration before costly restart verification" in top_level_help.stdout
+
+    preflight_help = run_dev(Path("unused"), "preflight", "--help")
+    assert preflight_help.returncode == 0
+    assert "check configuration before costly restart verification" in preflight_help.stdout.lower()
+
+
 def test_provider_traffic_diagnostics_marker_is_temporary_and_exclusively_locked(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1518,6 +1529,97 @@ def test_runtime_environment_rejects_unsupported_configuration(
     )
     assert rejected.returncode != 0
     assert "invalid environment entry" in rejected.stderr
+
+
+def test_configuration_preflight_accepts_valid_shared_and_state_entries(tmp_path: Path) -> None:
+    state_root = tmp_path / "states"
+    assert run_dev(state_root, "create", "selected").returncode == 0
+    home = tmp_path / "home"
+    shared = home / ".config/local-text/development/environment"
+    selected = state_root / "selected/environment"
+    shared.parent.mkdir(parents=True)
+    shared.write_text("LOCAL_TEXT_GEMINI_MODEL=shared-synthetic-value\n")
+    selected.write_text("LOCAL_TEXT_GEMINI_MODEL=state-synthetic-value\n")
+    shared.chmod(0o600)
+    selected.chmod(0o600)
+
+    result = run_dev(
+        state_root,
+        "preflight",
+        "--state",
+        "selected",
+        environment={**os.environ, "HOME": str(home)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "Configuration ready for isolated-state restart: selected\n"
+    assert "synthetic-value" not in result.stdout
+    assert "synthetic-value" not in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("contents", "diagnostic"),
+    [
+        ("not-an-environment-entry=synthetic-secret\n", "invalid environment entry"),
+        (
+            "LOCAL_TEXT_GEMINI_MODEL=first-synthetic-secret\n"
+            "LOCAL_TEXT_GEMINI_MODEL=second-synthetic-secret\n",
+            "duplicate environment entry",
+        ),
+    ],
+)
+def test_configuration_preflight_reports_safe_remediation_for_invalid_entries(
+    tmp_path: Path, contents: str, diagnostic: str
+) -> None:
+    state_root = tmp_path / "states"
+    assert run_dev(state_root, "create", "selected").returncode == 0
+    home = tmp_path / "home"
+    shared = home / ".config/local-text/development/environment"
+    shared.parent.mkdir(parents=True)
+    shared.write_text(contents)
+    shared.chmod(0o600)
+
+    result = run_dev(
+        state_root,
+        "preflight",
+        "--state",
+        "selected",
+        environment={**os.environ, "HOME": str(home)},
+    )
+
+    assert result.returncode != 0
+    assert diagnostic in result.stderr
+    assert f"{shared}:" in result.stderr
+    assert "then run scripts/dev.py preflight" in result.stderr
+    assert "synthetic-secret" not in result.stdout
+    assert "synthetic-secret" not in result.stderr
+
+
+def test_restart_preflights_configuration_before_repository_verification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = load_dev_module("sayloom_dev_preflight_script")
+    state_root = tmp_path / "states"
+    assert run_dev(state_root, "create", "selected").returncode == 0
+    selected = module.load_state(state_root, "selected")
+
+    def reject_configuration(_state: object) -> None:
+        module.fail("synthetic configuration failure")
+
+    monkeypatch.setattr(module, "state_configuration", reject_configuration)
+    monkeypatch.setattr(
+        module,
+        "verify_repository",
+        lambda: pytest.fail("repository verification must not run"),
+    )
+    monkeypatch.setattr(
+        module,
+        "stop_service",
+        lambda _state: pytest.fail("service must not be stopped"),
+    )
+
+    with pytest.raises(SystemExit, match="synthetic configuration failure"):
+        module.restart(selected)
 
 
 def test_runtime_environment_passes_supported_runtime_configuration(

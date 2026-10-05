@@ -137,6 +137,11 @@ def print_configuration_status(state: State) -> None:
     )
 
 
+def preflight(state: State) -> None:
+    state_configuration(state)
+    print(f"Configuration ready for isolated-state restart: {state.name}")
+
+
 def print_status(state: State) -> int:
     print_state(state)
     print_configuration_status(state)
@@ -667,6 +672,7 @@ def verify_repository() -> None:
 
 
 def restart(state: State, *, run_checks: bool = True) -> None:
+    preflight(state)
     if run_checks:
         verify_repository()
     if stop_service(state):
@@ -1055,6 +1061,10 @@ def command(arguments: argparse.Namespace) -> int:
             return 0
         return print_status(state)
 
+    if operation == "preflight":
+        preflight(resolve_state(root, arguments.state))
+        return 0
+
     if operation == "list":
         print_registered_states(root)
         return 0
@@ -1103,6 +1113,7 @@ def parser() -> argparse.ArgumentParser:
         "Running without a command is equivalent to status.",
         epilog="""examples:
   scripts/dev.py                 show this checkout's development status
+  scripts/dev.py preflight       check configuration before costly restart verification
   scripts/dev.py init            create its state, then migrate and seed
   scripts/dev.py restart         verify, back up, initialize, and restart
   scripts/dev.py activate        move this checkout to Raycast port 7523
@@ -1141,6 +1152,13 @@ status and prune are read-only unless prune receives --apply.
     status = subparsers.add_parser("status", help="show this checkout's state and schema")
     status.add_argument("--state", help=argparse.SUPPRESS)
 
+    preflight_parser = subparsers.add_parser(
+        "preflight",
+        help="check configuration before costly restart verification",
+        description="Check configuration before costly restart verification.",
+    )
+    preflight_parser.add_argument("--state", help=argparse.SUPPRESS)
+
     create = subparsers.add_parser("create", help="create an uninitialized checkout state")
     create.add_argument("name", nargs="?", help="default: sanitized Git branch name")
     create.add_argument("--port", type=int, help="request a specific loopback port")
@@ -1151,7 +1169,7 @@ status and prune are read-only unless prune receives --apply.
     initialize_parser.add_argument("--state", help=argparse.SUPPRESS)
 
     restart_parser = subparsers.add_parser(
-        "restart", help="verify, back up, initialize, and restart"
+        "restart", help="preflight, verify, back up, initialize, and restart"
     )
     restart_parser.add_argument("--state", help=argparse.SUPPRESS)
 
