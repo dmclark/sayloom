@@ -1374,7 +1374,10 @@ def test_help_lists_checkout_service_database_and_cleanup_commands() -> None:
 
     logs_help = run_dev(Path("unused"), "logs", "--help")
     assert logs_help.returncode == 0
-    assert "-n LINES, --lines LINES" in logs_help.stdout
+    assert any(
+        line.strip().startswith(("-n LINES, --lines LINES", "-n, --lines LINES"))
+        for line in logs_help.stdout.splitlines()
+    )
     assert "-f, --follow" in logs_help.stdout
     assert "--provider-traffic" in logs_help.stdout
     assert "default: 100" in logs_help.stdout
