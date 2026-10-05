@@ -1,5 +1,6 @@
 """FastAPI application entry point."""
 
+import logging
 import re
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
@@ -41,6 +42,7 @@ from local_text.personal_corrections import (
     PersonalCorrectionConflictError,
     PersonalCorrectionError,
     PersonalCorrectionNotFoundError,
+    PersonalCorrectionRetrieval,
     PersonalCorrectionRevisionConflictError,
     PersonalCorrectionStore,
 )
@@ -51,6 +53,7 @@ from local_text.target_store import TargetNotFoundError, TargetRecord, TargetSto
 from local_text.targets import TargetDefinition, generate_command
 
 STATIC_DIRECTORY = Path(__file__).parent / "static"
+logger = logging.getLogger("uvicorn.error.local_text.app")
 INDEX_TEMPLATE = (STATIC_DIRECTORY / "index.html").read_text()
 STATIC_VERSION = sha256(
     b"".join((STATIC_DIRECTORY / filename).read_bytes() for filename in ("app.css", "app.js"))
@@ -417,6 +420,17 @@ def create_app(
                     }
                 },
             )
+        if request.url.path == "/api/cleanup":
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "detail": {
+                        "code": "invalid_cleanup_request",
+                        "message": "The request did not match the cleanup contract.",
+                        "retry_action": "Review the request and retry.",
+                    }
+                },
+            )
         return await request_validation_exception_handler(request, exc)
 
     @application.get("/health")
@@ -700,7 +714,29 @@ def create_app(
                     "retry_action": "Reload prompt versions and retry cleanup.",
                 },
             ) from exc
-        result = await application.state.cleanup_service.clean(request, prompt.system_text)
+        retrieval: PersonalCorrectionRetrieval | None = None
+        if request.correction_mode is CorrectionMode.SMART:
+            try:
+                retrieval = personal_corrections.retrieve_for_smart(request.original_text)
+            except Exception:
+                logger.warning("personal_correction_retrieval_failed")
+        evidence = (
+            tuple(match.provider_evidence() for match in retrieval.matches)
+            if retrieval is not None
+            else ()
+        )
+        result = await application.state.cleanup_service.clean(
+            request,
+            prompt.system_text,
+            personal_corrections=evidence,
+        )
+        if retrieval is not None and result.lexical_repairs:
+            try:
+                personal_corrections.record_intended_produced(
+                    retrieval, result.lexical_repairs
+                )
+            except Exception:
+                logger.warning("personal_correction_produced_event_failed")
         return result
 
     @application.get("/api/prompts")

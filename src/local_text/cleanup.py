@@ -19,6 +19,7 @@ from typing import Annotated, Any, Literal, Protocol
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
+from local_text.personal_corrections import PersonalCorrectionEvidence
 from local_text.prompts import effective_smart_system_prompt, effective_system_prompt
 
 logger = logging.getLogger("uvicorn.error.local_text.cleanup")
@@ -202,6 +203,7 @@ class CleanupProvider(Protocol):
         *,
         task_context: str | None = None,
         relevant_curated_knowledge: tuple[str, ...] = (),
+        personal_corrections: tuple[PersonalCorrectionEvidence, ...] = (),
     ) -> ProviderOutput: ...
 
 
@@ -384,14 +386,20 @@ def frame_smart_evidence(
     original_text: str,
     task_context: str | None,
     relevant_curated_knowledge: tuple[str, ...],
+    personal_corrections: tuple[PersonalCorrectionEvidence, ...] = (),
 ) -> str:
     """Frame all request-scoped Smart evidence as one untrusted JSON value."""
+    evidence: dict[str, Any] = {
+        "original_text": original_text,
+        "task_context": task_context or "",
+        "relevant_curated_knowledge": list(relevant_curated_knowledge),
+    }
+    if personal_corrections:
+        evidence["personal_corrections"] = [
+            correction.provider_value() for correction in personal_corrections
+        ]
     return "<REQUEST_EVIDENCE>\n" + json.dumps(
-        {
-            "original_text": original_text,
-            "task_context": task_context or "",
-            "relevant_curated_knowledge": list(relevant_curated_knowledge),
-        },
+        evidence,
         ensure_ascii=False,
         separators=(",", ":"),
     ) + "\n</REQUEST_EVIDENCE>"
@@ -404,6 +412,7 @@ def gemini_request_payload(
     *,
     task_context: str | None = None,
     relevant_curated_knowledge: tuple[str, ...] = (),
+    personal_corrections: tuple[PersonalCorrectionEvidence, ...] = (),
 ) -> dict[str, Any]:
     generation_config = {
         "thinkingConfig": _thinking_config(model),
@@ -426,9 +435,12 @@ def gemini_request_payload(
                     {
                         "text": (
                             frame_smart_evidence(
-                                original_text, task_context, relevant_curated_knowledge
+                                original_text,
+                                task_context,
+                                relevant_curated_knowledge,
+                                personal_corrections,
                             )
-                            if task_context or relevant_curated_knowledge
+                            if task_context or relevant_curated_knowledge or personal_corrections
                             else frame_source_text(original_text)
                         )
                     }
@@ -446,6 +458,7 @@ def openai_request_payload(
     *,
     task_context: str | None = None,
     relevant_curated_knowledge: tuple[str, ...] = (),
+    personal_corrections: tuple[PersonalCorrectionEvidence, ...] = (),
 ) -> dict[str, Any]:
     return {
         "model": model,
@@ -455,9 +468,12 @@ def openai_request_payload(
                 "role": "user",
                 "content": (
                     frame_smart_evidence(
-                        original_text, task_context, relevant_curated_knowledge
+                        original_text,
+                        task_context,
+                        relevant_curated_knowledge,
+                        personal_corrections,
                     )
-                    if task_context or relevant_curated_knowledge
+                    if task_context or relevant_curated_knowledge or personal_corrections
                     else frame_source_text(original_text)
                 ),
             },
@@ -504,6 +520,7 @@ class GeminiAdapter:
         *,
         task_context: str | None = None,
         relevant_curated_knowledge: tuple[str, ...] = (),
+        personal_corrections: tuple[PersonalCorrectionEvidence, ...] = (),
     ) -> ProviderOutput:
         started = time.monotonic()
         if not self.api_key:
@@ -519,6 +536,7 @@ class GeminiAdapter:
             self.model,
             task_context=task_context,
             relevant_curated_knowledge=relevant_curated_knowledge,
+            personal_corrections=personal_corrections,
         )
         _log_provider_traffic(
             enabled=self.traffic_diagnostics_enabled,
@@ -610,6 +628,7 @@ class OpenAIAdapter:
         *,
         task_context: str | None = None,
         relevant_curated_knowledge: tuple[str, ...] = (),
+        personal_corrections: tuple[PersonalCorrectionEvidence, ...] = (),
     ) -> ProviderOutput:
         started = time.monotonic()
         if not self.api_key:
@@ -624,6 +643,7 @@ class OpenAIAdapter:
             self.model,
             task_context=task_context,
             relevant_curated_knowledge=relevant_curated_knowledge,
+            personal_corrections=personal_corrections,
         )
         _log_provider_traffic(
             enabled=self.traffic_diagnostics_enabled,
@@ -800,6 +820,7 @@ class SequentialCleanupProvider:
         *,
         task_context: str | None = None,
         relevant_curated_knowledge: tuple[str, ...] = (),
+        personal_corrections: tuple[PersonalCorrectionEvidence, ...] = (),
     ) -> ProviderOutput:
         if self._active_cleanups >= self.max_active_cleanups:
             error = ProviderBusyError("local cleanup capacity is full", model=self.model)
@@ -813,6 +834,7 @@ class SequentialCleanupProvider:
                 correction_mode,
                 task_context=task_context,
                 relevant_curated_knowledge=relevant_curated_knowledge,
+                personal_corrections=personal_corrections,
             )
         finally:
             self._active_cleanups -= 1
@@ -824,6 +846,7 @@ class SequentialCleanupProvider:
         correction_mode: CorrectionMode,
         task_context: str | None = None,
         relevant_curated_knowledge: tuple[str, ...] = (),
+        personal_corrections: tuple[PersonalCorrectionEvidence, ...] = (),
     ) -> ProviderOutput:
         deadline = self._clock() + self.total_budget_seconds
         failures: list[ProviderFailure] = []
@@ -850,16 +873,23 @@ class SequentialCleanupProvider:
 
             attempt_started = self._clock()
             try:
-                provider_call = (
-                    route.adapter.clean(
+                if personal_corrections:
+                    provider_call = route.adapter.clean(
+                        original_text,
+                        system_prompt,
+                        task_context=task_context,
+                        relevant_curated_knowledge=relevant_curated_knowledge,
+                        personal_corrections=personal_corrections,
+                    )
+                elif task_context or relevant_curated_knowledge:
+                    provider_call = route.adapter.clean(
                         original_text,
                         system_prompt,
                         task_context=task_context,
                         relevant_curated_knowledge=relevant_curated_knowledge,
                     )
-                    if task_context or relevant_curated_knowledge
-                    else route.adapter.clean(original_text, system_prompt)
-                )
+                else:
+                    provider_call = route.adapter.clean(original_text, system_prompt)
                 output = await self._timeout_runner(provider_call, attempt_budget)
             except asyncio.CancelledError:
                 _release_probe(route_breaker, route_half_open)
@@ -1456,7 +1486,13 @@ class CleanupService:
     timeout_seconds: float
     provider_id: str = "unconfigured"
 
-    async def clean(self, request: CleanupRequest, system_prompt: str) -> CleanupResult:
+    async def clean(
+        self,
+        request: CleanupRequest,
+        system_prompt: str,
+        *,
+        personal_corrections: tuple[PersonalCorrectionEvidence, ...] = (),
+    ) -> CleanupResult:
         original_text = request.original_text
         correction_mode = request.correction_mode
         if not original_text.strip():
@@ -1495,18 +1531,26 @@ class CleanupService:
                     correction_mode,
                     task_context=task_context,
                     relevant_curated_knowledge=relevant_knowledge,
+                    personal_corrections=personal_corrections,
                 )
             else:
-                provider_call = (
-                    self.provider.clean(
+                if personal_corrections:
+                    provider_call = self.provider.clean(
+                        original_text,
+                        provider_prompt,
+                        task_context=task_context,
+                        relevant_curated_knowledge=relevant_knowledge,
+                        personal_corrections=personal_corrections,
+                    )
+                elif task_context or relevant_knowledge:
+                    provider_call = self.provider.clean(
                         original_text,
                         provider_prompt,
                         task_context=task_context,
                         relevant_curated_knowledge=relevant_knowledge,
                     )
-                    if task_context or relevant_knowledge
-                    else self.provider.clean(original_text, provider_prompt)
-                )
+                else:
+                    provider_call = self.provider.clean(original_text, provider_prompt)
                 provider_output = await asyncio.wait_for(
                     provider_call,
                     timeout=self.timeout_seconds,

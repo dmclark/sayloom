@@ -4,6 +4,7 @@ import unicodedata
 from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import delete, select, update
@@ -37,6 +38,49 @@ class PersonalCorrectionRevisionConflictError(PersonalCorrectionError):
 
 class PersonalCorrectionConflictError(PersonalCorrectionError):
     pass
+
+
+class PersonalCorrectionRetrievalError(PersonalCorrectionError):
+    pass
+
+
+@dataclass(frozen=True)
+class PersonalCorrectionEvidence:
+    matched_alias: str
+    intended_term: str
+    applicability_context: str | None
+
+    def provider_value(self) -> dict[str, str | None]:
+        return {
+            "matched_alias": self.matched_alias,
+            "intended_term": self.intended_term,
+            "applicability_context": self.applicability_context,
+        }
+
+
+@dataclass(frozen=True)
+class PersonalCorrectionOccurrence:
+    start: int
+    end: int
+
+
+@dataclass(frozen=True)
+class PersonalCorrectionMatch:
+    entry_id: str
+    alias_id: str
+    alias_key: str
+    intended_key: str
+    evidence: dict[str, str | None]
+    occurrences: tuple[PersonalCorrectionOccurrence, ...]
+
+    def provider_evidence(self) -> PersonalCorrectionEvidence:
+        return PersonalCorrectionEvidence(**self.evidence)
+
+
+@dataclass(frozen=True)
+class PersonalCorrectionRetrieval:
+    use_id: str
+    matches: tuple[PersonalCorrectionMatch, ...]
 
 
 @dataclass(frozen=True)
@@ -91,6 +135,61 @@ class PersonalCorrectionApprovalRecord:
 def normalize_correction_text(value: str) -> str:
     normalized = unicodedata.normalize("NFKC", value).replace("’", "'").casefold()
     return " ".join(normalized.split())
+
+
+def _is_lexical(character: str) -> bool:
+    return character == "_" or unicodedata.category(character)[0] in {"L", "M", "N"}
+
+
+def _normalized_with_offsets(
+    value: str,
+) -> tuple[str, tuple[PersonalCorrectionOccurrence, ...]]:
+    normalized_parts: list[str] = []
+    offsets: list[PersonalCorrectionOccurrence] = []
+    index = 0
+    while index < len(value):
+        end = index + 1
+        while end < len(value) and unicodedata.combining(value[end]):
+            end += 1
+        cluster = unicodedata.normalize("NFKC", value[index:end]).replace("’", "'").casefold()
+        for character in cluster:
+            if character.isspace():
+                if normalized_parts and normalized_parts[-1] != " ":
+                    normalized_parts.append(" ")
+                    offsets.append(PersonalCorrectionOccurrence(index, end))
+                elif normalized_parts:
+                    previous = offsets[-1]
+                    offsets[-1] = PersonalCorrectionOccurrence(previous.start, end)
+            else:
+                normalized_parts.append(character)
+                offsets.append(PersonalCorrectionOccurrence(index, end))
+        index = end
+    if normalized_parts and normalized_parts[-1] == " ":
+        normalized_parts.pop()
+        offsets.pop()
+    return "".join(normalized_parts), tuple(offsets)
+
+
+def _normalized_occurrences(
+    original_text: str, alias_key: str
+) -> tuple[PersonalCorrectionOccurrence, ...]:
+    normalized, offsets = _normalized_with_offsets(original_text)
+    occurrences: list[PersonalCorrectionOccurrence] = []
+    start = 0
+    while (start := normalized.find(alias_key, start)) >= 0:
+        end = start + len(alias_key)
+        left_ok = not (_is_lexical(alias_key[0]) and start and _is_lexical(normalized[start - 1]))
+        right_ok = not (
+            _is_lexical(alias_key[-1])
+            and end < len(normalized)
+            and _is_lexical(normalized[end])
+        )
+        if left_ok and right_ok:
+            occurrences.append(
+                PersonalCorrectionOccurrence(offsets[start].start, offsets[end - 1].end)
+            )
+        start += 1
+    return tuple(occurrences)
 
 
 def _utc(value: datetime) -> datetime:
@@ -152,6 +251,113 @@ class PersonalCorrectionStore:
                 enabled=profile.enabled,
                 entries=self._entry_records(session, entries),
             )
+
+    def retrieve_for_smart(self, original_text: str) -> PersonalCorrectionRetrieval:
+        use_id = str(uuid4())
+        with self.database.session_factory.begin() as session:
+            profile = session.get(PersonalCorrectionProfile, LOCAL_OWNER_ID)
+            if profile is None or not profile.enabled:
+                return PersonalCorrectionRetrieval(use_id=use_id, matches=())
+            rows = session.execute(
+                select(PersonalCorrectionEntry, PersonalCorrectionAlias)
+                .join(
+                    PersonalCorrectionAlias,
+                    (PersonalCorrectionAlias.entry_id == PersonalCorrectionEntry.id)
+                    & (PersonalCorrectionAlias.owner_id == PersonalCorrectionEntry.owner_id),
+                )
+                .where(
+                    PersonalCorrectionEntry.owner_id == LOCAL_OWNER_ID,
+                    PersonalCorrectionEntry.enabled.is_(True),
+                )
+            ).all()
+            matches = []
+            for entry, alias in rows:
+                occurrences = _normalized_occurrences(original_text, alias.alias_key)
+                if occurrences:
+                    matches.append(
+                        PersonalCorrectionMatch(
+                            entry_id=entry.id,
+                            alias_id=alias.id,
+                            alias_key=alias.alias_key,
+                            intended_key=entry.intended_key,
+                            evidence=PersonalCorrectionEvidence(
+                                matched_alias=alias.observed_alias,
+                                intended_term=entry.intended_term,
+                                applicability_context=entry.applicability_context,
+                            ).provider_value(),
+                            occurrences=occurrences,
+                        )
+                    )
+            matches.sort(
+                key=lambda match: (
+                    match.occurrences[0].start,
+                    -len(match.alias_key),
+                    match.alias_key,
+                    match.intended_key,
+                    match.entry_id,
+                )
+            )
+            if len(matches) > 50:
+                raise PersonalCorrectionRetrievalError("too many matching Personal corrections")
+            now = utc_now()
+            for match in matches:
+                for event_type in ("alias_observed", "profile_supplied"):
+                    session.add(
+                        PersonalCorrectionEvent(
+                            owner_id=LOCAL_OWNER_ID,
+                            entry_id=match.entry_id,
+                            alias_id=match.alias_id,
+                            episode_id=None,
+                            use_id=use_id,
+                            event_type=event_type,
+                            occurred_at=now,
+                        )
+                    )
+            session.flush()
+            return PersonalCorrectionRetrieval(use_id=use_id, matches=tuple(matches))
+
+    def record_intended_produced(
+        self, retrieval: PersonalCorrectionRetrieval, repairs: list[Any]
+    ) -> None:
+        produced = []
+        for match in retrieval.matches:
+            if any(
+                repair.operation == "replacement"
+                and normalize_correction_text(repair.prepared_span.text) == match.intended_key
+                and any(
+                    occurrence.start < repair.original_span.end
+                    and repair.original_span.start < occurrence.end
+                    for occurrence in match.occurrences
+                )
+                for repair in repairs
+            ):
+                produced.append(match)
+        if not produced:
+            return
+        with self.database.session_factory.begin() as session:
+            now = utc_now()
+            for match in produced:
+                existing = session.scalar(
+                    select(PersonalCorrectionEvent.id).where(
+                        PersonalCorrectionEvent.owner_id == LOCAL_OWNER_ID,
+                        PersonalCorrectionEvent.use_id == retrieval.use_id,
+                        PersonalCorrectionEvent.entry_id == match.entry_id,
+                        PersonalCorrectionEvent.alias_id == match.alias_id,
+                        PersonalCorrectionEvent.event_type == "intended_produced",
+                    )
+                )
+                if existing is None:
+                    session.add(
+                        PersonalCorrectionEvent(
+                            owner_id=LOCAL_OWNER_ID,
+                            entry_id=match.entry_id,
+                            alias_id=match.alias_id,
+                            episode_id=None,
+                            use_id=retrieval.use_id,
+                            event_type="intended_produced",
+                            occurred_at=now,
+                        )
+                    )
 
     def set_profile_enabled(self, enabled: bool) -> PersonalCorrectionProfileRecord:
         with self.database.session_factory.begin() as session:
