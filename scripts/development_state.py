@@ -210,10 +210,16 @@ def load_environment_file(path: Path) -> dict[str, str]:
             continue
         match = ENVIRONMENT_LINE.fullmatch(stripped)
         if match is None or match.group(1) not in ALLOWED_ENVIRONMENT_KEYS:
-            fail(f"invalid environment entry at {path}:{line_number}")
+            fail(
+                f"invalid environment entry at {path}:{line_number}; fix or remove this "
+                "line, then run scripts/dev.py preflight"
+            )
         key, value = match.groups()
         if key in values:
-            fail(f"duplicate environment entry at {path}:{line_number}")
+            fail(
+                f"duplicate environment entry at {path}:{line_number}; keep one entry "
+                "for each key, then run scripts/dev.py preflight"
+            )
         values[key] = value
     return values
 
