@@ -361,4 +361,3 @@ decided:
   brand.
 - Normal startup never runs migrations or seed writes.
 - Local changes use the controlled verify-then-restart lifecycle.
-- Sayloom never interacts with predecessor runtime state.

@@ -65,14 +65,12 @@ that would be required. Do not silently turn acceptance verification into cross-
 
 ## Safety boundary
 
-- Never inspect, start, stop, migrate, query, or drive the stable application, its checkout,
-  fixed ports, state, services, configuration, database, logs, or integrations.
 - Use synthetic text and a new disposable database and service for every live run. Unset
   `LOCAL_TEXT_*`, `GEMINI_API_KEY`, and `GOOGLE_API_KEY` unless a dedicated provider lane is
   intentionally being tested. Never print credential values.
 - Do not use `scripts/dev.py restart` for verification: it owns the current checkout's registered
   development service and assigned port. Cover that workflow with tests or on a dedicated
-  verification host that has no stable application.
+  verification host.
 - Normal application startup must not migrate or seed. Run administration commands explicitly.
 - Keep databases, logs, run notes, and evidence out of Git. Evidence shown to the user belongs
   under `.amp/in/artifacts/sayloom-verification/<run-id>/` and must contain synthetic data only.
@@ -123,7 +121,7 @@ Plan only applicable lanes, but report every planned lane explicitly.
 | Portable | Python, JavaScript, shell, API, and state logic | Run in this checkout with generated temporary paths and no credentials. Record commands and exit status. |
 | Isolated browser | Real user interaction, responsive layout, and accessibility tree | New temporary database, dynamic loopback port, health-checked supervised service, fresh browser session, synthetic text. Prove DOM/accessibility state and visible output. |
 | Database/migration | Schema lifecycle, persistence, import, and no-migration startup | New temporary SQLite database and synthetic import directory. Check state before and after every mutating command. |
-| macOS integration | launchd, Raycast, Chrome, iTerm, clipboard, and destination-app behavior | Dedicated verification host/profile only, with no stable app present. If this orb is Linux or the apps are absent, use `unavailable`; tests alone stay in Portable. |
+| macOS integration | launchd, Raycast, Chrome, iTerm, clipboard, and destination-app behavior | Dedicated verification host/profile only. If this orb is Linux or the apps are absent, use `unavailable`; tests alone stay in Portable. |
 | Provider | Real Gemini/OpenAI request compatibility when explicitly approved | Dedicated test credential, isolated browser service, synthetic input, and a declared call budget. Missing approval or credential is `unavailable`, not `skipped` or `passed`. Mock-provider tests stay in Portable. |
 | CI | Checks delegated to automation | Use `configured in CI` only after reading the tracked workflow and citing its job. No workflow means the lane is `unavailable` if required. |
 

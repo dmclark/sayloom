@@ -5,7 +5,6 @@ keep runtime and secret material outside Git.
 
 - Keep operating data, API keys, dictated or cleaned text, databases, and logs outside Git.
 - Never add credentials, private machine paths, or copied legacy implementation.
-- Never inspect, modify, start, stop, or otherwise interact with the existing stable application or any of its checkouts, services, ports, configuration, databases, logs, or integrations.
 - Use neutral technical identifiers such as `local_text`; keep them decoupled from the display brand.
 - Normal application startup must not run database migrations.
 - For validated coding changes, use the controlled verify-then-restart workflow rather than hot reload.
@@ -17,11 +16,19 @@ keep runtime and secret material outside Git.
   avoid delegating small changes or work on a shared dirty worktree; and do not replay unchanged
   context. Separate work into investigate/reproduce, implement plus affected checks, and, for
   substantial work, a distinct full integration-verification phase after implementation is resolved.
-- Checkpoint and report before the hard stop of 25 model requests or 1.5M total tokens; never cross
-  whichever limit comes first. Once final verification is declared, stop work.
-- Hand off to a new focused thread before further implementation when the principal deliverable or
-  phase changes. Defer unrelated review findings and follow-up changes to a separate focused thread
-  rather than expanding the current deliverable.
+- Checkpoint after each work phase and before exceeding 20 tool invocations since the last
+  checkpoint. Count each tool call issued by the current agent, including calls inside a parallel
+  batch, but not a delegated agent's internal calls. Report confirmed findings, changes, verification
+  state, blockers, and remaining work; reset the count after reporting. Do not rely on unavailable
+  model-request or total-token counters.
+- After final verification, stop scope expansion. If new evidence requires an in-scope correction,
+  make the targeted change and rerun affected checks. Complete any explicitly authorized delivery
+  steps and report what remains uncommitted, unpushed, unmerged, or undeployed.
+- Keep investigation, implementation, fixes, and verification for one deliverable in the same
+  correctly bound thread and checkout. A phase change alone does not require a new thread.
+  Use a separate focused thread for an independently owned deliverable, a required different
+  execution environment, or an explicit user request. Defer unrelated review findings and follow-up
+  changes rather than expanding the current deliverable.
   Start each fresh thread with a compact, self-contained prompt containing only confirmed decisions,
   current state, evidence, the exact next deliverable, and necessary references; never import or
   replay a long parent transcript.
@@ -52,13 +59,30 @@ keep runtime and secret material outside Git.
 
 ## Local worktree workflow
 
-- Worktrees are per independently changing topic, not per Amp thread or Orb. Code changes must occur on an appropriate topic branch rather than the protected primary `main` checkout.
-- Local development uses a Supacode-managed worktree and the canonical shared Amp runner `runner-1`. The runner process may serve multiple directories, but each implementation thread must be created directly on `runner-1` with `working_directory` exactly equal to its verified canonical worktree path. An explicitly requested Orb may work in its own isolated checkout and does not require a corresponding local Supacode worktree or runner.
-- Read-only research, planning, and review may run in an orb when all required inputs are available there; documentation-only changes may also run in an orb when they do not depend on local or uncommitted state.
+- Worktrees are per independently changing topic, not per thread. Code changes require an
+  appropriate topic branch. Keep the primary `main` worktree clean for integration and its
+  configured runtime; local-state diagnosis there is read-only. Integrate only after review and
+  explicit authorization.
+- Local development uses a Supacode-managed worktree served by the canonical shared Amp runner
+  `runner-1`. Preserve manager-owned locks; never force-unlock or manually remove managed worktrees.
+- An explicitly requested orb may implement code in its own isolated checkout without a local
+  Supacode worktree or runner. Read-only research, planning, review, and documentation-only changes
+  may run in an orb when all required inputs are available there and no local or uncommitted state
+  is needed.
 - Create or select a named development state only when the task needs isolated application runtime or database data.
-- Keep the primary `main` worktree clean for integration and its configured runtime, not feature editing; local-state diagnosis there is read-only. Preserve manager-owned locks; never force-unlock or manually remove managed worktrees. Integrate to `main` only after review and explicit authorization.
-- Before local code-changing work: (1) create or select the dedicated Supacode worktree; (2) canonicalize its path; (3) confirm that exact path is registered with Supacode and Git, retains its manager-owned lock, and is served by `runner-1`; (4) verify repository, branch, HEAD, tracking, recent commits, and status; (5) create the implementation thread directly on `runner-1` with that exact path as `working_directory`; and (6) keep all reads, edits, commands, and verification there. Fail closed if any registration or binding check cannot be verified. Create or select a named development state as part of this only when the task needs isolated application runtime or database data.
-- Creating or focusing a worktree, or setting a shell command's `workdir`, does not move or reattach an Amp thread, executor, or Changes panel. Never use the old Supacode-tab, `amp threads continue`, or `/new` choreography. Existing threads cannot be rebound retroactively; start a correctly bound continuation thread instead. Treat the selected worktree as the task boundary and do not mix operations across worktrees.
+- Before local code-changing work:
+  1. Create or select the topic's dedicated Supacode worktree and canonicalize its path.
+  2. Confirm that exact path is registered with Supacode and Git, retains its manager-owned lock,
+     and is served by `runner-1`.
+  3. Verify repository, branch, HEAD, tracking, recent commits, and status.
+  4. Use an implementation thread created directly on `runner-1` with `working_directory` exactly
+     equal to that verified canonical path. Reuse the current thread only if it is already bound
+     correctly; otherwise create a correctly bound continuation.
+  5. Keep all task reads, edits, commands, and verification in that worktree.
+  Fail closed if any registration or binding check cannot be verified.
+- Creating or focusing a worktree, or setting a shell command's `workdir`, does not reattach a
+  thread, executor, or Changes panel. Existing threads cannot be rebound retroactively. Never use
+  the old Supacode-tab, `amp threads continue`, or `/new` choreography as a substitute for binding.
 
 ## Agent skills
 

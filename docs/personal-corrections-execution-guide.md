@@ -390,4 +390,4 @@ When a phase completes:
 
 Do not mark a phase complete from planning, mocked UI alone, or an unverified
 implementation. Local edits and passing checks also do not imply that work is
-committed, pushed, merged, deployed, or operating in the stable application.
+committed, pushed, merged, deployed, or running.

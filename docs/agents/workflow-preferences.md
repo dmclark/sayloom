@@ -23,8 +23,7 @@ or explicit instructions in the current request.
   `uv run ruff check .` and relevant `uv run pytest` coverage. Follow the root
   guidance for test frequency and scope-appropriate verification.
 - For validated runtime changes, use the controlled `scripts/dev.py restart`
-  workflow rather than hot reload. Never inspect, modify, start, stop, or
-  otherwise interact with the stable application or its state and integrations.
+  workflow rather than hot reload.
 - Keep changes uncommitted unless a commit is explicitly requested or clearly
   required by repository policy. Commit only reviewed, in-scope changes. Require
   separate explicit authorization before integrating changes into `main`.
