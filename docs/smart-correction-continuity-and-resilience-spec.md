@@ -23,7 +23,7 @@ Implement this contract in two ordered slices:
    synthetic route tests.
 
 This document does not authorize implementation, migration, provider calls,
-spending, access to private operating data, operation of the stable application,
+spending, access to private operating data,
 deployment, commits, pushes, or merges. Those actions retain their existing
 workflow and authorization gates.
 

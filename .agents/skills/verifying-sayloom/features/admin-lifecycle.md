@@ -24,8 +24,7 @@ with respect to schema and seed state.
 - Run `import-preview` and `import-confirm --digest ...` against a synthetic source directory.
 - Run `scripts/dev.py`, `init`, `db`, `list`, and preview-only `prune` against a disposable state
   root. Exercise `remove --yes` and `prune --apply` only on states created by that run.
-- On a dedicated verification-only macOS host, use the named-state controlled workflow. Never run
-  it on a host with the stable application.
+- On a dedicated verification-only macOS host, use the named-state controlled workflow.
 
 ## Driving and proof
 

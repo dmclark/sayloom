@@ -61,8 +61,7 @@ macOS integration lane:
 - Linux/orb generation and adapter success is Portable only. Raycast, destination applications,
   clipboard behavior, application availability, permissions, and hotkey retention remain macOS
   integration checks.
-- Never point the disposable command directory at a stable Raycast scripts directory and never use
-  an existing database, fixed service, predecessor checkout, predecessor command package, or real
+- Use a disposable Raycast scripts directory, a new database, a run-specific service, and synthetic
   outgoing text.
 - Save and preview state do not prove installation; installation does not prove application or
   permission readiness; command invocation cannot claim successful insertion when the adapter

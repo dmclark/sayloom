@@ -17,7 +17,7 @@ boundaries, staged implementation, and acceptance evidence.
 The reader's next action is to review this contract, verify the two bundle IDs
 called out below on the isolated acceptance Mac, and then implement the stages
 in order. This document does not authorize application-code changes, migration
-execution, access to the stable application, or changes to Raycast.
+execution, or changes to Raycast.
 
 ## Confirmed outcome
 
@@ -742,13 +742,11 @@ with no console or accessibility regressions.
 - Create or select a named isolated development state and use the controlled
   verify-then-restart workflow.
 - Configure a dedicated disposable Raycast Script Commands folder for that
-  state. Never use the stable app's database, service, port, folder, commands,
-  logs, integrations, or Raycast entries.
+  state.
 - Run the matrix below, record app and adapter versions, and clean up only the
   isolated recognized artifacts after explicit confirmation.
 
-**Exit:** Every required row has evidence; no stable-app resource was accessed
-or changed.
+**Exit:** Every required row has evidence from the isolated development state.
 
 ## Verifiable acceptance criteria
 

@@ -74,7 +74,7 @@ Use `scripts/dev.py logs` to show the last 100 lines from both `service.log` and
 options continue showing appended output until interrupted. The streams receive
 neutral labels, valid JSON entries are indented for readability, and private
 filesystem paths are never printed. The command never falls back to another
-checkout or stable application state and fails without displaying log content
+checkout's state and fails without displaying log content
 when the selected files are unavailable. It only presents content already in
 those external logs and does not change log format, retention, redaction, or
 destination.
