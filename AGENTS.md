@@ -99,6 +99,20 @@ Triage uses the default canonical label vocabulary. See `docs/agents/triage-labe
 
 Domain documentation uses a single-context layout. See `docs/agents/domain.md`.
 
+## Temporary recognition-repair record
+
+When discussing recognition repairs, read
+`.amp/in/artifacts/confirmed-recognition-repairs.md`. Keep owner-confirmed repairs
+separate from inferred interpretations; ask the owner to confirm uncertain
+wording before recording it, and obtain applicable write authorization. Treat
+examples as discussion evidence, not automatic replacement rules, Personal
+Corrections, or evaluation authorization. Keep the record outside Git.
+
+The ignored record does not travel with branches, worktrees, or orbs. If it is
+missing, request an explicit transfer from the source checkout or thread before
+relying on it; do not reconstruct confirmed repairs from guesses. This pointer
+does not authorize inspecting private operating data.
+
 <!-- personal-workflow-project:start -->
 ## Personal workflow overrides
 
