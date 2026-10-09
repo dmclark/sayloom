@@ -1,6 +1,6 @@
 # Sayloom product implementation plan
 
-- **Status:** Approved sequence; Personal Corrections next
+- **Status:** Approved internal sequence; dependable-preparation prerequisite remains unresolved
 - **Audience:** Product, design, engineering, research, and delivery contributors
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
@@ -28,6 +28,20 @@ implementation, administration, configuration, and dedicated tests are gone.
 Historical documents and Git history remain for provenance only.
 
 ## Current implementation sequence
+
+The [dependable single-user workflow map](https://github.com/dmclark/sayloom/issues/159)
+sets a planning prerequisite before proceeding to the Personal Corrections
+capability: agree the combined dependable-preparation acceptance gate. That
+gate distinguishes useful intended-wording correction before copying or
+delivery from continuity and availability alone. Original remains an explicit
+fallback. The local basic Cleanup backup is an incomplete supporting capability,
+not a replacement for the broader Cleanup contract or contextual Smart repair.
+
+The map does not reorder the four phases below, which remain governed by
+ADR-0002 and the Personal Corrections execution guide. Agreement on an evidence
+contract does not establish that acceptance has passed, authorize execution, or
+complete the Personal Corrections loop. This clarification does not update the
+implementation-state claims below.
 
 Implementation proceeds in this order:
 
@@ -114,8 +128,9 @@ changing conservative correction behavior.
 
 - Use Prepared and Original consistently across the application API, state
   model, interface, and tests.
-- Add the confirmed `conservative` and `smart` correction modes to the domain
-  contract.
+- Retain `conservative` and `smart` as the existing implementation identifiers.
+  The product stages are Cleanup and Smart correction; Conservative preparation
+  is the current incomplete Cleanup stage, not a permanent product mode.
 - Persist the user's default mode and allow an override for the current text.
 - Make output validation mode-aware while retaining the existing conservative
   rejection of lexical additions, removals, substitutions, duplication, and
@@ -125,8 +140,9 @@ changing conservative correction behavior.
 
 ### Exit criteria
 
-- Conservative mode has no behavioral regression from the current cleanup
-  contract.
+- Conservative preparation has no behavioral regression from its current
+  source-preserving implementation boundary; this is not complete Cleanup
+  qualification.
 - The default mode survives reload, and a per-text override does not overwrite
   that default.
 - Hiding Original changes presentation only and never changes the selected
@@ -200,7 +216,9 @@ benchmark material and superseded alternatives remain in read-only Mandrel.
 - Return Prepared text and bounded uncertainty metadata from Smart correction.
 - Compute the complete word-level additions, removals, and replacements on the
   server instead of trusting a provider-supplied diff.
-- Permit bounded lexical changes only in Smart mode.
+- In the current Conservative implementation stage, permit bounded lexical
+  changes only in Smart. This does not prohibit determinate lexical corrections
+  in a separately qualified Cleanup version under PRODUCT.md.
 - When Original is visible, identify every lexical change and add further
   emphasis to uncertain changes.
 - When Original is hidden, render plain Prepared or fail-open Original using
@@ -332,17 +350,19 @@ or weakening privacy and fail-open guarantees.
 
 ## Recommended implementation choice
 
-Keep the two confirmed user-visible modes. Conservative remains unchanged;
-automatic method selection is implemented inside Smart if the evidence selects
-a qualifying strategy. Do not expose experimental methods or a separate
-Automatic mode without a new approved product decision.
+Keep the product stages Cleanup and Smart correction. Preserve the current
+Conservative preparation boundary until a separately qualified Cleanup version
+justifies expansion. Automatic method selection remains deferred Smart work;
+the historical prototype references do not authorize it. Do not expose
+experimental methods or a separate Automatic mode without a new approved
+product decision.
 
 ## Deferred scope
 
 The following remain outside this implementation plan until separately
 decided:
 
-- correction or polishing modes beyond Conservative and Smart correction;
+- correction or polishing modes beyond Cleanup and Smart correction;
 - hosted target delivery;
 - private Original or Prepared history;
 - hosted bring-your-own-key support; and
