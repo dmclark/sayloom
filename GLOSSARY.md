@@ -6,6 +6,16 @@ milestones.
 
 ## Language
 
+**Context**:
+The surrounding wording, conversation, and circumstances that help make sense of what someone means.
+_Avoid_: Writing domain, selected writing category
+
+**Writing domain**:
+A user-selected category describing what the text is for, such as development instructions, a
+personal message, or general text. It may be associated with suitable prompts or common vocabulary;
+Domain is its short UI label.
+_Avoid_: Context, task context
+
 **Original**:
 The editable source text supplied to Sayloom.
 _Avoid_: Raw text, input copy
