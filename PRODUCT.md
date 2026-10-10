@@ -104,6 +104,53 @@ evidence slice, safety thresholds, and Cleanup regression coverage establish
 that it is determinate and account-independent. Cleanup and Smart versions do
 not change during a registered evaluation or silently inside a released result.
 
+## Smart writing domains and contextual input
+
+These are confirmed high-level target requirements, not a claim of implemented
+behavior or authorization to implement them.
+
+### Writing domain
+
+The user explicitly selects a **Writing domain**, labeled **Domain** in the UI,
+with **General text** as the default. Smart does not silently switch the
+selection. The provisional initial categories are **General text**,
+**Development instructions**, and **Personal message**.
+
+The selected domain helps Smart interpret likely terminology and repair
+recognition errors when the surrounding wording supports that interpretation.
+It does not justify inserting jargon or expand Smart's correction authority.
+The same conservative scope applies across domains: recognition repair,
+punctuation, capitalization, and very light cleanup, not broader rewriting.
+Speech-to-prose editing remains deferred.
+
+### Contextual input
+
+Smart uses the whole current draft, including user edits, together with the
+selected Writing domain, rather than interpreting each new dictation fragment
+in isolation.
+
+Context from earlier passages or the destination application and user-supplied
+passage-specific guidance are optional inputs. Neither is required for Smart
+processing to run. Smart must not silently collect outside context.
+Passage-specific guidance helps interpret the text; it is not permission for
+broader rewriting.
+
+**Deferred:** Availability and implementation timing of these optional inputs,
+their exact sources and controls, and domain configuration and UI mechanics.
+
+### Vocabulary and recurring misrecognitions
+
+Vocabulary corrections and corrections for commonly misheard wording may
+overlap without being identical. The vocabulary-correction concept includes
+multiword phrases as well as individual words; recognition can sometimes
+produce the intended phrase correctly and sometimes misrecognize it. Correctly
+recognized wording should remain unchanged.
+
+This relationship does not establish a separate vocabulary feature, a
+file-configured vocabulary policy, or a shared correction mechanism. Those
+choices remain undecided. Repair matching and evaluation methods remain
+deferred; this discussion does not supersede the Personal Corrections contract.
+
 ## Personal Corrections and research boundary
 
 **Personal Corrections** serve live personalization for one local user. Sayloom
