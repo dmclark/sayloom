@@ -43,7 +43,8 @@ by Cleanup. Its meaning-bearing changes remain reviewable.
 _Avoid_: Cleanup, rewrite, transcript recovery
 
 **Prepared**:
-Sayloom's generated result after the selected Smart and Cleanup path.
+Sayloom's generated result after the selected processing path, or an explicitly user-confirmed
+replacement bound to the current Original. Its origin is identified as generated or user-confirmed.
 _Avoid_: Cleaned text, output
 
 **Correction method**:

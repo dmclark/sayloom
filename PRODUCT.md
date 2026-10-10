@@ -63,7 +63,8 @@ Sayloom uses three distinct values:
 
 - **Original:** The editable text received from Voiceitt, typing, or paste.
 - **Prepared:** Sayloom's generated result for the selected correction or
-  polishing mode.
+  polishing mode, or an explicitly user-confirmed replacement bound to the
+  current Original. Its origin is identified as generated or user-confirmed.
 - **Outgoing:** The exact Original or Prepared value currently selected for
   copying or delivery.
 
@@ -72,11 +73,50 @@ The primary correction loop is:
 1. Voiceitt places text in Original.
 2. Sayloom generates Prepared text.
 3. The user reviews the result when needed.
-4. If Sayloom inferred the wrong wording, the user edits Original.
-5. Sayloom regenerates Prepared from the edited Original.
+4. If Sayloom inferred the wrong wording, the user may edit Original and
+   regenerate, or explicitly confirm intended wording directly as Prepared.
+5. The user explicitly copies or delivers the selected Outgoing value.
 
 This loop avoids requiring approval for every changed word while keeping the
-user in control of intended meaning.
+user in control of intended meaning. Direct confirmation avoids entering the
+same intended wording again for copying or delivery; it does not alter Original.
+
+## User-confirmed Prepared
+
+These are confirmed target requirements, not implemented behavior or permission
+to restore Evidence Collection.
+
+An explicit **Correct Prepared** action opens an editing step starting from
+current Prepared, or Original if no current Prepared exists. This is not an
+always-editable Prepared field. Opening the step freezes its starting text and
+supersedes pending generation for that draft; late responses cannot replace
+editing or confirmed wording.
+
+**Use as Prepared and select for copying/delivery** confirms the wording
+unchanged as Prepared and selects it as Outgoing. Empty or whitespace-only
+wording cannot be confirmed; the interface explains that intended wording is
+required. Confirmation runs no Cleanup or Smart processing and does not copy,
+deliver, submit to a destination, save a Personal Correction, or authorize
+research reuse. Copying and target delivery remain separate explicit actions.
+
+- The correction is bound to the exact Original revision. Any change to
+  Original makes an open correction stale and prevents confirmation. A
+  previously confirmed replacement becomes unavailable for copying or
+  delivery; Outgoing falls back to current Original.
+- While editing or a confirmed replacement is current, generation requires an
+  explicit **Regenerate** action. Correction-mode or Smart-guidance changes
+  affect the next generation but cannot interrupt editing or overwrite the
+  confirmed wording while Original is unchanged.
+- Cancelling discards unconfirmed edits and preserves the previously current
+  Prepared and Outgoing selection. If no current Prepared existed, Original
+  remains available. Cancellation does not revive or restart generation.
+- Regenerate uses Original, not the confirmed replacement. Starting it removes
+  the replacement's delivery eligibility; current Original remains usable
+  while processing is pending or fails.
+- Manual correction remains available with nonempty Original when automatic
+  preparation is Off or has failed, without a provider call. Off disables
+  automatic processing, not manual confirmation. Clearing the draft is separate
+  from confirmation.
 
 ## Correction and polishing modes
 
@@ -180,7 +220,8 @@ for provenance and grant no authority to resume collection or evaluation.
 
 When Original is visible, the review experience identifies every word addition,
 removal, or replacement and emphasizes uncertainty. AI confidence is assistance,
-not proof; the user can always edit Original and regenerate.
+not proof; the user can edit Original and regenerate or explicitly confirm
+intended wording as Prepared.
 
 When Original is hidden, the workspace is in CART-style display mode. Prepared
 or fail-open text uses the available output space without inline correction
@@ -294,8 +335,9 @@ implemented unless later technical evidence says otherwise.
 The checkout contains no live Evidence Collection Workspace, runtime,
 participant-package, administration, or configuration behavior.
 
-Implementation and product design use **Prepared** for the generated result and
-reserve **Outgoing** for the exact selected delivery value.
+The current implementation uses **Prepared** for the generated result and
+reserves **Outgoing** for the exact selected delivery value. The explicit
+user-confirmed Prepared interaction above remains unimplemented.
 
 ### Durable constraints
 
@@ -365,7 +407,8 @@ The following remain open and must not be presented as committed behavior:
 1. **Correct intended text, not speech.** Sayloom works from imperfect text and
    never claims to verify audio it does not receive.
 2. **Keep the user authoritative.** Users can edit Original, regenerate
-   Prepared, choose a correction mode, and control personalization.
+   Prepared, explicitly confirm intended wording as Prepared, choose a
+   correction mode, and control personalization.
 3. **Make meaning-bearing changes reviewable.** Review supports trust without
    interrupting CART display.
 4. **Never mix users' learning.** Personalization remains isolated, inspectable,
