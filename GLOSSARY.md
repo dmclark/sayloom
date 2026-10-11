@@ -63,14 +63,27 @@ A reviewable lexical addition, removal, or replacement. A repair may be proposed
 explicitly supplied by the user after either Cleanup or Smart misses intended wording.
 _Avoid_: Accepted correction, evaluation evidence
 
+**Personal Correction**:
+A user-reviewed before → intended mapping explicitly saved for later contextual Smart reuse.
+It may describe a replacement or an anchored addition/removal; it is evidence of the user's
+intended wording, not an unconditional replacement rule or research authorization.
+_Avoid_: Automatically learned correction, training example, confirmed model output
+
+**Correction trigger**:
+The approved before wording that makes a saved Personal Correction a candidate for contextual
+reuse. An addition/removal uses a phrase with enough unchanged wording to anchor the change;
+the trigger's presence alone does not establish that the correction fits.
+_Avoid_: Replacement command, empty alias, applicability restriction
+
 **Private correction profile**:
 Explicitly enabled, user-owned knowledge that may inform Smart correction. It does not affect core
 Cleanup.
 _Avoid_: Cleanup dependency, memory, training data
 
 **Correction memory**:
-Optional retained knowledge derived through a separately approved learning interaction. It is
-outside the Smart MVP and does not affect core Cleanup.
+Retained knowledge derived through an explicit, separately approved saving interaction. In the
+Personal Corrections loop, saved mappings and linked occurrence history provide this knowledge;
+ordinary use implies no learning authorization. It does not affect core Cleanup.
 _Avoid_: Private correction profile, implicit learning
 
 **Cleanup evaluation**:

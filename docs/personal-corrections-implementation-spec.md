@@ -1,12 +1,12 @@
 # Personal Corrections implementation specification
 
-- **Status:** Confirmed target contract; implementation pending
+- **Status:** Complete-loop design confirmed; bounded delivery only, acceptance unverified
 - **Scope:** Private, single-user Personal Corrections flywheel
 - **Execution authority:** [Personal corrections execution guide](personal-corrections-execution-guide.md)
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
 - **Domain vocabulary:** [`GLOSSARY.md`](../GLOSSARY.md)
-- **Confirmed:** 2026-10-01
+- **Complete-loop design confirmed:** 2026-10-11
 
 ## Purpose
 
@@ -18,9 +18,76 @@ for the first usefulness gate.
 
 This document does not authorize implementation, migration, private-data
 access, provider traffic, GitHub mutation, or operation of the stable
-application. Evidence Collection and current Application Support state paths
-still exist until the preceding retirement and state-root migration phases are
-separately implemented and verified.
+application. State-root migration and Evidence Collection retirement precede
+this phase and are recorded complete in the execution guide. Personal
+Corrections still precede new-state inheritance.
+
+## Complete-loop design and evidence boundary
+
+The owner confirmed this design in [the complete-loop design session](https://ampcode.com/threads/T-01a12c59-2533-768a-810a-3458f41436b1).
+Closure of [the design decision](https://github.com/dmclark/sayloom/issues/163)
+requires separately authorized, reviewed document delivery and a resolution
+record. GitHub owns its live status; document delivery alone does not close it
+or establish runtime acceptance.
+
+The contract is **repair → review → explicitly save → contextual reuse**:
+
+- Smart puts inferred wording directly into Prepared. Successful Smart repairs
+  can open a separate save review without retyping. Neither **Looks right** nor
+  copying/delivery saves a correction.
+- Successful Smart repairs, user corrections to Prepared, and valid bound
+  Original-edit capture share one explicit save review. It identifies the
+  before/after source, starts selections unchecked, previews all durable fields,
+  and atomically saves 1–20 selected mappings. Generated changes outside a
+  Prepared edit are not proposals from that edit.
+- Additions, removals, and replacements all support reuse. An addition/removal
+  needs an explicitly approved short before → intended phrase pair containing
+  enough unchanged wording to anchor it. Review shows the individual operation
+  and editable reusable pair. Without a meaningful anchor, the edit may remain
+  in Prepared but is not yet saveable for reuse. Empty triggers are not rules.
+- Exact normalized trigger matching retrieves candidates. Smart uses the
+  current draft, selected Writing domain, and approved applicability restriction
+  to apply or abstain. Literal, contradictory, inappropriate, and unresolved
+  ambiguous uses remain unchanged. Correctly recognized intended wording stays
+  unchanged. Matching does not authorize unconditional replacement.
+- Differing intended phrases or applicability restrictions remain separate;
+  equivalent mappings may be deduplicated. No save overwrites another mapping
+  or silently broadens its restriction. Recency/counts do not resolve ambiguity.
+- One management area covers all operations. Beginning an edit suspends reuse;
+  explicit reviewed save authorizes the revision. Cancelling retains the prior
+  wording disabled. Explicit re-enable of an unchanged correction restores its
+  existing authorization. Management never silently rewrites current Prepared.
+- Optional historical sentences are bounded, previewed, editable/removable,
+  and never supplied to Smart. Events distinguish observed, supplied, and
+  produced for every reusable operation without correctness/causation claims.
+- Download private export is a management action with no retained server copy.
+  Live-database deletion scopes and shared-episode cascades remain binding.
+  Managed-backup policy stays deferred and blocks complete durable-deletion
+  acceptance; user-created exports are not removed by deletion.
+
+Every lexical change remains reviewable with advisory uncertainty when Original
+is visible. Review does not gate copying/delivery; Outgoing is the exact visible
+selected value. CART has no inline correction markings. Core Cleanup remains
+independent of Personal Corrections.
+
+The [merged Prepared-confirmation delivery](https://github.com/dmclark/sayloom/pull/167)
+records exact manual confirmation and optional atomic selected-replacement
+saving only. It does not complete [ordered mixed mappings](https://github.com/dmclark/sayloom/issues/150)
+or this loop. Correct Prepared requires current Prepared; Original-seeded
+confirmation is deferred. The dependable-preparation evidence gate is agreed,
+not passed. No provider/runtime acceptance or general efficacy is established.
+
+The phrase “red cat delivery” → “Raycast delivery” is discussion evidence for
+contextual judgment, not an unconditional rule or permission to save a mapping.
+No additional private recognition-repair record was inspected or reconstructed.
+
+**Technical work still required:** adapt the replacement-oriented schema,
+payloads, provenance, event detection, and export representation to the approved
+anchored operations and distinct restrictions. The design does not select a new
+migration or exact schema layout. The reference tables below cannot make those
+unresolved implementation details ready to build. Fuzzy/semantic retrieval,
+import, outcome ratings, analytics, and post-confirmation typo assistance remain
+deferred; complete-loop usefulness acceptance is a separate decision.
 
 ## Confirmed outcome and non-goals
 
@@ -28,11 +95,13 @@ The first release serves one implicit private local principal with durable
 `owner_id = "local"`. It adds no account, login, owner selector, or owner UI.
 The user can:
 
-1. turn a missed Cleanup or Smart repair into a reviewed correction episode;
+1. turn a successful Smart repair or a user-supplied repair into a reviewed
+   correction episode;
 2. explicitly review and approve an Original → Intended mapping;
 3. save a Personal Correction for live use in later sessions;
 4. inspect, edit, disable, or delete a Personal correction;
-5. have matching enabled aliases supplied only to a later Smart request;
+5. have matching enabled replacement or anchored addition/removal mappings
+   supplied only to a later Smart request;
 6. inspect content-minimized recurrence events; and
 7. export the current private state in a versioned machine-readable format.
 
@@ -69,8 +138,8 @@ The implementation must extend, rather than bypass, these current boundaries:
 
 Ordinary `/api/cleanup` callers must not submit profile rows or select an owner.
 The application route owns local-principal selection and retrieval before it
-constructs the internal Smart request. Evidence Collection is superseded and
-must be retired before this phase; it is not a Personal Corrections write path.
+constructs the internal Smart request. Evidence Collection is retired and is
+not a Personal Corrections write path.
 
 ## Terms used here
 
@@ -78,19 +147,29 @@ must be retired before this phase; it is not a Personal Corrections write path.
   hosted account or display name.
 - **Profile:** The local principal's persisted Personal Corrections enablement
   state and entries.
-- **Entry:** One intended canonical term, optional approved applicability
-  context, enabled state, and one or more observed aliases.
+- **Entry:** A managed reusable correction with approved before → intended
+  wording, operation, applicability restriction, authorization/enabled state,
+  and linked history. Replacement-oriented storage below is a starting point,
+  not a complete representation of the approved model.
 - **Episode:** One explicit approval containing selected before/after mappings
   and optional bounded observed and intended sentences.
 - **Use ID:** A random UUID identifying one capture approval or one Smart
   request for idempotent event recording. It contains no text.
 
-## Durable model
+## Durable model requirements and replacement-oriented schema reference
 
 All content lives in the existing private application SQLite database. IDs are
 random UUID strings. Timestamps are UTC. Every content-bearing table carries
 `owner_id`, and every store query includes `owner_id = "local"`; route-only
 filtering is insufficient.
+
+**Schema reference, not a complete-loop implementation prescription:** the
+tables below preserve the earlier replacement-oriented design. In particular,
+canonical-term-only uniqueness, replacement-only links, and generated-result
+provenance need revision. Complete-loop approval requires reusable anchored
+additions/removals, separately scoped mappings, and user-confirmed provenance.
+Do not force empty operations into aliases or treat these older shapes as a
+reason to narrow the confirmed product design.
 
 ### `personal_correction_profiles`
 
@@ -118,8 +197,12 @@ individual entries. The migration creates no profile row or other seed data.
 | `revision` | Positive integer for optimistic concurrency. |
 | `created_at`, `updated_at` | Required UTC timestamps. |
 
-`(owner_id, intended_key)` is unique. `(id, owner_id)` is also unique so child
-foreign keys can enforce ownership. Empty context is stored as `NULL`.
+The replacement-oriented reference uses unique `(owner_id, intended_key)`.
+That alone is insufficient for the confirmed model: mappings with different
+applicability restrictions must coexist, including when intended text is equal.
+The revised uniqueness design must deduplicate equivalent mappings without
+merging differing restrictions. Owned child references remain mandatory.
+Empty context is stored as `NULL`.
 
 ### `personal_correction_aliases`
 
@@ -146,8 +229,8 @@ one entry.
 | `approval_id` | Client-generated UUID, unique per owner for retry idempotency. |
 | `observed_sentence` | Nullable approved pre-edit sentence; at most 500 Unicode code points. |
 | `intended_sentence` | Nullable approved post-edit sentence; at most 500 Unicode code points. |
-| `source_mode` | `conservative` or `smart`. |
-| `prompt_version_id` | The prompt version used by the bound missed result. |
+| `source_mode` | Earlier generated-result reference: `conservative` or `smart`; manual provenance also needs representation. |
+| `prompt_version_id` | Bound generated-result prompt; user-confirmed episodes have no processing prompt. |
 | `correction_contract_version` | Fixed value `personal-correction-v1`. |
 | `created_at` | Required UTC timestamp. |
 
@@ -167,20 +250,17 @@ are never stored in these tables.
 | `intended_text` | Nullable selected after text; at most 200 code points. |
 | `entry_id`, `alias_id` | Nullable owned profile references for a reusable replacement. |
 
-The save boundary accepts 1–20 selected mappings. A replacement has non-empty
-observed and intended text and links to an entry and alias. Addition and removal
-mappings remain episode-only discovery evidence because an empty alias or empty
-canonical term cannot participate in exact alias retrieval.
+The save boundary accepts 1–20 selected mappings in display order. The earlier
+operation-level shape has null observed text for an addition, null intended
+text for a removal, and both values for a replacement. It describes the
+individual lexical change, not the complete reusable trigger.
 
-Storage checks enforce the shapes: addition has null observed and non-empty
-intended text; removal has non-empty observed and null intended text;
-replacement has both values; only a replacement may have entry and alias IDs.
-
-**Proposed product choice requiring confirmation:** Stage 1 displays and may
-save additions and removals in the episode, but only non-empty replacements
-become reusable profile entries. If additions or removals must affect future
-Smart requests, their trigger and management model must be decided before
-implementation; they must not be forced into alias-to-term rows.
+The confirmed design supersedes episode-only addition/removal storage and
+replacement-only reusable links. Each saved addition/removal must also have a
+reviewed, nonempty anchored before → intended phrase pair and be manageable,
+retrievable, and linked to history like a replacement. Storage must distinguish
+the individual change from that pair. Exact revised columns/constraints remain
+technical design work, not an approved migration in this session.
 
 ### `personal_correction_events`
 
@@ -198,15 +278,16 @@ sentence, Original, Prepared, context, matched offset, provider, model, prompt,
 or correctness field. Counts are derived from events; duplicate counters are
 not stored.
 
-An episode approval records `alias_observed` for each reusable selected
-replacement. A later Smart request may record:
+The earlier replacement event names are retained as a technical reference.
+The complete-loop event representation must support every reusable operation.
+A later Smart request may record:
 
 1. `alias_observed` when retrieval finds the enabled alias;
 2. `profile_supplied` when the selected mapping is committed to the internal
    Smart request boundary; and
-3. `intended_produced` only when a valid Smart result contains a lexical repair
-   overlapping the matched alias span whose prepared span normalizes to the
-   intended term.
+3. `intended_produced` only when a valid Smart result performs the approved
+   repair at the matched trigger, including an anchored addition or removal.
+   Intended wording elsewhere in Prepared is not evidence of that repair.
 
 These names describe observations only. They do not assert that profile
 evidence caused the output or that the output was correct.
@@ -254,7 +335,27 @@ This deliberately simple segmentation is an implementation boundary, not a
 linguistic claim. Abbreviations and punctuation-free dictation may produce a
 larger preview, but the storage limit remains absolute.
 
-## Capture and approval state machine
+## Capture and approval
+
+### Shared review entry paths
+
+Successful Smart repair review uses that repair's bound before/after values.
+Correct Prepared uses only its frozen starting Prepared and confirmed wording.
+The Original-edit path below retains its exact pre/post binding. Review names
+the source rather than implying every before value is the Original field.
+
+All paths show unchecked candidates, individual changes, approved reusable
+phrase pairs, applicability restrictions, and optional bounded sentences. Save
+is separate from judging a repair correct, confirming Prepared, or delivery.
+Dismissal or save failure leaves confirmed Prepared and Outgoing intact.
+
+For manual Prepared review, Original changes, another correction opening, or
+Regenerate make it stale; settings changes do not. No provider or invented
+prompt provenance is needed. The state machine and input-change rules below
+describe the generated-result Original-edit path, not a rule that settings
+changes may invalidate a manual confirmation.
+
+### Original-edit capture state machine
 
 ```text
 ┌──────┐  current result  ┌──────────┐  first Original edit  ┌───────────┐
@@ -314,24 +415,25 @@ The interface describes this action as **save a Personal Correction**, never as
 “data collection.” Save requires explicit review and approval of the displayed
 Original → Intended mapping. That approval authorizes the saved correction for
 live Smart use across later sessions until it is edited, disabled, or deleted.
-An edit ends the prior mapping's authorization; the edited Original → Intended
-mapping must be reviewed and explicitly saved before it is enabled for reuse.
+Beginning a management edit suspends the prior mapping's reuse; the edited
+mapping must be reviewed and explicitly saved before reuse. Cancelling retains
+the previous wording disabled. Explicit re-enable of unchanged wording restores
+its existing authorization.
 
-Save is one database transaction. For each selected reusable replacement it:
+Save is one database transaction. For each selected reusable mapping it:
 
-1. normalizes intended and observed values;
-2. reuses the existing owned entry with the same `intended_key`, or creates an
-   enabled entry;
-3. reuses the existing owned alias on that entry, or creates it;
+1. validates the operation and its reviewed reusable before/intended pair;
+2. normalizes the pair and deduplicates only an equivalent owned mapping with
+   the same applicability restriction, or creates an enabled mapping;
+3. preserves differing intended wording or restrictions as separate mappings;
 4. creates the episode and ordered mapping rows; and
 5. creates idempotent capture `alias_observed` events.
 
 The unique `approval_id` makes a retry after a lost response return the original
 saved episode rather than duplicate it. An equivalent mapping adds recurrence
-to the existing entry; it does not create a duplicate entry. Save never merges
-or overwrites differing non-empty applicability context silently. If an
-existing entry's context differs, review must ask whether to keep the existing
-context or replace it.
+to the equivalent mapping; it does not create a duplicate. Saving a differing
+restriction does not replace an existing one. A deliberate management edit
+requires explicit review/save and cannot silently broaden another mapping.
 
 Ordinary editing, regeneration, Copy, target delivery, Outgoing selection,
 inaction, dismissal, closing the dialog, or leaving the page writes nothing.
@@ -356,7 +458,9 @@ HTTP 409 on conflict. A 409 never overwrites or deletes newer state.
 
 ## API boundary
 
-The first release adds this local API surface. All routes select the constant
+The following replacement-oriented route reference requires payload revision
+for anchored operations and all three review sources; it is not a new API
+implementation authorization. All routes select the constant
 local principal internally, call `require_configuration`, use privacy-safe
 validation errors, and return `Cache-Control: no-store` for content-bearing
 responses.
@@ -391,7 +495,9 @@ Retrieval runs only when all of these are true:
 - mode is Smart;
 - the local profile row exists and is globally enabled;
 - the entry and alias are enabled by virtue of the entry being enabled; and
-- the normalized alias occurs in normalized Original at a lexical boundary.
+- the normalized approved trigger occurs in normalized Original at a lexical
+  boundary. For an addition/removal this is the anchored before phrase, not an
+  empty alias or a word to delete everywhere.
 
 A lexical boundary means an alias beginning or ending with a Unicode letter,
 number, mark, or underscore cannot be adjacent to the same class in Original.
@@ -416,11 +522,15 @@ partial or order-dependent profile.
 
 Each retrieved item keeps entry and alias IDs only in local request state for
 event correlation. The typed object serialized inside the existing untrusted
-Smart-evidence JSON frame contains only intended term, matched alias, and
-approved applicability context. Observed/intended sentences, local IDs, other
-aliases, disabled entries, recurrence counts, and events are never sent to the
-provider. The Smart prompt treats mappings as user-owned evidence and may
-abstain when context is ambiguous.
+Smart-evidence JSON frame contains only the approved reusable before/intended
+pair, its operation, and applicability restriction. Observed/intended sentences,
+local IDs, other aliases, disabled entries, recurrence counts, and events are never sent to the
+provider. The Smart prompt treats mappings as user-owned evidence, using the
+current draft and selected Writing domain to judge applicability. It must
+abstain for literal, contradictory, inappropriate, or unresolved ambiguous
+uses. Differing meanings/restrictions are supplied as separate candidates;
+recency and counts cannot decide between them. Correctly recognized intended
+wording stays unchanged. Retrieval order is not a replacement priority.
 
 The public cleanup request model must no longer accept ordinary caller-supplied
 profile content. The route builds a separate internal Smart request after
@@ -438,7 +548,7 @@ delivery, or convert a Cleanup request into Smart.
 | Occurrence write fails before Smart handoff | Do not supply profile evidence; run Smart without it so `profile_supplied` is not falsely claimed. |
 | Provider, timeout, or result validation fails | Preserve existing fail-open-to-Original behavior; retain only successfully committed observed/supplied events. |
 | `intended_produced` write fails after a valid result | Keep the Prepared result and review queue; show history as incomplete without logging text. |
-| Candidate derivation fails | Keep ordinary edited Original and regeneration behavior; save remains unavailable. |
+| Candidate derivation fails | Preserve current Original, confirmed Prepared, and Outgoing eligibility; save remains unavailable. |
 | Approval validation fails | Keep current review state in browser memory and identify fields to fix; write nothing. |
 | Approval transaction fails | Roll back every entry, alias, episode, mapping, and event write; allow idempotent retry while current. |
 | Management/export read fails | Leave durable state unchanged and return a content-free safe error. |
@@ -451,14 +561,22 @@ sentences, profile JSON, exports, or provider payloads.
 
 ## Management and deletion
 
-Personal corrections is one user-visible management area. It shows global
-enablement, entries, aliases, approved context, per-entry enabled state,
+Personal corrections is one user-visible management area for all repair types.
+It shows global enablement, approved before/intended pairs, individual
+operations, applicability restrictions, per-correction enabled state,
 content-minimized event counts/history, and linked bounded episode evidence.
 Exact layout is an implementation choice; hiding any durable field is not.
 
 An entry update is transactional, owner-scoped, and revision-checked. Disabling
 an entry prevents future retrieval but preserves its episodes and history.
 Global disablement prevents all retrieval but preserves entries.
+
+Beginning an edit suspends that correction's reuse. Explicit review/save
+authorizes revised wording; cancellation leaves the previous wording retained
+but disabled. Explicit re-enable of unchanged wording restores its existing
+authorization. Neither management nor save silently regenerates or rewrites
+current Prepared. Conflict handling remains revision-checked and never
+overwrites newer state.
 
 UI deletion is scoped to the currently active development state. It must not
 claim to remove the correction from another state. A separate administration
@@ -542,10 +660,11 @@ snapshot from one read transaction. Empty or never-enabled state still exports
 the version, timestamp, `enabled: false`, and empty arrays. Deleted rows and
 unrelated application configuration are absent. Import is not part of stage 1.
 
-**Unresolved delivery choice — non-blocking for the schema:** The first release
-may expose this endpoint through a management-area Download action or an
-explicit admin command. Whichever surface is selected must emit the exact same
-schema and must not write a second server-managed copy.
+**Confirmed delivery surface:** Personal Corrections management offers
+**Download private export**. It emits one versioned snapshot and writes no
+second server-managed copy. The replacement-oriented v1 representation above
+needs technical reconciliation for anchored operations and distinct
+restrictions before implementation. Import remains deferred.
 
 ## Development-state location and inheritance
 
@@ -569,6 +688,12 @@ activate the state. Creation performs no backfill into existing states and no
 post-creation synchronization; parallel states may diverge.
 
 ## Database migration and rollback
+
+**Earlier migration plan, not current execution instructions:** the one-revision
+plan below predates the recorded foundation, approval, and manual-confirmation
+migrations. A later implementation design must start from the verified current
+schema, not recreate these tables or downgrade to this older assumed baseline.
+This session authorizes no migration or rollback.
 
 Add one Alembic revision after `0003_unified_preparation_default`. Upgrade:
 
@@ -607,8 +732,8 @@ not mutated.
 4. Both optional sentence fields are previewed, editable/removable, bounded to
    500 code points, and enforced at API and storage boundaries.
 5. Historical sentences and occurrence history never enter a provider request.
-6. Only matching enabled aliases from an enabled profile inform Smart. Personal
-   corrections never inform Cleanup.
+6. Only matching enabled approved triggers from an enabled profile inform Smart.
+   Personal corrections never inform Cleanup.
 7. Profile evidence is advice, not an automatic replacement command. Every
    resulting lexical change remains under the Smart review contract.
 8. Disablement is reversible retention. Deletion is hard removal within its
@@ -644,6 +769,10 @@ synthetic text.
 
 ### Capture and stale state
 
+- Cover all three review entry paths, unchanged unchecked selections, atomic
+  selected save, source identification, and no saving from repair confirmation.
+- Prove anchored addition/removal reuse rather than episode-only storage, and
+  preserve differing applicability restrictions without silent merging.
 - Browser/API tests cover asymmetric addition, removal, and replacement
   examples whose expected mappings are not derived from production diff code.
 - One Cleanup miss and one Smart miss reach review with exact pre/post binding
@@ -659,6 +788,10 @@ synthetic text.
 
 ### Retrieval and correction isolation
 
+- Include positive anchored addition/removal reuse and literal, contradictory,
+  conflicting-mapping, inappropriate-context, and already-correct controls.
+  Exact matching only retrieves candidates; a matched trigger must not force
+  a repair. Smart writes repairs into Prepared, not suggestions beside it.
 - Case, Unicode, apostrophe, whitespace, punctuation, lexical-boundary,
   duplicate-occurrence, ambiguous-alias, disabled-entry, and globally disabled
   cases prove the exact normalization and ordering contract.
@@ -699,15 +832,14 @@ synthetic text.
 
 ## Unresolved choices
 
-The following must be confirmed or deliberately deferred before the affected
-ticket is marked ready for implementation:
+The complete-loop product choices are confirmed; technical reconciliation is
+still needed before affected implementation work is ready:
 
-1. **Addition/removal reuse:** Confirm stage 1's proposed episode-only storage
-   for additions and removals, with replacement-only runtime reuse.
-2. **Managed-backup deletion:** Choose one policy in Management and deletion.
-   This blocks a complete durable-deletion claim.
-3. **Export surface:** Choose browser Download or admin command. This does not
-   block schema/store work.
+1. **Anchored operations and identity:** adapt storage, requests, provenance,
+   deduplication, events, and export without narrowing the approved behavior.
+2. **Managed-backup deletion — Deferred:** a separate policy and verification
+   remain required for complete durable deletion, not for agreeing this loop.
+3. **Export surface — Confirmed:** management-area Download, no server copy.
 4. **Exact management composition:** Navigation and component layout remain an
    implementation choice, but every durable field and destructive consequence
    must stay inspectable.
@@ -716,10 +848,15 @@ Fuzzy aliases, outcome feedback, import, hosted ownership, device sync,
 retention windows, automatic formulaic rules, Keychain storage, and any use of
 episodes in evaluation are deferred product work, not implementation choices.
 
-## Exact ticket-reconciliation proposal
+## Earlier ticket-reconciliation proposal — non-operative reference
 
-This section proposes tracker mutations only. Do not apply them without
-separate authorization.
+The following proposal predates bounded Prepared-confirmation delivery and the
+complete-loop design. Its replacement-only and episode-only assumptions are
+superseded by the confirmed contract above. Its issue dispositions, blockers,
+new-ticket graph, and readiness labels are not current instructions. Live issues
+own actionable state; this session neither decomposes build tickets nor
+authorizes tracker mutations. Retain the proposal only for provenance until a
+separately authorized planning task reconciles actual implementation work.
 
 ### Create umbrella
 
