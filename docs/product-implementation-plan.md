@@ -1,6 +1,6 @@
 # Sayloom product implementation plan
 
-- **Status:** Approved internal sequence; dependable-preparation prerequisite remains unresolved
+- **Status:** Approved internal sequence; dependable-preparation gate agreed, acceptance unverified
 - **Audience:** Product, design, engineering, research, and delivery contributors
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
@@ -31,7 +31,8 @@ Historical documents and Git history remain for provenance only.
 
 The [dependable single-user workflow map](https://github.com/dmclark/sayloom/issues/159)
 sets a planning prerequisite before proceeding to the Personal Corrections
-capability: agree the combined dependable-preparation acceptance gate. That
+capability. The [combined dependable-preparation acceptance gate](https://github.com/dmclark/sayloom/issues/162#issuecomment-6112233798)
+is agreed as an evidence contract; actual acceptance remains unverified. The
 gate distinguishes useful intended-wording correction before copying or
 delivery from continuity and availability alone. Original remains an explicit
 fallback. The local basic Cleanup backup is an incomplete supporting capability,
