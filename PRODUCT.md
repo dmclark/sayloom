@@ -83,7 +83,9 @@ same intended wording again for copying or delivery; it does not alter Original.
 
 ## User-confirmed Prepared
 
-This flow does not restore Evidence Collection.
+The bounded delivery is recorded in [the Prepared-confirmation change](https://github.com/dmclark/sayloom/pull/167).
+That delivery is not complete-loop or runtime acceptance and does not restore
+Evidence Collection.
 
 An explicit **Correct Prepared** action opens an editing step starting from
 current Prepared and is hidden when no current Prepared exists. This is not an
@@ -100,20 +102,21 @@ research reuse. Copying and target delivery remain separate explicit actions.
 
 Before confirming, the user may check **Also review for Personal Corrections**.
 This requests a separate review, not saving. Proposals compare only the editor's
-frozen starting Prepared with the exact confirmed wording. Generated changes
-outside that edit are not proposals. V1 offers nonempty replacements only;
-additions and removals remain
-in confirmed Prepared but cannot be saved as mappings. No typo or capitalization
-normalization runs after confirmation.
+frozen starting Prepared with the exact confirmed wording; unrelated generated
+changes are not proposals. The bounded delivery offers nonempty replacements
+only, with initially unchecked selections and atomic **Save selected**. Saving,
+dismissal, or save failure leaves confirmed Prepared intact. No typo or
+capitalization normalization runs after confirmation.
 
-Mapping fields are editable and selections start unchecked. One **Save selected**
-action atomically saves all selected replacements; choosing some, none, dismissing,
-or a save failure leaves corrected Prepared intact. Retries preserve the same
-approval and selection. Review is bound to that confirmed snapshot and becomes
-stale when Original changes, another correction opens, or Regenerate starts.
-Settings changes do not invalidate a manual confirmation or its review. Manual
-reviews work with preparation Off and record user-confirmed provenance without
-a processing prompt; candidate derivation is local and calls no provider.
+Mapping fields remain editable. Choosing some or none preserves confirmed
+Prepared; retries preserve the approval and selection. Manual reviews work
+with preparation Off when a current Prepared exists.
+
+Manual review is bound to that confirmed snapshot. Original changes, another
+correction opening, or Regenerate invalidate it; settings changes do not.
+Manual review calls no provider and records user-confirmed provenance without a
+processing prompt. Complete-loop additions/removals and successful Smart-repair
+saving below are target requirements, not claims about that bounded delivery.
 
 - The correction is bound to the exact Original revision. Any change to
   Original makes an open correction stale and prevents confirmation. A
@@ -129,10 +132,11 @@ a processing prompt; candidate derivation is local and calls no provider.
 - Regenerate uses Original, not the confirmed replacement. Starting it removes
   the replacement's delivery eligibility; current Original remains usable
   while processing is pending or fails.
-- Manual correction remains available with nonempty Original when automatic
-  preparation is Off or has failed, without a provider call. Off disables
-  automatic processing, not manual confirmation. Clearing the draft is separate
-  from confirmation.
+- With no current Prepared, Original remains editable and explicitly available
+  for copying/delivery, including when preparation is Off or fails. The valid
+  bound Original-edit capture path may offer Personal Correction review.
+  Original-seeded manual Prepared confirmation is deferred. Clearing the draft
+  is separate from confirmation.
 
 ## Correction and polishing modes
 
@@ -211,13 +215,46 @@ deferred; this discussion does not supersede the Personal Corrections contract.
 
 **Personal Corrections** serve live personalization for one local user. Sayloom
 saves a Personal Correction only after the user explicitly reviews and approves
-an **Observed → Intended** mapping. Observed comes from the frozen correction
-editor starting text, which may already be Prepared. Saving authorizes that
-correction for use in later sessions until the user edits, disables, or deletes
-it. Ordinary editing, processing, copying, delivery, dismissal, or inaction
-saves nothing.
+an **Observed → Intended** mapping. Observed is the identified before wording
+from the selected review path, which may already be Prepared. Saving authorizes
+that correction for use in later sessions until the user edits, disables, or
+deletes it. Ordinary editing, processing, copying, delivery, dismissal, or
+inaction saves nothing.
 Editing a saved mapping ends its prior authorization; the edited Observed →
 Intended mapping must be reviewed and explicitly saved before live reuse.
+
+The confirmed complete loop is **repair → review → explicitly save → contextual
+reuse**. A successful Smart repair can open a separate Personal Correction
+review without retyping; judging a repair correct does not save it. Successful
+Smart repairs, user corrections to Prepared, and valid Original-edit capture
+converge on the same explicit save boundary, with their before/after sources
+identified. The mapping's before value is not necessarily the Original field.
+
+Replacements, additions, and removals all support contextual reuse. Additions
+and removals require a short, user-reviewed before → intended phrase pair with
+enough unchanged wording to anchor the repair. Without a meaningful anchor,
+the change can remain in Prepared but is not yet saveable for reuse. Review
+shows the individual change, editable mapping and applicability restriction,
+and any optional bounded historical sentences. Historical sentences never
+enter later Smart requests.
+
+Initial retrieval uses exact normalized trigger matching, not fuzzy or semantic
+matching. A match makes a mapping a candidate, not a replacement command. Smart
+uses the current draft, selected Writing domain, and approved applicability
+restriction to judge whether reuse fits. Correct intended wording stays
+unchanged; literal, contradictory, inappropriate, or unresolved ambiguous uses
+require abstention. Distinct meanings or restrictions remain separate; saving
+one must not overwrite another or silently broaden its scope.
+
+One Personal Corrections area manages all repair types. Editing suspends the
+saved correction's reuse until explicit reviewed save; cancelling retains the
+old wording disabled. Explicitly re-enabling an unchanged correction restores
+its existing authorization. Management changes do not silently regenerate or
+rewrite current Prepared. Content-minimized history distinguishes a trigger
+observed, a mapping supplied, and an intended repair produced, without claiming
+correctness or causation. A private Download export supports user control with
+no retained server copy. The existing live-database deletion and deferred
+managed-backup boundaries remain unchanged.
 
 The durable owner ID is the internal constant `local`. The local product has no
 account, login, owner selector, or owner-management interface. Accounts remain
@@ -353,9 +390,12 @@ implemented unless later technical evidence says otherwise.
 The checkout contains no live Evidence Collection Workspace, runtime,
 participant-package, administration, or configuration behavior.
 
-The current implementation uses **Prepared** for the generated result and
-reserves **Outgoing** for the exact selected delivery value. The explicit
-user-confirmed Prepared interaction above remains unimplemented.
+The current implementation uses **Prepared** for the generated or explicitly
+user-confirmed result and reserves **Outgoing** for the exact selected delivery
+value. The [bounded Prepared-confirmation delivery](https://github.com/dmclark/sayloom/pull/167)
+records optional atomic selected-replacement saving. It does not complete
+ordered mixed mappings, successful Smart-repair saving, contextual reuse, or
+complete-loop acceptance. Runtime acceptance remains unverified.
 
 ### Durable constraints
 

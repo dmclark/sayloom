@@ -3,7 +3,7 @@
 - **Status:** Current execution guide
 - **Active phase:** 3 — Personal Corrections
 - **Initial user:** One implicit private local user
-- **Last confirmed:** 2026-10-02
+- **Last confirmed:** 2026-10-11 — complete-loop design; acceptance unverified
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
 - **Domain vocabulary:** [`GLOSSARY.md`](../GLOSSARY.md)
@@ -64,22 +64,22 @@ complete the confirmed Personal Corrections flywheel or state-portability
 contract:
 
 ```text
-Smart misses wording
+Smart repairs wording / user corrects a missed repair
         │
         ▼
-User edits Original
+Separate review from Smart repair, Prepared edit, or bound Original edit
         │
         ▼
-Review Original → Intended
+Review selected before → intended mappings and applicability restrictions
         │
         ▼
-Save a Personal Correction
+Explicitly save selected Personal Corrections atomically
         │
         ▼
-Personal correction informs a later Smart request
+Exact trigger match supplies candidates for contextual Smart reuse / abstention
         │
         ▼
-Inspect recurrence and export private discovery data
+Manage corrections, inspect minimized history, and download private export
 ```
 
 The state-root migration and Evidence Collection retirement are complete.
@@ -89,10 +89,20 @@ dedicated tests are absent. Historical documents remain for provenance only.
 The partial Personal Corrections foundation does not make the newly confirmed
 sequence complete.
 
-The local profile foundation and bound missed-repair review are complete. The
-immediate next deliverable is [#13](https://github.com/dmclark/sayloom/issues/13):
-explicit approval and durable save of the reviewed Personal Correction episode.
-Evidence Collection must not be reintroduced as part of that work.
+The local profile foundation and bound missed-repair review are recorded
+delivered. The [merged Prepared-confirmation delivery](https://github.com/dmclark/sayloom/pull/167)
+adds exact confirmation and optional atomic selected-replacement saving. It
+does not complete [ordered mixed mappings](https://github.com/dmclark/sayloom/issues/150)
+or contextual reuse. The [complete-loop design](https://github.com/dmclark/sayloom/issues/163)
+is owner-agreed in [this design session](https://ampcode.com/threads/T-01a12c59-2533-768a-810a-3458f41436b1).
+Its resolution record owns document-delivery links and closure status. Neither design
+agreement nor bounded delivery establishes runtime or complete-loop acceptance.
+
+The dependable-preparation evidence gate is agreed, but actual acceptance
+remains unverified. Do not advance implementation from this guide's older issue
+table or prompts. Live issues own actionable state. This reconciliation selects
+no build tickets, authorizes no operations, and retains Personal Corrections
+before new-state inheritance. Evidence Collection must not be reintroduced.
 
 ## Current contract
 
@@ -107,6 +117,9 @@ Evidence Collection must not be reintroduced as part of that work.
   disabled, or deleted.
 - Editing ends the prior mapping's authorization. The edited Original →
   Intended mapping requires review and explicit save before reuse.
+- Beginning a management edit suspends reuse; cancellation retains the old
+  wording disabled. Explicit re-enable of an unchanged correction restores its
+  existing authorization. Management does not silently rewrite Prepared.
 - Every entry remains inspectable, editable, disableable, and deletable.
 - Deleting an entry also deletes its linked occurrence history from durable
   local storage and future exports.
@@ -117,12 +130,21 @@ Evidence Collection must not be reintroduced as part of that work.
   no approval.
 - After Cleanup or Smart misses wording, the user edits Original and may choose
   **This is what I meant** for the exact pre-edit and post-edit revisions.
+- A successful Smart repair can open a separate Personal Correction review
+  without retyping. Judging it correct saves nothing.
+- Correct Prepared starts only from current Prepared. Its optional save review
+  compares frozen starting Prepared with confirmed wording, not unrelated
+  generated changes. Original-seeded Prepared confirmation is deferred.
 - Sayloom derives candidate additions, removals, and replacements. The user
-  selects and may edit the mappings to save.
+  selects and may edit initially unchecked mappings to save. Additions/removals
+  require explicitly reviewed short, nonempty anchored before → intended
+  phrase pairs; without an anchor they remain unsaveable for reuse.
 - The user explicitly reviews and approves Original → Intended before Sayloom
   can **save a Personal Correction**. The interface does not call this data
   collection.
-- Multiple selected mappings may belong to one correction episode.
+- All three paths identify their before/after source and converge on one
+  separate review. One Save selected atomically saves 1–20 selected mappings;
+  saving, dismissal, and failure do not change confirmed Prepared or Outgoing.
 - The save interaction visibly previews all durable private text and allows the
   user to edit or remove bounded context before approval.
 
@@ -130,8 +152,8 @@ Evidence Collection must not be reintroduced as part of that work.
 
 One user-visible **Personal corrections** area owns:
 
-- an intended canonical term;
-- one or more misheard aliases;
+- approved before → intended phrase pairs for all three repair operations;
+- individual changes and their reusable triggers;
 - optional, approved applicability context;
 - enabled state; and
 - linked occurrence history.
@@ -147,7 +169,8 @@ Each explicitly saved episode may retain:
 - the bounded pre-edit observed sentence;
 - the bounded post-edit intended sentence;
 - the user-selected derived mappings;
-- mode and correction-version metadata;
+- source and correction-version metadata, with no invented processing prompt
+  for user-confirmed wording;
 - timestamps; and
 - content-minimized occurrence and runtime-use events.
 
@@ -156,19 +179,25 @@ They never include the surrounding document. Sayloom must pre-fill only the
 containing sentence, display both versions before saving, and allow either to be
 edited or removed.
 
-The exact sentence-length limit is **Deferred** until the implementation
-specification. It must be short, explicit, and enforced at the storage boundary.
+The specification bounds each optional sentence to 500 Unicode code points.
+Review permits independent editing/removal; storage enforces the limit.
 
 ### Runtime reuse
 
 - Personal corrections initially inform Smart only. Cleanup remains
   account-independent.
-- Request-time retrieval deterministically selects enabled entries whose alias
-  occurs in Original.
+- Request-time retrieval uses exact normalized trigger matching against
+  Original, including approved anchored addition/removal phrases. Fuzzy and
+  semantic matching remain deferred.
 - Smart receives only those selected mappings and their approved applicability
   context. It does not receive historical observed or intended sentences.
 - A mapping is user-owned evidence, not an unconditional replacement command.
-  Smart may apply it when context fits and abstain when wording is ambiguous.
+  Smart judges applicability using the current draft, selected Writing domain,
+  and approved restriction. Literal, contradictory, inappropriate, or unresolved
+  ambiguous uses require abstention; correctly recognized intended wording
+  remains unchanged. The red-cat/Raycast example is discussion evidence only.
+- Different meanings or restrictions remain separate. Equivalent mappings may
+  be deduplicated; another mapping is never overwritten or broadened silently.
 - Every resulting lexical change remains reviewable through the existing Smart
   repair contract.
 
@@ -199,9 +228,9 @@ Broaden retrieval only in response to observed misses.
 Equivalent repeated corrections update recurrence information rather than
 creating duplicate profile entries. Content-minimized history distinguishes:
 
-1. an alias was observed;
+1. an approved trigger was observed;
 2. its profile entry was supplied to Smart; and
-3. Prepared contained the intended replacement.
+3. Prepared produced the intended repair, including anchored addition/removal.
 
 These events do not prove that the entry caused the result or that the result
 was correct. Copy and delivery never count as approval. Optional **helped** or
@@ -211,9 +240,11 @@ was correct. Copy and delivery never count as approval. Optional **helped** or
 
 The first useful release includes a documented, machine-readable private export
 of Personal Corrections and their content-minimized occurrence history. The
-export supports user control and private portability; it does not authorize
+management area offers Download private export without a retained server copy.
+The export supports user control and private portability; it does not authorize
 research or evaluation. Its exact format is defined in the implementation
-specification.
+specification; adapting its replacement-oriented representation to anchored
+operations and distinct restrictions remains technical design work.
 
 Saved corrections and episodes are live product state. They must never be
 presented as evaluation evidence unless a new approved purpose and contract
@@ -256,11 +287,16 @@ gate is met and its evidence is recorded in this guide or its linked issue.
 This evidence describes current partial implementation only. It does not
 satisfy phase 3 or justify skipping phases 1 and 2.
 
-## Ticket status
+## Earlier ticket dispositions — not live status
 
-This table records the active flywheel's current issue disposition.
+This table preserves the earlier planning checkpoint, not current issue status
+or authority to choose the next build. In particular, its “Next” marker and
+deferred model-proposed-repair path predate bounded Prepared delivery and the
+agreed complete-loop design. Successful Smart-repair saving is now a target
+requirement; separate outcome feedback remains deferred. Recheck live issues
+before any separately authorized implementation or tracker reconciliation.
 
-| Issue | Current disposition |
+| Issue | Earlier recorded disposition |
 | --- | --- |
 | [#131](https://github.com/dmclark/sayloom/issues/131) | **In progress:** phase 3 umbrella; close only after the first usefulness demonstration. |
 | [#109](https://github.com/dmclark/sayloom/issues/109) | **Complete:** bound missed-repair review and bounded observed/intended sentence evidence are delivered without approval writes. |
@@ -273,24 +309,30 @@ This table records the active flywheel's current issue disposition.
 
 ## First usefulness gate
 
-The personal flywheel is useful when all of the following are demonstrated in
-the private local application:
+The following is a capability checklist, not an executed or sufficient
+complete-loop acceptance result. [Complete-loop usefulness acceptance](https://github.com/dmclark/sayloom/issues/164)
+remains a separate decision. Its scenarios/thresholds are not selected here.
 
-1. Smart misses a real intended term.
-2. The user edits Original and starts the correction review.
+1. Smart puts an inferred repair directly into Prepared, or the user supplies
+   intended wording for a missed repair.
+2. The appropriate bound entry path opens the separate correction review.
 3. The user reviews Original → Intended, selects or edits the derived mapping,
    and explicitly saves a Personal Correction.
 4. The mapping appears in Personal Corrections and can be edited, disabled, or
    deleted.
-5. A later Original contains the alias.
+5. A later Original contains the approved trigger, including an anchored
+   addition/removal phrase where applicable.
 6. Retrieval supplies the enabled mapping to Smart.
-7. Prepared contains the intended correction as a reviewable lexical change.
+7. Smart applies an appropriate repair directly in Prepared as a reviewable
+   change, and abstains in contrasting inappropriate or ambiguous contexts.
 8. The occurrence history distinguishes what was observed, supplied, and
    produced without claiming correctness or causation.
 9. The private export contains the approved entry and linked content-minimized
    history, and no unrelated document text.
 
 Formal accuracy statistics are not part of this gate.
+All three repair types and management authorization boundaries are requirements;
+one replacement-only demonstration does not establish complete-loop acceptance.
 
 ## Deferred tracks
 
@@ -300,7 +342,8 @@ The following work remains valid but inactive:
 - automatic Smart strategy comparison and held-out selection;
 - participant-package preparation and formal intended-text evaluation, unless
   a new purpose and contract are approved;
-- optional model-proposed repair confirmation and outcome feedback;
+- optional standalone model-repair confirmation and outcome feedback, not the
+  agreed successful Smart-repair save path;
 - hosted identity, cross-user isolation, and hosted persistence;
 - pilots, partner demonstrations, and broad efficacy claims; and
 - multi-user personalization or learning.
@@ -323,7 +366,13 @@ issue.
 
 ## Copy-ready prompts
 
-### Use now: implement explicit approval and save
+### Earlier approval-only prompt — do not use as the next deliverable
+
+This prompt predates bounded Prepared delivery and the complete-loop design.
+It is retained for provenance, not implementation authority or current issue
+selection. Review the agreed contract and live issues before separately
+authorizing any implementation; do not execute or decompose work in this design
+session.
 
 ```text
 Use docs/personal-corrections-execution-guide.md and ADR-0002 as the confirmed
@@ -336,7 +385,7 @@ in the same change. Follow the confirmed implementation specification and #13's
 acceptance criteria.
 ```
 
-### After the specification is confirmed: reconcile tickets
+### Earlier ticket-reconciliation prompt — separately authorized work only
 
 ```text
 Using the confirmed Personal corrections implementation specification and

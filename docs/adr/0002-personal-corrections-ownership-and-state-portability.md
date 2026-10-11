@@ -46,6 +46,18 @@ copying, delivery, dismissal, or inaction saves nothing.
 Editing ends the prior mapping's authorization. The edited Original → Intended
 mapping requires review and explicit save before it becomes authorized.
 
+**Complete-loop clarification, owner-confirmed 2026-10-11:** Original → Intended
+names the reviewed before/intended relationship, not a requirement to edit the
+Original field. Successful Smart repairs, Prepared edits, and valid bound
+Original edits can enter separate save review. The confirmed design in
+`PRODUCT.md` includes contextual replacement and anchored addition/removal
+reuse. None of those entry paths saves implicitly. Beginning a management edit
+suspends reuse; cancellation retains the old wording disabled. Explicitly
+re-enabling an unchanged mapping restores its existing authorization; an edited
+mapping requires reviewed save. This clarification changes no ownership,
+state-portability, deletion/backup scope, or implementation sequence, and
+establishes no runtime acceptance.
+
 Product language says **save a Personal Correction**. It does not describe
 this action as data collection.
 

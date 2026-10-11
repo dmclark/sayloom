@@ -1,6 +1,6 @@
 # Sayloom product implementation plan
 
-- **Status:** Approved internal sequence; dependable-preparation gate agreed, acceptance unverified
+- **Status:** Approved internal sequence; complete-loop design resolved, dependable-preparation and complete-loop acceptance unverified
 - **Audience:** Product, design, engineering, research, and delivery contributors
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
@@ -43,6 +43,18 @@ ADR-0002 and the Personal Corrections execution guide. Agreement on an evidence
 contract does not establish that acceptance has passed, authorize execution, or
 complete the Personal Corrections loop. This clarification does not update the
 implementation-state claims below.
+
+The [complete Personal Corrections loop design](https://github.com/dmclark/sayloom/issues/163)
+is resolved as an owner-agreed design in [the design session](https://ampcode.com/threads/T-01a12c59-2533-768a-810a-3458f41436b1).
+Its issue resolution owns the document-delivery record; design resolution is
+not implementation or acceptance. The contract now includes separate saving review for successful
+Smart repairs, Prepared edits, and valid Original-edit capture; anchored
+addition/removal reuse; exact trigger retrieval with contextual abstention;
+and common management/authorization boundaries. The bounded
+[Prepared-confirmation delivery](https://github.com/dmclark/sayloom/pull/167)
+does not complete ordered mixed mappings or the loop. Current issues, not older
+disposition tables, own actionable state. This reconciliation creates no build
+tickets and does not advance or weaken the unverified preparation gate.
 
 Implementation proceeds in this order:
 
@@ -184,13 +196,17 @@ The review interaction follows these rules:
   exact visible Original or Prepared selection.
 
 Task context is bounded to one request and is never retained in durable state
-or logs. The Private correction profile in the Smart MVP contains curated
-preferred terms and known confusions. It is disabled by default, owned by the
-local principal, inspectable, editable, deletable, and supplied only when
-relevant and explicitly enabled. It is not Correction memory. A later confirmed
-repair may produce a conservative memory proposal, but saving it requires a
-separate explicit approval; confirmation, copying, dismissal, and ordinary
-preparation save nothing.
+or logs. Personal Corrections form one local-principal management area and
+inform Smart only. Separate review of a successful Smart repair requires no
+retyping. Prepared-edit proposals include only the user's edit, not unrelated
+generated changes. All paths preview initially unchecked mappings and durable
+fields; one explicit Save selected saves atomically. Judging a repair correct,
+confirming Prepared, copying, dismissal, and ordinary preparation save nothing.
+Absent saved state means no enabled profile; first approved save creates an
+enabled correction. Later global disablement remains respected. The historical
+Private correction profile/Correction memory distinction does not require two
+management areas or make successful-repair saving a deferred outcome-feedback
+feature. See the current specification for authorization and retention bounds.
 
 The current prototype protocol supersedes the older fixed
 prompt/context/knowledge-arm experiment. It compares correction methods and
@@ -269,10 +285,23 @@ disableable, and deletable for one local user.
 ### In scope
 
 - Save only an explicitly reviewed and approved Original → Intended mapping.
+- Support replacements and anchored additions/removals. Review identifies the
+  source, individual change, reusable before/intended phrase pair, and approved
+  applicability restriction. A missing anchor does not create a reusable rule.
 - Treat save as authorization for live use across sessions until edit,
   disablement, or deletion.
 - Let users inspect, edit, disable, and delete saved Personal Corrections.
+- Beginning an edit suspends reuse; cancellation retains old wording disabled.
+  Explicit re-enable restores unchanged authorization; edited mappings require
+  reviewed save. Management never silently regenerates current Prepared.
 - Supply only enabled knowledge owned by `local` during Smart preparation.
+- Initially retrieve exact normalized triggers, then let Smart judge current
+  context and Writing domain. Distinct meanings/restrictions remain separate;
+  literal, contradictory, inappropriate, or unresolved ambiguous uses require
+  abstention. Correct intended wording stays unchanged. Historical sentences
+  never enter Smart requests and Personal Corrections never affect Cleanup.
+- Provide minimized observed/supplied/produced history for all reusable repair
+  types and management-area private Download export with no server copy.
 - Scope UI deletion to the current state and provide a separate preview/confirm
   administration command for purging registered states only.
 - Treat both as live-database operations. Do not claim complete durable deletion
