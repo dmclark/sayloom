@@ -9,3 +9,4 @@ Ideas to revisit, not current commitments.
 ## UI
 - 2026-08-16  Add a collapsible Cleaned tray with explicit Keep original / Use cleaned actions.
 - 2026-08-23  Revisit desktop viewport density and panel-height polish near the end, after the core Workspace behavior is stable.
+- 2026-10-10  Promoted to [#166: Handle accidental typos introduced while correcting Prepared](https://github.com/dmclark/sayloom/issues/166); follow-up scope and post-v1 timing are tracked in the issue.
