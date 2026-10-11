@@ -22,7 +22,7 @@ from local_text.personal_corrections import (
 )
 
 PREDECESSOR_REVISION = "0003_unified_preparation_default"
-PERSONAL_CORRECTIONS_REVISION = "0005_personal_correction_approval"
+PERSONAL_CORRECTIONS_REVISION = "0006_confirmed_correction_batches"
 
 
 def migrated_database(path: Path) -> ApplicationDatabase:

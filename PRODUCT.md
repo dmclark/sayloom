@@ -83,11 +83,10 @@ same intended wording again for copying or delivery; it does not alter Original.
 
 ## User-confirmed Prepared
 
-These are confirmed target requirements, not implemented behavior or permission
-to restore Evidence Collection.
+This flow does not restore Evidence Collection.
 
 An explicit **Correct Prepared** action opens an editing step starting from
-current Prepared, or Original if no current Prepared exists. This is not an
+current Prepared and is hidden when no current Prepared exists. This is not an
 always-editable Prepared field. Opening the step freezes its starting text and
 supersedes pending generation for that draft; late responses cannot replace
 editing or confirmed wording.
@@ -98,6 +97,23 @@ wording cannot be confirmed; the interface explains that intended wording is
 required. Confirmation runs no Cleanup or Smart processing and does not copy,
 deliver, submit to a destination, save a Personal Correction, or authorize
 research reuse. Copying and target delivery remain separate explicit actions.
+
+Before confirming, the user may check **Also review for Personal Corrections**.
+This requests a separate review, not saving. Proposals compare only the editor's
+frozen starting Prepared with the exact confirmed wording. Generated changes
+outside that edit are not proposals. V1 offers nonempty replacements only;
+additions and removals remain
+in confirmed Prepared but cannot be saved as mappings. No typo or capitalization
+normalization runs after confirmation.
+
+Mapping fields are editable and selections start unchecked. One **Save selected**
+action atomically saves all selected replacements; choosing some, none, dismissing,
+or a save failure leaves corrected Prepared intact. Retries preserve the same
+approval and selection. Review is bound to that confirmed snapshot and becomes
+stale when Original changes, another correction opens, or Regenerate starts.
+Settings changes do not invalidate a manual confirmation or its review. Manual
+reviews work with preparation Off and record user-confirmed provenance without
+a processing prompt; candidate derivation is local and calls no provider.
 
 - The correction is bound to the exact Original revision. Any change to
   Original makes an open correction stale and prevents confirmation. A
@@ -195,10 +211,12 @@ deferred; this discussion does not supersede the Personal Corrections contract.
 
 **Personal Corrections** serve live personalization for one local user. Sayloom
 saves a Personal Correction only after the user explicitly reviews and approves
-an **Original → Intended** mapping. Saving authorizes that correction for use in
-later sessions until the user edits, disables, or deletes it. Ordinary editing,
-processing, copying, delivery, dismissal, or inaction saves nothing.
-Editing a saved mapping ends its prior authorization; the edited Original →
+an **Observed → Intended** mapping. Observed comes from the frozen correction
+editor starting text, which may already be Prepared. Saving authorizes that
+correction for use in later sessions until the user edits, disables, or deletes
+it. Ordinary editing, processing, copying, delivery, dismissal, or inaction
+saves nothing.
+Editing a saved mapping ends its prior authorization; the edited Observed →
 Intended mapping must be reviewed and explicitly saved before live reuse.
 
 The durable owner ID is the internal constant `local`. The local product has no
@@ -234,7 +252,7 @@ Personalization belongs exclusively to one user. Information learned from one
 person must never affect another person's corrections.
 
 Users can inspect, edit, disable, or delete each saved Personal Correction.
-Only an explicitly reviewed and approved Original → Intended mapping becomes
+Only an explicitly reviewed and approved Observed → Intended mapping becomes
 durable personalization. Its authorization persists across sessions until the
 user edits, disables, or deletes it. A reviewed and explicitly saved edit starts
 new authorization for the edited mapping.

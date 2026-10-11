@@ -15,6 +15,15 @@
   const elements = {
     original: document.querySelector("#original-text"),
     prepared: document.querySelector("#prepared-text"),
+    correctPrepared: document.querySelector("#correct-prepared"),
+    preparedOrigin: document.querySelector("#prepared-origin"),
+    preparedCorrectionDialog: document.querySelector("#prepared-correction-dialog"),
+    preparedCorrectionForm: document.querySelector("#prepared-correction-form"),
+    intendedPrepared: document.querySelector("#intended-prepared"),
+    reviewPersonalCorrections: document.querySelector("#review-personal-corrections"),
+    preparedCorrectionState: document.querySelector("#prepared-correction-state"),
+    confirmPrepared: document.querySelector("#confirm-prepared"),
+    cancelPreparedCorrection: document.querySelector("#cancel-prepared-correction"),
     draftPreparationMode: document.querySelector("#draft-preparation-mode"),
     smartModeDisclosure: document.querySelector("#smart-mode-disclosure"),
     defaultPreparationMode: document.querySelector("#default-preparation-mode"),
@@ -81,8 +90,6 @@
     personalCorrectionContext: document.querySelector("#personal-correction-context"),
     personalCorrectionsEmpty: document.querySelector("#personal-corrections-empty"),
     personalCorrectionList: document.querySelector("#personal-correction-list"),
-    openMissedRepair: document.querySelector("#open-missed-repair"),
-    missedRepairState: document.querySelector("#missed-repair-state"),
     missedRepairDialog: document.querySelector("#missed-repair-dialog"),
     missedRepairForm: document.querySelector("#missed-repair-form"),
     closeMissedRepair: document.querySelector("#close-missed-repair"),
@@ -103,8 +110,7 @@
     missedRepairContext: document.querySelector("#missed-repair-context"),
     missedRepairApproval: document.querySelector("#missed-repair-approval"),
     missedRepairSavedResult: document.querySelector("#missed-repair-saved-result"),
-    missedRepairSavedObserved: document.querySelector("#missed-repair-saved-observed"),
-    missedRepairSavedIntended: document.querySelector("#missed-repair-saved-intended"),
+    missedRepairSavedMappings: document.querySelector("#missed-repair-saved-mappings"),
     missedRepairSavedContext: document.querySelector("#missed-repair-saved-context"),
     targetList: document.querySelector("#target-list"),
     targetAddItem: document.querySelector("#target-add-item"),
@@ -155,6 +161,9 @@
   let defaultPreparationMode = "conservative";
   let draftPreparationMode = "conservative";
   let draftRevision = 0;
+  let preparedCorrectionRevision = null;
+  let preparedCorrectionStartingText = null;
+  let confirmedPreparedRevision = null;
   let draftModeOverridden = false;
   let currentOriginalText = elements.original.value;
   let failedCorrectionMode = null;
@@ -386,24 +395,12 @@
     renderSmartRepairReview();
   }
 
-  function sameMissedRepairTransformation(binding) {
+  function missedRepairIsCurrent(binding) {
     return binding
-      && binding.mode === effectiveCorrectionMode()
-      && binding.taskContext === (
-        effectiveCorrectionMode() === "smart" ? elements.smartTaskContext.value : ""
-      )
-      && binding.promptVersionId === activePromptVersionId;
-  }
-
-  function renderMissedRepairAction() {
-    const available = missedRepairBinding
-      && ["editing", "available"].includes(missedRepairBinding.state)
-      && sameMissedRepairTransformation(missedRepairBinding);
-    elements.openMissedRepair.hidden = !available;
-    elements.openMissedRepair.disabled = !available;
-    elements.missedRepairState.textContent = available
-      ? missedRepairBinding.state === "editing" ? "Edit in progress" : "Correction review available"
-      : "";
+      && binding.postRevision === draftRevision
+      && confirmedPreparedRevision === draftRevision
+      && binding.postEdit === elements.prepared.value
+      && preparedCorrectionRevision === null;
   }
 
   function markMissedRepairStale(reason) {
@@ -416,38 +413,6 @@
     } else {
       missedRepairBinding = null;
     }
-    renderMissedRepairAction();
-  }
-
-  function bindCurrentCleanupResult(originalText, correctionMode, taskContext) {
-    if (
-      missedRepairBinding
-      && ["editing", "available", "loading", "reviewing"].includes(missedRepairBinding.state)
-      && missedRepairBinding.postEdit === originalText
-      && missedRepairBinding.postRevision === draftRevision
-      && missedRepairBinding.mode === correctionMode
-      && missedRepairBinding.taskContext === taskContext
-      && missedRepairBinding.promptVersionId === activePromptVersionId
-    ) {
-      if (missedRepairBinding.state === "editing") missedRepairBinding.state = "available";
-      renderMissedRepairAction();
-      return;
-    }
-    if (missedRepairBinding?.state === "reviewing") {
-      markMissedRepairStale("This review is stale because a different result replaced it.");
-      return;
-    }
-    missedRepairBinding = {
-      state: "eligible",
-      preEdit: originalText,
-      preRevision: draftRevision,
-      postEdit: null,
-      postRevision: null,
-      mode: correctionMode,
-      taskContext,
-      promptVersionId: activePromptVersionId,
-    };
-    renderMissedRepairAction();
   }
 
   function updateSentenceLimitState() {
@@ -460,7 +425,8 @@
     let overLimit = false;
     fields.forEach(([retained, field, count, removed]) => {
       const included = retained.dataset.included === "true";
-      field.disabled = !included || missedRepairBinding?.state === "stale";
+      field.disabled = !included || Boolean(missedRepairBinding?.savePayload)
+        || missedRepairBinding?.state === "stale";
       retained.textContent = included ? "Remove from saved episode" : "Include in saved episode";
       removed.hidden = included;
       const length = Array.from(field.value).length;
@@ -474,21 +440,19 @@
       elements.missedRepairReviewState.dataset.state = overLimit ? "error" : "ready";
       elements.missedRepairReviewState.textContent = overLimit
         ? "Shorten or remove each sentence over 500 code points before saving."
-        : "Review is current. Select one valid replacement to save.";
+        : "Prepared is already confirmed. Select replacements to remember. Additions and removals cannot be saved in v1; they remain in Prepared.";
     }
     updateMissedRepairApprovalState();
   }
 
-  function selectedMissedRepairMapping() {
-    const selected = Array.from(elements.missedRepairCandidateList.children)
-      .filter((item) => item.children[0].checked);
-    if (selected.length !== 1 || selected[0].dataset.operation !== "replacement") return null;
-    const item = selected[0];
-    return {
-      operation: "replacement",
-      observed_text: item.children[1].children[1].value,
-      intended_text: item.children[3].children[1].value,
-    };
+  function selectedMissedRepairMappings() {
+    return Array.from(elements.missedRepairCandidateList.children)
+      .filter((item) => item.children[0].checked)
+      .map((item) => ({
+        operation: "replacement",
+        observed_text: item.children[1].children[1].value,
+        intended_text: item.children[3].children[1].value,
+      }));
   }
 
   function validPersonalCorrectionText(value, maximum) {
@@ -497,7 +461,7 @@
   }
 
   function updateMissedRepairApprovalState() {
-    const mapping = selectedMissedRepairMapping();
+    const mappings = selectedMissedRepairMappings();
     const sentencesValid = [
       [elements.retainObservedSentence, elements.observedSentence],
       [elements.retainIntendedSentence, elements.intendedSentence],
@@ -506,14 +470,16 @@
     ));
     const contextValid = !elements.missedRepairContext.value
       || validPersonalCorrectionText(elements.missedRepairContext.value, 500);
-    const mappingValid = mapping
-      && validPersonalCorrectionText(mapping.observed_text, 200)
-      && validPersonalCorrectionText(mapping.intended_text, 200);
+    const mappingValid = mappings.length > 0 && mappings.every((mapping) => (
+      validPersonalCorrectionText(mapping.observed_text, 200)
+      && validPersonalCorrectionText(mapping.intended_text, 200)
+    ));
     const ready = missedRepairBinding?.state === "reviewing"
+      && missedRepairIsCurrent(missedRepairBinding)
       && sentencesValid && contextValid && mappingValid;
     elements.missedRepairApproval.disabled = !ready;
     if (missedRepairBinding?.state === "reviewing" && !missedRepairBinding.saveFailed) {
-      elements.missedRepairApproval.textContent = "Save Personal Correction";
+      elements.missedRepairApproval.textContent = "Save selected";
     }
   }
 
@@ -554,14 +520,7 @@
       intendedField.append(intendedLabel, intended);
       item.dataset.operation = candidate.operation;
       item.append(selected, observedField, arrow, intendedField);
-      selected.addEventListener("change", () => {
-        if (selected.checked) {
-          Array.from(elements.missedRepairCandidateList.children).forEach((other) => {
-            if (other !== item) other.children[0].checked = false;
-          });
-        }
-        updateMissedRepairApprovalState();
-      });
+      selected.addEventListener("change", updateMissedRepairApprovalState);
       observed.addEventListener("input", updateMissedRepairApprovalState);
       intended.addEventListener("input", updateMissedRepairApprovalState);
       elements.missedRepairCandidateList.append(item);
@@ -569,17 +528,18 @@
   }
 
   async function openMissedRepairReview() {
-    if (
-      !missedRepairBinding
-      || !["editing", "available"].includes(missedRepairBinding.state)
-      || !sameMissedRepairTransformation(missedRepairBinding)
-    ) return;
+    if (!missedRepairIsCurrent(missedRepairBinding)) return;
     const binding = missedRepairBinding;
-    binding.postEdit = elements.original.value;
-    binding.postRevision = draftRevision;
     binding.state = "loading";
-    renderMissedRepairAction();
     elements.missedRepairCandidateList.textContent = "";
+    elements.missedRepairSentences.hidden = true;
+    elements.missedRepairCandidates.hidden = true;
+    elements.missedRepairContextField.hidden = true;
+    elements.missedRepairSavedResult.hidden = true;
+    elements.missedRepairApproval.hidden = false;
+    elements.missedRepairApproval.disabled = true;
+    elements.missedRepairApproval.textContent = "Save selected";
+    elements.dismissMissedRepair.textContent = "Not now";
     elements.missedRepairReviewState.dataset.state = "loading";
     elements.missedRepairReviewState.textContent = "Deriving correction candidates…";
     elements.missedRepairDialog.showModal();
@@ -590,8 +550,8 @@
         body: JSON.stringify({
           before_text: binding.preEdit,
           after_text: binding.postEdit,
-          source_mode: binding.mode,
-          prompt_version_id: binding.promptVersionId,
+          source_mode: "user_confirmed",
+          prompt_version_id: null,
           correction_contract_version: "personal-correction-v1",
         }),
       });
@@ -600,11 +560,9 @@
       if (
         binding !== missedRepairBinding
         || binding.state !== "loading"
-        || binding.postRevision !== draftRevision
-        || binding.postEdit !== elements.original.value
-        || !sameMissedRepairTransformation(binding)
+        || !missedRepairIsCurrent(binding)
       ) {
-        markMissedRepairStale("This review is stale because the draft changed.");
+        if (binding === missedRepairBinding) markMissedRepairStale("This review is stale because the draft changed.");
         return;
       }
       if (
@@ -616,18 +574,24 @@
       binding.state = "reviewing";
       binding.approvalId = crypto.randomUUID();
       binding.saveFailed = false;
-      renderMissedRepairCandidates(result.candidates);
+      renderMissedRepairCandidates(result.candidates.filter((candidate) => (
+        candidate.operation === "replacement"
+        && candidate.original_span.text.trim() && candidate.prepared_span.text.trim()
+      )));
       elements.retainObservedSentence.dataset.included = "true";
       elements.observedSentence.value = result.observed_sentence;
       elements.retainIntendedSentence.dataset.included = "true";
       elements.intendedSentence.value = result.intended_sentence;
       elements.missedRepairContext.value = result.applicability_context || "";
+      elements.missedRepairContext.disabled = false;
+      elements.retainObservedSentence.disabled = false;
+      elements.retainIntendedSentence.disabled = false;
       elements.missedRepairSavedResult.hidden = true;
       elements.missedRepairSentences.hidden = false;
       elements.missedRepairCandidates.hidden = false;
       elements.missedRepairContextField.hidden = false;
       elements.missedRepairApproval.hidden = false;
-      elements.dismissMissedRepair.textContent = "Dismiss";
+      elements.dismissMissedRepair.textContent = "Not now";
       updateSentenceLimitState();
     } catch (error) {
       if (binding !== missedRepairBinding || binding.state === "stale") return;
@@ -638,17 +602,15 @@
       missedRepairBinding = null;
       elements.missedRepairReviewState.dataset.state = "error";
       elements.missedRepairReviewState.textContent = (
-        "Correction candidates could not be derived. Original remains editable and regeneration continues normally."
+        "Correction candidates could not be derived. Your confirmed Prepared remains intact."
       );
       elements.missedRepairApproval.disabled = true;
-      renderMissedRepairAction();
     }
   }
 
   function dismissMissedRepairReview() {
     missedRepairBinding = null;
     elements.missedRepairDialog.close();
-    renderMissedRepairAction();
   }
 
   function toggleMissedRepairSentence(toggle) {
@@ -659,12 +621,10 @@
 
   async function saveMissedRepairReview() {
     const binding = missedRepairBinding;
-    const mapping = selectedMissedRepairMapping();
+    const mappings = selectedMissedRepairMappings();
     if (
-      !binding || binding.state !== "reviewing" || !mapping
-      || binding.postRevision !== draftRevision
-      || binding.postEdit !== elements.original.value
-      || !sameMissedRepairTransformation(binding)
+      !binding || binding.state !== "reviewing" || !mappings.length
+      || !missedRepairIsCurrent(binding)
       || elements.missedRepairApproval.disabled
     ) {
       markMissedRepairStale("This review is stale because the draft changed.");
@@ -676,44 +636,57 @@
     elements.missedRepairReviewState.textContent = "Saving Personal Correction…";
     elements.missedRepairApproval.disabled = true;
     elements.missedRepairApproval.textContent = "Saving…";
+    // A retry must resubmit the exact approval, even if the first response was lost.
+    binding.savePayload ||= JSON.stringify({
+      approval_id: binding.approvalId,
+      source_mode: "user_confirmed",
+      prompt_version_id: null,
+      correction_contract_version: "personal-correction-v1",
+      observed_sentence: elements.retainObservedSentence.dataset.included === "true"
+        ? elements.observedSentence.value : null,
+      intended_sentence: elements.retainIntendedSentence.dataset.included === "true"
+        ? elements.intendedSentence.value : null,
+      applicability_context: elements.missedRepairContext.value || null,
+      mappings,
+    });
+    elements.missedRepairForm.querySelectorAll("input, textarea").forEach((field) => {
+      field.disabled = true;
+    });
+    elements.retainObservedSentence.disabled = true;
+    elements.retainIntendedSentence.disabled = true;
     try {
       const response = await fetch("/api/personal-corrections/episodes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          approval_id: binding.approvalId,
-          source_mode: binding.mode,
-          prompt_version_id: binding.promptVersionId,
-          correction_contract_version: "personal-correction-v1",
-          observed_sentence: elements.retainObservedSentence.dataset.included === "true"
-            ? elements.observedSentence.value : null,
-          intended_sentence: elements.retainIntendedSentence.dataset.included === "true"
-            ? elements.intendedSentence.value : null,
-          applicability_context: elements.missedRepairContext.value || null,
-          mapping,
-        }),
+        body: binding.savePayload,
       });
       if (!response.ok) throw await safeHttpError(response, "Personal Correction approval");
       const result = await readJson(response, "Personal Correction approval");
       if (binding !== missedRepairBinding || binding.state === "stale") return;
-      if (!result?.correction || !result?.mapping) {
+      if (!missedRepairIsCurrent(binding)) {
+        markMissedRepairStale("This review is stale because the draft changed.");
+        return;
+      }
+      if (!Array.isArray(result?.mappings) || !result.mappings.length) {
         throw malformedResponseError("Personal Correction approval", response.status);
       }
       binding.state = "saved";
       elements.missedRepairReviewState.dataset.state = "saved";
-      elements.missedRepairReviewState.textContent = "Personal Correction saved.";
-      elements.missedRepairSavedObserved.textContent = result.mapping.observed_text;
-      elements.missedRepairSavedIntended.textContent = result.correction.intended_term;
-      elements.missedRepairSavedContext.textContent = result.correction.applicability_context
-        ? `Applies when: ${result.correction.applicability_context}`
-        : "No applicability context saved.";
+      elements.missedRepairReviewState.textContent = "Selected Personal Corrections saved. Prepared is unchanged.";
+      elements.missedRepairSavedMappings.replaceChildren(...result.mappings.map((mapping) => {
+        const item = document.createElement("li");
+        item.textContent = `${mapping.observed_text} → ${mapping.intended_text}`;
+        return item;
+      }));
+      const savedContext = JSON.parse(binding.savePayload).applicability_context;
+      elements.missedRepairSavedContext.textContent = savedContext
+        ? `Applies when: ${savedContext}` : "No applicability context saved.";
       elements.missedRepairSentences.hidden = true;
       elements.missedRepairCandidates.hidden = true;
       elements.missedRepairContextField.hidden = true;
       elements.missedRepairSavedResult.hidden = false;
       elements.missedRepairApproval.hidden = true;
       elements.dismissMissedRepair.textContent = "Close";
-      renderMissedRepairAction();
     } catch (error) {
       if (binding !== missedRepairBinding || binding.state === "stale") return;
       if (error?.code === "stale_personal_correction_result") {
@@ -723,8 +696,8 @@
       binding.state = "reviewing";
       binding.saveFailed = true;
       elements.missedRepairReviewState.dataset.state = "error";
-      elements.missedRepairReviewState.textContent = "Save failed. Nothing partial was saved; retry while this review is current.";
-      elements.missedRepairApproval.textContent = "Retry Save Personal Correction";
+      elements.missedRepairReviewState.textContent = "Save could not be confirmed. Prepared is intact. Retry the same selected batch, or dismiss; no partial batch is saved.";
+      elements.missedRepairApproval.textContent = "Retry Save selected";
       updateMissedRepairApprovalState();
     }
   }
@@ -846,15 +819,59 @@
   }
 
   function preparedIsCurrent() {
-    return draftPreparationMode !== "off"
-      && Boolean(elements.original.value)
+    return Boolean(elements.original.value)
       && (status === "prepared" || status === "unchanged")
       && Boolean(elements.prepared.value);
+  }
+
+  function manualPreparationProtected() {
+    return preparedCorrectionRevision !== null || confirmedPreparedRevision === draftRevision;
+  }
+
+  function renderPreparedCorrection() {
+    const stale = preparedCorrectionRevision !== draftRevision;
+    const empty = !elements.intendedPrepared.value.trim();
+    elements.confirmPrepared.disabled = stale || empty;
+    elements.preparedCorrectionState.textContent = stale
+      ? "Original changed. Cancel and reopen Correct Prepared for the current Original."
+      : empty
+        ? "Intended wording is required; empty or whitespace-only text cannot be confirmed."
+        : "Confirmation preserves your exact wording. Copying or delivery is a separate action.";
+  }
+
+  function cancelPreparedCorrection() {
+    preparedCorrectionRevision = null;
+    preparedCorrectionStartingText = null;
+    elements.preparedCorrectionDialog.close();
+    elements.intendedPrepared.value = "";
+    renderCountsAndSelection();
+  }
+
+  function openPreparedCorrection() {
+    if (!preparedIsCurrent()) return;
+    const startingText = elements.prepared.value;
+    window.clearTimeout(cleanupTimer);
+    cleanupTimer = null;
+    abortActiveRequest();
+    markMissedRepairStale("This review was superseded by a new correction.");
+    preparedCorrectionRevision = draftRevision;
+    preparedCorrectionStartingText = startingText;
+    elements.reviewPersonalCorrections.checked = false;
+    elements.intendedPrepared.value = startingText;
+    if (["waiting", "cleaning"].includes(status)) setStatus("stale");
+    setExplicitSmartState("hidden");
+    renderPreparedCorrection();
+    elements.preparedCorrectionDialog.showModal();
+    elements.intendedPrepared.focus();
+    schedulePublication();
   }
 
   function fallbackLabel() {
     if (!elements.original.value) return "Nothing yet";
     if (originalOutgoingOverride) return "Using Original — Selected for this draft";
+    if (preparedIsCurrent() && confirmedPreparedRevision === draftRevision) {
+      return "Using Prepared — User-confirmed";
+    }
     if (preparedIsCurrent()) return status === "unchanged"
       ? "Using Prepared — Result unchanged"
       : "Using Prepared";
@@ -894,6 +911,11 @@
     elements.selectOriginal.setAttribute("aria-pressed", String(!usePrepared));
     elements.outgoingKind.textContent = fallbackLabel();
     elements.copyOutgoing.disabled = !selectedOutgoingState().outgoing_text;
+    elements.correctPrepared.hidden = !preparedIsCurrent();
+    elements.correctPrepared.disabled = !preparedIsCurrent();
+    elements.preparedOrigin.textContent = preparedIsCurrent()
+      ? confirmedPreparedRevision === draftRevision ? "User-confirmed" : "Generated"
+      : "No current Prepared";
   }
 
   function setPublicationState(nextState, label) {
@@ -1206,13 +1228,13 @@
     requestedCorrectionMode = null,
     invocation = "manual",
   ) {
+    if (invocation === "automatic" && manualPreparationProtected()) return;
+    if (preparedCorrectionRevision !== null) cancelPreparedCorrection();
+    confirmedPreparedRevision = null;
     window.clearTimeout(cleanupTimer);
     cleanupTimer = null;
     if (invocation !== "automatic") {
       markMissedRepairStale("This review is stale because cleanup was run again.");
-    } else if (missedRepairBinding?.state === "editing") {
-      missedRepairBinding.state = "available";
-      renderMissedRepairAction();
     }
     abortActiveRequest();
     setCleanupError(null);
@@ -1316,9 +1338,6 @@
         provider_error: "error",
       };
       setStatus(statusMap[result.status]);
-      if (["prepared", "unchanged"].includes(result.status)) {
-        bindCurrentCleanupResult(originalText, correctionMode, taskContext);
-      }
       if (
         correctionMode === "smart"
         && ["prepared", "unchanged"].includes(result.status)
@@ -1379,6 +1398,8 @@
 
   function scheduleCleanup() {
     window.clearTimeout(cleanupTimer);
+    cleanupTimer = null;
+    if (manualPreparationProtected()) return;
     setExplicitSmartState("hidden");
     setCleanupError(null);
     clearCleanupAttempts();
@@ -1405,8 +1426,20 @@
   }
 
   function handleOriginalInput(event) {
-    draftRevision += 1;
-    const replacedAll = replaceAllPending;
+    const originalChanged = elements.original.value !== currentOriginalText;
+    if (originalChanged) {
+      draftRevision += 1;
+      if (confirmedPreparedRevision !== null || preparedCorrectionRevision !== null) {
+        confirmedPreparedRevision = null;
+        elements.prepared.value = "";
+        originalOutgoingOverride = false;
+        setStatus("stale");
+        invalidateSmartRepairReview();
+        if (preparedCorrectionRevision !== null) renderPreparedCorrection();
+        schedulePublication();
+      }
+    }
+    const replacedAll = replaceAllPending && originalChanged;
     if (replacedAll) {
       draftPreparationMode = defaultPreparationMode;
       draftModeOverridden = false;
@@ -1415,21 +1448,7 @@
     } else if (!currentOriginalText && elements.original.value && !draftModeOverridden) {
       draftPreparationMode = defaultPreparationMode;
     }
-    if (replacedAll) {
-      markMissedRepairStale("This review is stale because Original was replaced.");
-    } else if (missedRepairBinding?.state === "eligible") {
-      missedRepairBinding.state = "editing";
-      missedRepairBinding.postEdit = elements.original.value;
-      missedRepairBinding.postRevision = draftRevision;
-      renderMissedRepairAction();
-    } else if (["editing", "available"].includes(missedRepairBinding?.state)) {
-      missedRepairBinding.state = "editing";
-      missedRepairBinding.postEdit = elements.original.value;
-      missedRepairBinding.postRevision = draftRevision;
-      renderMissedRepairAction();
-    } else if (["loading", "reviewing"].includes(missedRepairBinding?.state)) {
-      markMissedRepairStale("This review is stale because Original changed again.");
-    }
+    if (originalChanged) markMissedRepairStale("This review is stale because Original changed.");
     replaceAllPending = false;
     currentOriginalText = elements.original.value;
     setExplicitSmartState("hidden");
@@ -1464,16 +1483,19 @@
   elements.original.addEventListener("input", handleOriginalInput);
 
   function applyDraftPreparationMode(nextMode) {
-    markMissedRepairStale("This review is stale because the correction mode changed.");
     draftPreparationMode = nextMode;
     elements.draftPreparationMode.value = nextMode;
-    draftRevision += 1;
     draftModeOverridden = true;
+    renderCorrectionMode();
+    if (manualPreparationProtected()) {
+      schedulePublication();
+      return;
+    }
+    draftRevision += 1;
     invalidateSmartRepairReview();
     elements.prepared.value = "";
     elements.prepared.dataset.repairCount = "0";
     originalOutgoingOverride = false;
-    renderCorrectionMode();
     if (draftPreparationMode === "off") {
       window.clearTimeout(cleanupTimer);
       abortActiveRequest();
@@ -1519,7 +1541,6 @@
 
   elements.smartTaskContext.addEventListener("input", () => {
     if (effectiveCorrectionMode() === "smart" && elements.original.value) {
-      markMissedRepairStale("This review is stale because the task context changed.");
       scheduleCleanup();
     }
   });
@@ -1536,6 +1557,39 @@
     saveWorkspacePreferences();
   });
   elements.runCleanup.addEventListener("click", () => runCleanup());
+  elements.correctPrepared.addEventListener("click", openPreparedCorrection);
+  elements.intendedPrepared.addEventListener("input", renderPreparedCorrection);
+  elements.cancelPreparedCorrection.addEventListener("click", cancelPreparedCorrection);
+  elements.preparedCorrectionDialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    cancelPreparedCorrection();
+  });
+  elements.preparedCorrectionForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (preparedCorrectionRevision === null
+      || preparedCorrectionRevision !== draftRevision
+      || !elements.intendedPrepared.value.trim()) return;
+    const reviewRequested = elements.reviewPersonalCorrections.checked;
+    const startingText = preparedCorrectionStartingText;
+    elements.prepared.value = elements.intendedPrepared.value;
+    confirmedPreparedRevision = draftRevision;
+    originalOutgoingOverride = false;
+    markMissedRepairStale("Prepared was replaced with user-confirmed wording.");
+    invalidateSmartRepairReview();
+    setCleanupError(null);
+    clearCleanupAttempts();
+    setStatus("prepared");
+    cancelPreparedCorrection();
+    publishNow();
+    if (reviewRequested) {
+      missedRepairBinding = {
+        preEdit: startingText,
+        postEdit: elements.prepared.value,
+        postRevision: draftRevision,
+      };
+      openMissedRepairReview();
+    }
+  });
   elements.retryCleanup.addEventListener("click", () => {
     if (failedCorrectionMode === "smart") applyDraftPreparationMode("conservative");
     else runCleanup();
@@ -1550,7 +1604,6 @@
     publishNow();
   });
   elements.copyOutgoing.addEventListener("click", copyOutgoing);
-  elements.openMissedRepair.addEventListener("click", openMissedRepairReview);
   elements.missedRepairApproval.addEventListener("click", saveMissedRepairReview);
   elements.closeMissedRepair.addEventListener("click", dismissMissedRepairReview);
   elements.dismissMissedRepair.addEventListener("click", dismissMissedRepairReview);
@@ -1575,6 +1628,8 @@
     window.clearTimeout(cleanupTimer);
     window.clearTimeout(publicationTimer);
     abortActiveRequest();
+    if (preparedCorrectionRevision !== null) cancelPreparedCorrection();
+    confirmedPreparedRevision = null;
     markMissedRepairStale("This review is stale because the draft was cleared.");
     replaceAllPending = false;
     originalOutgoingOverride = false;
@@ -2132,7 +2187,6 @@
         ? config.active_prompt_version_id
         : null;
       missedRepairBinding = null;
-      renderMissedRepairAction();
       draftPreparationMode = defaultPreparationMode;
       draftModeOverridden = false;
       currentOriginalText = elements.original.value;

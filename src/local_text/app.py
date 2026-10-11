@@ -16,7 +16,7 @@ from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy.exc import SQLAlchemyError
 
 from local_text.cleanup import (
@@ -258,13 +258,24 @@ class PersonalCorrectionEntryUpdateRequest(PersonalCorrectionEntryCreateRequest)
     enabled: bool
 
 
-class PersonalCorrectionCandidateRequest(BaseModel):
+class PersonalCorrectionProvenance(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    source_mode: Literal["conservative", "smart", "user_confirmed"]
+    prompt_version_id: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def validate_provenance(self):
+        if (self.source_mode == "user_confirmed") != (self.prompt_version_id is None):
+            raise ValueError(
+                "manual confirmation has no processing prompt; generation requires one"
+            )
+        return self
+
+
+class PersonalCorrectionCandidateRequest(PersonalCorrectionProvenance):
     before_text: str = Field(max_length=100_000)
     after_text: str = Field(max_length=100_000)
-    source_mode: CorrectionMode
-    prompt_version_id: int = Field(ge=1)
     correction_contract_version: str = Field(pattern=r"^personal-correction-v1$")
 
 
@@ -276,17 +287,20 @@ class PersonalCorrectionReplacementRequest(BaseModel):
     intended_text: str = Field(min_length=1, max_length=200)
 
 
-class PersonalCorrectionApprovalRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class PersonalCorrectionApprovalRequest(PersonalCorrectionProvenance):
     approval_id: UUID
-    source_mode: CorrectionMode
-    prompt_version_id: int = Field(ge=1)
     correction_contract_version: Literal["personal-correction-v1"]
     observed_sentence: str | None = Field(default=None, max_length=500)
     intended_sentence: str | None = Field(default=None, max_length=500)
     applicability_context: str | None = Field(default=None, max_length=500)
-    mapping: PersonalCorrectionReplacementRequest
+    mapping: PersonalCorrectionReplacementRequest | None = None
+    mappings: list[PersonalCorrectionReplacementRequest] | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def validate_selection(self):
+        if (self.mapping is None) == (self.mappings is None):
+            raise ValueError("provide either a replacement or selected replacements")
+        return self
 
 
 def _prompt_response(prompt: PromptRecord, *, active: bool) -> dict[str, object]:
@@ -604,7 +618,10 @@ def create_app(
                     "retry_action": "Run correction again before opening this review.",
                 },
             ) from exc
-        if request.prompt_version_id != active_prompt_version_id:
+        if (
+            request.source_mode != "user_confirmed"
+            and request.prompt_version_id != active_prompt_version_id
+        ):
             raise HTTPException(
                 status_code=409,
                 headers={"Cache-Control": "no-store"},
@@ -645,7 +662,10 @@ def create_app(
                     "retry_action": "Run correction again before opening this review.",
                 },
             ) from exc
-        if request.prompt_version_id != active_prompt_version_id:
+        if (
+            request.source_mode != "user_confirmed"
+            and request.prompt_version_id != active_prompt_version_id
+        ):
             raise HTTPException(
                 status_code=409,
                 headers={"Cache-Control": "no-store"},
@@ -656,10 +676,12 @@ def create_app(
                 },
             )
         try:
-            record, created = personal_corrections.approve_replacement(
+            record, created = personal_corrections.approve_replacements(
                 approval_id=str(request.approval_id),
-                observed_text=request.mapping.observed_text,
-                intended_text=request.mapping.intended_text,
+                mappings=tuple(
+                    (mapping.observed_text, mapping.intended_text)
+                    for mapping in (request.mappings or [request.mapping])
+                ),
                 observed_sentence=request.observed_sentence,
                 intended_sentence=request.intended_sentence,
                 applicability_context=request.applicability_context,
@@ -680,7 +702,12 @@ def create_app(
                 },
             ) from exc
         response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
-        return personal_correction_response(record)
+        result = personal_correction_response(record)
+        # Preserve the existing single-replacement API response for its callers.
+        if request.mapping is not None:
+            result["mapping"] = result["mappings"][0]
+            result["correction"] = result["corrections"][0]
+        return result
 
     @application.post("/api/cleanup", response_model=CleanupResult)
     async def clean_text(request: CleanupRequest) -> CleanupResult:

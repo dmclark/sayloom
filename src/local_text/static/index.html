@@ -50,9 +50,9 @@
             class="button button-primary"
             type="button"
             aria-keyshortcuts="Meta+Enter Control+Enter"
-            title="Run cleanup (⌘↵)"
+            title="Regenerate Prepared from Original (⌘↵)"
           >
-            <span aria-hidden="true">↻</span> Run cleanup
+            <span aria-hidden="true">↻</span> Regenerate
           </button>
           <button id="clear-text" class="button" type="button">Clear</button>
         </div>
@@ -121,12 +121,6 @@
             </div>
             <footer class="panel-footer original-panel-footer">
               <span><strong id="original-count">0</strong> characters</span>
-              <div class="missed-repair-action">
-                <span id="missed-repair-state" role="status" aria-live="polite"></span>
-                <button id="open-missed-repair" class="button button-quiet" type="button" hidden disabled>
-                  This is what I meant
-                </button>
-              </div>
             </footer>
           </article>
 
@@ -229,6 +223,11 @@
             </div>
             <footer class="panel-footer">
               <span><strong id="prepared-count">0</strong> characters</span>
+              <span id="prepared-origin" role="status">No current Prepared</span>
+              <div class="panel-footer-actions">
+                <button id="correct-prepared" class="button button-quiet" type="button"
+                  aria-haspopup="dialog" aria-controls="prepared-correction-dialog" hidden disabled>Correct Prepared</button>
+              </div>
               <span id="model-label">Gemini</span>
             </footer>
           </article>
@@ -417,12 +416,36 @@
       </section>
     </main>
 
+    <dialog id="prepared-correction-dialog" class="missed-repair-dialog" aria-labelledby="prepared-correction-title">
+      <form id="prepared-correction-form" class="missed-repair-sheet">
+        <header class="error-sheet-header">
+          <div>
+            <h2 id="prepared-correction-title">Correct Prepared</h2>
+            <p>Edit the current Prepared wording, retaining its formatting. Original stays unchanged. Confirmation runs no processing.</p>
+          </div>
+        </header>
+        <div class="prepared-correction-field">
+          <label for="intended-prepared">Intended wording</label>
+          <textarea id="intended-prepared" aria-describedby="prepared-correction-state" autocomplete="off" spellcheck="true" maxlength="100000"></textarea>
+        </div>
+        <label class="prepared-correction-review-option">
+          <input id="review-personal-corrections" type="checkbox">
+          <span>Also review for Personal Corrections<small>Optional. Review comes after confirmation; nothing is saved until you choose Save selected.</small></span>
+        </label>
+        <p id="prepared-correction-state" class="missed-repair-review-state" role="status" aria-live="polite"></p>
+        <div class="missed-repair-actions">
+          <button id="confirm-prepared" class="button button-primary" type="submit">Use as Prepared and select for copying/delivery</button>
+          <button id="cancel-prepared-correction" class="button button-quiet" type="button">Cancel</button>
+        </div>
+      </form>
+    </dialog>
+
     <dialog id="missed-repair-dialog" class="missed-repair-dialog" aria-labelledby="missed-repair-title">
       <form id="missed-repair-form" class="missed-repair-sheet">
         <header class="error-sheet-header">
           <div>
-            <h2 id="missed-repair-title">This is what I meant</h2>
-            <p>Review one replacement and every private field before saving a Personal Correction.</p>
+            <h2 id="missed-repair-title">Review Personal Corrections</h2>
+            <p>Your corrected Prepared is ready. Choose which replacements to remember for future use; saving or dismissing never changes Prepared.</p>
           </div>
           <button id="close-missed-repair" class="dialog-close" type="button" aria-label="Dismiss Personal correction review">×</button>
         </header>
@@ -430,10 +453,10 @@
         <section id="missed-repair-sentences" class="missed-repair-sentences" aria-label="Saved episode sentences">
           <div class="missed-repair-sentence">
             <div class="missed-repair-field-heading">
-              <label for="observed-sentence">Original sentence</label>
+              <label for="observed-sentence">Starting sentence</label>
               <button id="retain-observed-sentence" class="button button-quiet" type="button" data-included="true">Remove from saved episode</button>
             </div>
-            <textarea id="observed-sentence" aria-label="Original sentence"></textarea>
+            <textarea id="observed-sentence" aria-label="Starting sentence"></textarea>
             <div class="missed-repair-field-meta">
               <span id="observed-sentence-removed" class="removed-field-state" hidden>Removed — will not be saved</span>
               <span id="observed-sentence-count" class="field-count"></span>
@@ -453,7 +476,7 @@
         </section>
         <fieldset id="missed-repair-candidates" class="missed-repair-candidates">
           <legend>Candidate mappings</legend>
-          <p>Select exactly one non-empty replacement that expresses your intended wording.</p>
+          <p>Select any replacements you want to remember. Edit Observed and Intended if needed. With none selected, choose Not now.</p>
           <ol id="missed-repair-candidate-list"></ol>
         </fieldset>
         <section id="missed-repair-context-field" class="missed-repair-context-field">
@@ -461,13 +484,13 @@
           <textarea id="missed-repair-context" maxlength="500" aria-label="Applicability context" placeholder="When should this wording apply?"></textarea>
         </section>
         <section id="missed-repair-saved-result" class="missed-repair-saved-result" hidden aria-labelledby="missed-repair-saved-title">
-          <h3 id="missed-repair-saved-title">Saved Personal Correction</h3>
-          <p><strong id="missed-repair-saved-observed"></strong> <span aria-hidden="true">→</span> <strong id="missed-repair-saved-intended"></strong></p>
+          <h3 id="missed-repair-saved-title">Saved Personal Corrections</h3>
+          <ul id="missed-repair-saved-mappings"></ul>
           <p id="missed-repair-saved-context"></p>
         </section>
         <div class="missed-repair-actions">
-          <button id="missed-repair-approval" class="button button-primary" type="button" disabled>Save Personal Correction</button>
-          <button id="dismiss-missed-repair" class="button button-quiet" type="button">Dismiss</button>
+          <button id="missed-repair-approval" class="button button-primary" type="button" disabled>Save selected</button>
+          <button id="dismiss-missed-repair" class="button button-quiet" type="button">Not now</button>
         </div>
       </form>
     </dialog>

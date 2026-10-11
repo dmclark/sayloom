@@ -36,8 +36,8 @@ def test_health_reports_development_profile(initialized_settings: Settings) -> N
         "development_state": None,
         "database": {
             "state": "current",
-            "current_revision": "0005_personal_correction_approval",
-            "expected_revision": "0005_personal_correction_approval",
+            "current_revision": "0006_confirmed_correction_batches",
+            "expected_revision": "0006_confirmed_correction_batches",
         },
         "configuration_error": None,
     }
@@ -76,7 +76,7 @@ def test_health_reports_schema_mismatch(tmp_path: Path) -> None:
     assert response.json()["database"] == {
         "state": "mismatch",
         "current_revision": "obsolete_revision",
-        "expected_revision": "0005_personal_correction_approval",
+        "expected_revision": "0006_confirmed_correction_batches",
     }
 
 
@@ -179,7 +179,7 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert "This does not save an evaluation corpus." not in response.text
     assert "Type, paste, or dictate here" in response.text
     assert 'aria-keyshortcuts="Meta+Enter Control+Enter"' in response.text
-    assert 'title="Run cleanup (⌘↵)"' in response.text
+    assert 'title="Regenerate Prepared from Original (⌘↵)"' in response.text
     assert 'class="page-footer"' not in response.text
     assert "keeps the raw text sendable" not in response.text
     control_rail = response.text.split('class="control-rail"', maxsplit=1)[1].split(
@@ -1587,7 +1587,7 @@ async function settle() {
     assert observed["taskContextHidden"] is False
 
 
-def test_browser_applies_active_preparation_mode_independently_of_saved_default(
+def test_browser_preparation_modes_and_user_confirmed_prepared_lifecycle(
     initialized_settings: Settings,
 ) -> None:
     script = TestClient(create_app(initialized_settings)).get("/static/app.js").text
@@ -1634,6 +1634,8 @@ const requests = [];
 const response = (body, status = 200) => ({
   ok: status >= 200 && status < 300, status, json: async () => body,
 });
+let holdCleanup = false;
+let releaseCleanup = null;
 const fetch = async (url, options = {}) => {
   const body = options.body ? JSON.parse(options.body) : null;
   requests.push({ url, method: options.method || "GET", body });
@@ -1643,6 +1645,9 @@ const fetch = async (url, options = {}) => {
   });
   if (url === "/api/preferences/preparation-default") {
     return response({ preparation_default: body.preparation_default });
+  }
+  if (url === "/api/cleanup" && holdCleanup) {
+    return new Promise((resolve) => { releaseCleanup = resolve; });
   }
   if (url === "/api/cleanup") return response({
     prepared_text: body.original_text, status: "unchanged", lexical_repairs: [],
@@ -1720,6 +1725,129 @@ const settle = async () => {
     replacementMode: draftMode.value,
     savedDefault: defaultMode.value,
   }));
+
+  const assert = require("node:assert/strict");
+  const prepared = elements["#prepared-text"];
+  const intended = elements["#intended-prepared"];
+  const form = elements["#prepared-correction-form"];
+  const dialog = elements["#prepared-correction-dialog"];
+  const open = () => elements["#correct-prepared"].dispatch("click");
+  const cancel = () => elements["#cancel-prepared-correction"].dispatch("click");
+  const confirm = async (text) => {
+    intended.value = text; await intended.dispatch("input");
+    await form.dispatch("submit"); await settle();
+  };
+  const mode = async (value) => {
+    draftMode.value = value; await draftMode.dispatch("change"); await settle();
+  };
+  const cleanupCount = () => requests.filter((item) => item.url === "/api/cleanup").length;
+  const published = () => requests.filter((item) => item.url === "/api/outgoing-state"
+    && item.method === "PUT").at(-1).body;
+
+  // Opening seeds current Prepared; cancel preserves both text and explicit Original selection.
+  await elements["#select-original"].dispatch("click");
+  await open(); assert.equal(intended.value, prepared.value);
+  intended.value = "Discard me"; await cancel();
+  assert.equal(prepared.value, "Replacement draft");
+  assert.equal(elements["#select-original"].attributes["aria-pressed"], "true");
+
+  // Off without Prepared hides entry; changing settings during editing remains protected.
+  await mode("off");
+  assert.equal(elements["#correct-prepared"].hidden, true);
+  await open(); assert.equal(dialog.open, false);
+  await mode("conservative"); await open();
+  assert.equal(intended.value, prepared.value);
+  await mode("off");
+  await confirm(" \t\n ");
+  assert.equal(elements["#confirm-prepared"].disabled, true);
+  assert.equal(dialog.open, true);
+  assert.match(elements["#prepared-correction-state"].textContent, /required/);
+  const exact = "  Keep THIS punctuation?!\nSecond line.  ";
+  const beforeConfirm = cleanupCount();
+  await confirm(exact);
+  assert.equal(original.value, "Replacement draft");
+  assert.equal(prepared.value, exact);
+  assert.equal(published().outgoing_text, exact);
+  assert.equal(published().outgoing_kind, "prepared");
+  assert.equal(published().cleanup_enabled, false);
+  assert.equal(elements["#prepared-origin"].textContent, "User-confirmed");
+  assert.equal(cleanupCount(), beforeConfirm);
+
+  // Replacing all of Original with identical text is not a new revision.
+  original.selectionStart = 0; original.selectionEnd = original.value.length;
+  await original.dispatch("beforeinput", { isTrusted: true });
+  await original.dispatch("input", { isTrusted: true });
+  assert.equal(prepared.value, exact);
+  assert.equal(elements["#select-prepared"].disabled, false);
+
+  // Settings and Smart guidance affect only a later explicit generation.
+  await mode("smart");
+  elements["#smart-task-context"].value = "New guidance";
+  await elements["#smart-task-context"].dispatch("input");
+  assert.equal(prepared.value, exact); assert.equal(cleanupCount(), beforeConfirm);
+  await open(); assert.equal(intended.value, exact);
+  await mode("conservative"); await mode("smart");
+  assert.equal(intended.value, exact); assert.equal(elements["#confirm-prepared"].disabled, false);
+  await cancel(); assert.equal(prepared.value, exact);
+
+  // Regenerate consumes Original and immediately revokes manual delivery eligibility.
+  holdCleanup = true;
+  const pending = runCleanup.dispatch("click"); await settle();
+  assert.equal(elements["#select-prepared"].disabled, true);
+  assert.match(elements["#outgoing-kind"].textContent, /Using Original/);
+  assert.equal(requests.filter((item) => item.url === "/api/cleanup").at(-1).body.original_text,
+    "Replacement draft");
+  assert.equal(elements["#correct-prepared"].hidden, true);
+  await open(); assert.equal(dialog.open, false);
+  original.value = "Newer revision"; await original.dispatch("input");
+  releaseCleanup(response({ prepared_text: "Late generated result", status: "prepared",
+    lexical_repairs: [] }));
+  await pending; await settle();
+  assert.notEqual(prepared.value, "Late generated result");
+  assert.equal(elements["#correct-prepared"].hidden, true);
+  holdCleanup = false;
+  original.value = "Replacement draft"; await original.dispatch("input");
+  await runCleanup.dispatch("click"); await settle();
+  await open(); await confirm("Manual wins.");
+  assert.equal(prepared.value, "Manual wins.");
+  assert.equal(published().outgoing_text, "Manual wins.");
+
+  // A changed Original cannot regain eligibility even if the text later returns to its old value.
+  await open();
+  original.value = "Changed Original"; await original.dispatch("input");
+  assert.equal(elements["#confirm-prepared"].disabled, true);
+  await form.dispatch("submit");
+  assert.equal(prepared.value, "");
+  assert.match(elements["#outgoing-kind"].textContent, /Using Original/);
+  original.value = "Replacement draft"; await original.dispatch("input");
+  assert.equal(elements["#confirm-prepared"].disabled, true);
+  await cancel(); assert.equal(elements["#select-prepared"].disabled, true);
+
+  // Busy entry is blocked without cancelling the active generation; cancellation keeps its result.
+  await mode("conservative");
+  holdCleanup = true;
+  const pendingCancel = runCleanup.dispatch("click"); await settle();
+  await open(); assert.equal(dialog.open, false);
+  releaseCleanup(response({ prepared_text: "Late after cancel", status: "prepared",
+    lexical_repairs: [] }));
+  await pendingCancel; await settle();
+  assert.equal(elements["#correct-prepared"].hidden, false);
+  await open(); const beforeCancel = cleanupCount(); await cancel();
+  assert.equal(prepared.value, "Late after cancel");
+  assert.equal(cleanupCount(), beforeCancel);
+
+  // Failure stays fail-open and does not offer correction of an Original fallback.
+  const failed = runCleanup.dispatch("click"); await settle();
+  releaseCleanup(response({}, 503)); await failed; await settle();
+  assert.equal(elements["#select-prepared"].disabled, true);
+  assert.equal(elements["#correct-prepared"].hidden, true);
+  await open(); assert.equal(dialog.open, false);
+  assert.match(elements["#outgoing-kind"].textContent, /Using Original/);
+  original.value = "Next revision"; await original.dispatch("input");
+  await elements["#select-prepared"].dispatch("click");
+  assert.equal(elements["#select-prepared"].disabled, true);
+  assert.match(elements["#outgoing-kind"].textContent, /Using Original/);
+  assert.equal(requests.some((item) => item.url.startsWith("/api/personal-corrections")), false);
 })().catch((error) => { process.stderr.write(error.stack); process.exit(1); });
 """
 
