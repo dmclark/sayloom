@@ -569,8 +569,6 @@ main { padding-top: 8px; }
 .personal-correction-card footer { display: flex; align-items: center; gap: 12px; }
 .personal-correction-card footer span { color: var(--muted); font-size: 0.68rem; }
 
-.missed-repair-action { display: flex; align-items: center; gap: 8px; margin-left: auto; }
-.missed-repair-action > span { color: var(--muted); font-size: 0.68rem; }
 .missed-repair-dialog {
   width: min(760px, calc(100vw - 32px));
   max-height: calc(100dvh - 32px);
@@ -583,6 +581,18 @@ main { padding-top: 8px; }
 }
 .missed-repair-dialog::backdrop { background: rgba(11, 18, 27, 0.64); backdrop-filter: blur(3px); }
 .missed-repair-sheet { display: grid; gap: 18px; padding: 24px 28px 28px; }
+.prepared-correction-field { display: grid; gap: 8px; min-width: 0; }
+.prepared-correction-field label { font-size: 0.78rem; font-weight: 800; }
+.prepared-correction-field textarea {
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+  font: 1.1rem/1.7 Charter, "Iowan Old Style", Georgia, serif;
+}
+#confirm-prepared { height: auto; white-space: normal; text-align: left; }
+.prepared-correction-review-option { display: flex; align-items: flex-start; gap: 10px; font-size: 0.8rem; }
+.prepared-correction-review-option input { flex: none; margin-top: 2px; }
+.prepared-correction-review-option small { display: block; margin-top: 4px; color: var(--muted); line-height: 1.5; }
 .missed-repair-sheet header p,
 .missed-repair-candidates > p { margin: 4px 0 0; color: var(--muted); font-size: 0.78rem; }
 .missed-repair-review-state { margin: 0; padding-block: 8px; border-block: 1px solid var(--line); font-size: 0.78rem; }

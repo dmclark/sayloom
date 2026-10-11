@@ -6,6 +6,16 @@ milestones.
 
 ## Language
 
+**Context**:
+The surrounding wording, conversation, and circumstances that help make sense of what someone means.
+_Avoid_: Writing domain, selected writing category
+
+**Writing domain**:
+A user-selected category describing what the text is for, such as development instructions, a
+personal message, or general text. It may be associated with suitable prompts or common vocabulary;
+Domain is its short UI label.
+_Avoid_: Context, task context
+
 **Original**:
 The editable source text supplied to Sayloom.
 _Avoid_: Raw text, input copy
@@ -33,7 +43,8 @@ by Cleanup. Its meaning-bearing changes remain reviewable.
 _Avoid_: Cleanup, rewrite, transcript recovery
 
 **Prepared**:
-Sayloom's generated result after the selected Smart and Cleanup path.
+Sayloom's generated result after the selected processing path, or an explicitly user-confirmed
+replacement bound to the current Original. Its origin is identified as generated or user-confirmed.
 _Avoid_: Cleaned text, output
 
 **Correction method**:

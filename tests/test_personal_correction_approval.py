@@ -3,9 +3,11 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from alembic import command
 from fastapi.testclient import TestClient
 from sqlalchemy import event
 
+from local_text.admin import _alembic_config
 from local_text.app import create_app
 from local_text.database import ApplicationDatabase
 from local_text.personal_corrections import PersonalCorrectionStore
@@ -107,18 +109,21 @@ def test_approval_creates_complete_episode_then_normalized_retry_and_recurrence_
 def test_approval_rolls_back_every_row_when_event_insert_fails(initialized_settings) -> None:
     database = ApplicationDatabase(Path(initialized_settings.database_path))
     store = PersonalCorrectionStore(database)
+    inserts = 0
 
     def fail_event_insert(_connection, _cursor, statement, _parameters, _context, _many):
+        nonlocal inserts
         if statement.lstrip().upper().startswith("INSERT INTO PERSONAL_CORRECTION_EVENTS"):
-            raise RuntimeError("synthetic event failure")
+            inserts += 1
+            if inserts == 2:
+                raise RuntimeError("synthetic event failure")
 
     event.listen(database.engine, "before_cursor_execute", fail_event_insert)
     try:
         with pytest.raises(RuntimeError, match="synthetic event failure"):
-            store.approve_replacement(
+            store.approve_replacements(
                 approval_id=str(uuid4()),
-                observed_text="synthetic alias",
-                intended_text="synthetic term",
+                mappings=(("synthetic alias", "synthetic term"), ("other alias", "other term")),
                 observed_sentence="A synthetic alias appears.",
                 intended_sentence="A synthetic term appears.",
                 applicability_context=None,
@@ -132,6 +137,79 @@ def test_approval_rolls_back_every_row_when_event_insert_fails(initialized_setti
     assert row_counts(Path(initialized_settings.database_path)) == {
         table: 0 for table in APPROVAL_TABLES
     }
+
+
+def test_manual_batch_is_atomic_idempotent_and_honest_with_preparation_off(initialized_settings):
+    client = TestClient(create_app(initialized_settings))
+    client.put("/api/preferences/preparation-default", json={"preparation_default": "off"})
+    request = approval_request(1)
+    request["source_mode"] = "user_confirmed"
+    request["prompt_version_id"] = None
+    request["mappings"] = [
+        request.pop("mapping"),
+        {"operation": "replacement", "observed_text": "fries day", "intended_text": "Friday"},
+        {"operation": "replacement", "observed_text": "UMBER", "intended_text": "AMBER"},
+    ]
+    first = client.post("/api/personal-corrections/episodes", json=request)
+    assert first.status_code == 201
+    saved = first.json()
+    assert saved["source_mode"] == "user_confirmed"
+    assert saved["prompt_version_id"] is None
+    assert [(m["ordinal"], m["observed_text"], m["intended_text"]) for m in saved["mappings"]] == [
+        (1, "umber", "amber"),
+        (2, "fries day", "Friday"),
+    ]
+    counts = row_counts(Path(initialized_settings.database_path))
+    assert counts["personal_correction_episodes"] == 1
+    assert counts["personal_correction_episode_mappings"] == 2
+    assert counts["personal_correction_entries"] == 2
+    retry = client.post("/api/personal-corrections/episodes", json=request)
+    assert retry.status_code == 200 and retry.json() == saved
+    request["mappings"][1]["intended_text"] = "Thursday"
+    assert client.post("/api/personal-corrections/episodes", json=request).status_code == 409
+    assert row_counts(Path(initialized_settings.database_path)) == counts
+
+    # A conflict on the second mapping must also roll back the first new mapping.
+    request["approval_id"] = str(uuid4())
+    request["applicability_context"] = "Different context"
+    request["mappings"] = [
+        {"operation": "replacement", "observed_text": "new alias", "intended_text": "new term"},
+        {"operation": "replacement", "observed_text": "umber", "intended_text": "amber"},
+    ]
+    assert client.post("/api/personal-corrections/episodes", json=request).status_code == 409
+    assert row_counts(Path(initialized_settings.database_path)) == counts
+    request["prompt_version_id"] = 1
+    assert client.post("/api/personal-corrections/episodes", json=request).status_code == 422
+    assert row_counts(Path(initialized_settings.database_path)) == counts
+
+
+def test_batch_migration_preserves_existing_episode_and_guards_downgrade(initialized_settings):
+    client = TestClient(create_app(initialized_settings))
+    prompt_id = client.get("/api/config").json()["active_prompt_version_id"]
+    request = approval_request(prompt_id)
+    saved = client.post("/api/personal-corrections/episodes", json=request).json()
+    database = ApplicationDatabase(Path(initialized_settings.database_path))
+    config = _alembic_config(database.url)
+    counts = row_counts(database.path)
+    command.downgrade(config, "0005_personal_correction_approval")
+    command.upgrade(config, "head")
+    assert row_counts(database.path) == counts
+    assert client.post("/api/personal-corrections/episodes", json=request).json() == saved
+    with sqlite3.connect(database.path) as connection:
+        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                "UPDATE personal_correction_episodes SET source_mode = 'user_confirmed'"
+            )
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute("UPDATE personal_correction_episode_mappings SET ordinal = 0")
+    request["approval_id"] = str(uuid4())
+    request["source_mode"] = "user_confirmed"
+    request["prompt_version_id"] = None
+    assert client.post("/api/personal-corrections/episodes", json=request).status_code == 201
+    with pytest.raises(RuntimeError, match="cannot downgrade"):
+        command.downgrade(config, "0005_personal_correction_approval")
+    assert database.schema_status().ready
 
 
 def test_approval_rejects_stale_prompt_invalid_contract_and_private_values_without_writes(

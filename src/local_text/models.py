@@ -223,7 +223,7 @@ class PersonalCorrectionEpisode(Base):
     observed_sentence: Mapped[str | None] = mapped_column(Text)
     intended_sentence: Mapped[str | None] = mapped_column(Text)
     source_mode: Mapped[str] = mapped_column(String(20), nullable=False)
-    prompt_version_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    prompt_version_id: Mapped[int | None] = mapped_column(Integer)
     correction_contract_version: Mapped[str] = mapped_column(String(40), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

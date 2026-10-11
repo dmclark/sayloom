@@ -63,7 +63,8 @@ Sayloom uses three distinct values:
 
 - **Original:** The editable text received from Voiceitt, typing, or paste.
 - **Prepared:** Sayloom's generated result for the selected correction or
-  polishing mode.
+  polishing mode, or an explicitly user-confirmed replacement bound to the
+  current Original. Its origin is identified as generated or user-confirmed.
 - **Outgoing:** The exact Original or Prepared value currently selected for
   copying or delivery.
 
@@ -72,11 +73,66 @@ The primary correction loop is:
 1. Voiceitt places text in Original.
 2. Sayloom generates Prepared text.
 3. The user reviews the result when needed.
-4. If Sayloom inferred the wrong wording, the user edits Original.
-5. Sayloom regenerates Prepared from the edited Original.
+4. If Sayloom inferred the wrong wording, the user may edit Original and
+   regenerate, or explicitly confirm intended wording directly as Prepared.
+5. The user explicitly copies or delivers the selected Outgoing value.
 
 This loop avoids requiring approval for every changed word while keeping the
-user in control of intended meaning.
+user in control of intended meaning. Direct confirmation avoids entering the
+same intended wording again for copying or delivery; it does not alter Original.
+
+## User-confirmed Prepared
+
+This flow does not restore Evidence Collection.
+
+An explicit **Correct Prepared** action opens an editing step starting from
+current Prepared and is hidden when no current Prepared exists. This is not an
+always-editable Prepared field. Opening the step freezes its starting text and
+supersedes pending generation for that draft; late responses cannot replace
+editing or confirmed wording.
+
+**Use as Prepared and select for copying/delivery** confirms the wording
+unchanged as Prepared and selects it as Outgoing. Empty or whitespace-only
+wording cannot be confirmed; the interface explains that intended wording is
+required. Confirmation runs no Cleanup or Smart processing and does not copy,
+deliver, submit to a destination, save a Personal Correction, or authorize
+research reuse. Copying and target delivery remain separate explicit actions.
+
+Before confirming, the user may check **Also review for Personal Corrections**.
+This requests a separate review, not saving. Proposals compare only the editor's
+frozen starting Prepared with the exact confirmed wording. Generated changes
+outside that edit are not proposals. V1 offers nonempty replacements only;
+additions and removals remain
+in confirmed Prepared but cannot be saved as mappings. No typo or capitalization
+normalization runs after confirmation.
+
+Mapping fields are editable and selections start unchecked. One **Save selected**
+action atomically saves all selected replacements; choosing some, none, dismissing,
+or a save failure leaves corrected Prepared intact. Retries preserve the same
+approval and selection. Review is bound to that confirmed snapshot and becomes
+stale when Original changes, another correction opens, or Regenerate starts.
+Settings changes do not invalidate a manual confirmation or its review. Manual
+reviews work with preparation Off and record user-confirmed provenance without
+a processing prompt; candidate derivation is local and calls no provider.
+
+- The correction is bound to the exact Original revision. Any change to
+  Original makes an open correction stale and prevents confirmation. A
+  previously confirmed replacement becomes unavailable for copying or
+  delivery; Outgoing falls back to current Original.
+- While editing or a confirmed replacement is current, generation requires an
+  explicit **Regenerate** action. Correction-mode or Smart-guidance changes
+  affect the next generation but cannot interrupt editing or overwrite the
+  confirmed wording while Original is unchanged.
+- Cancelling discards unconfirmed edits and preserves the previously current
+  Prepared and Outgoing selection. If no current Prepared existed, Original
+  remains available. Cancellation does not revive or restart generation.
+- Regenerate uses Original, not the confirmed replacement. Starting it removes
+  the replacement's delivery eligibility; current Original remains usable
+  while processing is pending or fails.
+- Manual correction remains available with nonempty Original when automatic
+  preparation is Off or has failed, without a provider call. Off disables
+  automatic processing, not manual confirmation. Clearing the draft is separate
+  from confirmation.
 
 ## Correction and polishing modes
 
@@ -104,14 +160,63 @@ evidence slice, safety thresholds, and Cleanup regression coverage establish
 that it is determinate and account-independent. Cleanup and Smart versions do
 not change during a registered evaluation or silently inside a released result.
 
+## Smart writing domains and contextual input
+
+These are confirmed high-level target requirements, not a claim of implemented
+behavior or authorization to implement them.
+
+### Writing domain
+
+The user explicitly selects a **Writing domain**, labeled **Domain** in the UI,
+with **General text** as the default. Smart does not silently switch the
+selection. The provisional initial categories are **General text**,
+**Development instructions**, and **Personal message**.
+
+The selected domain helps Smart interpret likely terminology and repair
+recognition errors when the surrounding wording supports that interpretation.
+It does not justify inserting jargon or expand Smart's correction authority.
+The same conservative scope applies across domains: recognition repair,
+punctuation, capitalization, and very light cleanup, not broader rewriting.
+Speech-to-prose editing remains deferred.
+
+### Contextual input
+
+Smart uses the whole current draft, including user edits, together with the
+selected Writing domain, rather than interpreting each new dictation fragment
+in isolation.
+
+Context from earlier passages or the destination application and user-supplied
+passage-specific guidance are optional inputs. Neither is required for Smart
+processing to run. Smart must not silently collect outside context.
+Passage-specific guidance helps interpret the text; it is not permission for
+broader rewriting.
+
+**Deferred:** Availability and implementation timing of these optional inputs,
+their exact sources and controls, and domain configuration and UI mechanics.
+
+### Vocabulary and recurring misrecognitions
+
+Vocabulary corrections and corrections for commonly misheard wording may
+overlap without being identical. The vocabulary-correction concept includes
+multiword phrases as well as individual words; recognition can sometimes
+produce the intended phrase correctly and sometimes misrecognize it. Correctly
+recognized wording should remain unchanged.
+
+This relationship does not establish a separate vocabulary feature, a
+file-configured vocabulary policy, or a shared correction mechanism. Those
+choices remain undecided. Repair matching and evaluation methods remain
+deferred; this discussion does not supersede the Personal Corrections contract.
+
 ## Personal Corrections and research boundary
 
 **Personal Corrections** serve live personalization for one local user. Sayloom
 saves a Personal Correction only after the user explicitly reviews and approves
-an **Original → Intended** mapping. Saving authorizes that correction for use in
-later sessions until the user edits, disables, or deletes it. Ordinary editing,
-processing, copying, delivery, dismissal, or inaction saves nothing.
-Editing a saved mapping ends its prior authorization; the edited Original →
+an **Observed → Intended** mapping. Observed comes from the frozen correction
+editor starting text, which may already be Prepared. Saving authorizes that
+correction for use in later sessions until the user edits, disables, or deletes
+it. Ordinary editing, processing, copying, delivery, dismissal, or inaction
+saves nothing.
+Editing a saved mapping ends its prior authorization; the edited Observed →
 Intended mapping must be reviewed and explicitly saved before live reuse.
 
 The durable owner ID is the internal constant `local`. The local product has no
@@ -133,7 +238,8 @@ for provenance and grant no authority to resume collection or evaluation.
 
 When Original is visible, the review experience identifies every word addition,
 removal, or replacement and emphasizes uncertainty. AI confidence is assistance,
-not proof; the user can always edit Original and regenerate.
+not proof; the user can edit Original and regenerate or explicitly confirm
+intended wording as Prepared.
 
 When Original is hidden, the workspace is in CART-style display mode. Prepared
 or fail-open text uses the available output space without inline correction
@@ -146,7 +252,7 @@ Personalization belongs exclusively to one user. Information learned from one
 person must never affect another person's corrections.
 
 Users can inspect, edit, disable, or delete each saved Personal Correction.
-Only an explicitly reviewed and approved Original → Intended mapping becomes
+Only an explicitly reviewed and approved Observed → Intended mapping becomes
 durable personalization. Its authorization persists across sessions until the
 user edits, disables, or deletes it. A reviewed and explicitly saved edit starts
 new authorization for the edited mapping.
@@ -247,8 +353,9 @@ implemented unless later technical evidence says otherwise.
 The checkout contains no live Evidence Collection Workspace, runtime,
 participant-package, administration, or configuration behavior.
 
-Implementation and product design use **Prepared** for the generated result and
-reserve **Outgoing** for the exact selected delivery value.
+The current implementation uses **Prepared** for the generated result and
+reserves **Outgoing** for the exact selected delivery value. The explicit
+user-confirmed Prepared interaction above remains unimplemented.
 
 ### Durable constraints
 
@@ -318,7 +425,8 @@ The following remain open and must not be presented as committed behavior:
 1. **Correct intended text, not speech.** Sayloom works from imperfect text and
    never claims to verify audio it does not receive.
 2. **Keep the user authoritative.** Users can edit Original, regenerate
-   Prepared, choose a correction mode, and control personalization.
+   Prepared, explicitly confirm intended wording as Prepared, choose a
+   correction mode, and control personalization.
 3. **Make meaning-bearing changes reviewable.** Review supports trust without
    interrupting CART display.
 4. **Never mix users' learning.** Personalization remains isolated, inspectable,

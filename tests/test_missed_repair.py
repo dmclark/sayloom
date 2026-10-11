@@ -194,10 +194,11 @@ def test_browser_capture_contract_covers_binding_limits_staleness_and_no_save(
 
     assert 'id="original-text"' in page
     assert 'id="prepared-text"' in page and "readonly" in page
-    assert 'id="open-missed-repair"' in page
+    assert 'id="open-missed-repair"' not in page
+    assert 'id="review-personal-corrections"' in page
     assert 'id="missed-repair-dialog"' in page
     review = page.split('id="missed-repair-dialog"', maxsplit=1)[1]
-    assert review.index("Original sentence") < review.index("Candidate mappings")
+    assert review.index("Starting sentence") < review.index("Candidate mappings")
     assert review.index("Intended sentence") < review.index("Candidate mappings")
     assert review.index("Candidate mappings") < review.index("Applicability context")
     assert review.count("Remove from saved episode") == 2
@@ -208,32 +209,28 @@ def test_browser_capture_contract_covers_binding_limits_staleness_and_no_save(
     assert 'Array.from(field.value).length' in script
     assert 'length > 500' in script
     assert 'binding.preEdit' in script and 'binding.postEdit' in script
-    assert 'binding.postRevision !== draftRevision' in script
+    assert 'binding.postRevision === draftRevision' in script
     assert 'invocation !== "automatic"' in script
-    assert 'missedRepairBinding.state = "available"' in script
     assert 'missedRepairBinding = null;' in script
     assert 'fetch("/api/personal-corrections/candidates"' in script
     assert 'fetch("/api/personal-corrections/episodes"' in script
     assert "crypto.randomUUID()" in script
     assert 'binding.state = "saving"' in script
     assert 'binding.state = "saved"' in script
-    assert "Retry Save Personal Correction" in script
-    assert "Save Personal Correction" in page
+    assert "Retry Save selected" in script
+    assert "Save selected" in page
 
     stale_reasons = (
-        "Original changed again",
-        "correction mode changed",
-        "task context changed",
+        "Original changed",
         "cleanup was run again",
         "draft was cleared",
-        "Original was replaced",
-        "different result replaced it",
+        "superseded by a new correction",
     )
     for reason in stale_reasons:
         assert reason in script
 
 
-def test_browser_binds_multikeystroke_edit_allows_exact_regeneration_and_fails_open(
+def test_browser_optional_review_uses_frozen_editor_text_and_preserves_prepared_on_failure(
     initialized_settings: Settings,
 ) -> None:
     script = TestClient(create_app(initialized_settings)).get("/static/app.js").text
@@ -284,7 +281,7 @@ const fetch = async (url, options = {}) => {
   const body = options.body ? JSON.parse(options.body) : null;
   requests.push({ url, method: options.method || "GET", body });
   if (url === "/api/config") return response({
-    preparation_default: "conservative", active_prompt_version_id: 7,
+    preparation_default: "off", active_prompt_version_id: 7,
     cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
   });
   if (url === "/api/outgoing-state") return response({ revision: requests.length });
@@ -333,23 +330,20 @@ const navigator = { clipboard: { async writeText() {} } };
 const crypto = { randomUUID() { return "00000000-0000-4000-8000-000000000001"; } };
 const context = { document, window, navigator, fetch, crypto, AbortController, Promise, console };
 async function settle() { await new Promise((resolve) => setImmediate(resolve)); }
-async function runCleanupTimer() {
-  const timer = timers.filter((item) => item.delay === 700).at(-1);
-  await timer.callback(); await settle();
+async function confirmReview(text) {
+  await elements["#correct-prepared"].dispatch("click");
+  elements["#intended-prepared"].value = text;
+  elements["#review-personal-corrections"].checked = true;
+  await elements["#prepared-correction-form"].dispatch("submit"); await settle();
 }
 (async () => {
   vm.runInNewContext(process.argv[1], context); await settle(); await settle();
   const original = elements["#original-text"];
   original.value = "Before. Carry umber parcel. After.";
-  await elements["#run-cleanup"].dispatch("click"); await settle();
-  original.value = "Before. Carry amber parcel. After.";
   await original.dispatch("input", { isTrusted: true });
-  original.value = "Before. Carry amber parcel now. After.";
-  await original.dispatch("input", { isTrusted: true });
-  const actionVisibleDuringEdit = !elements["#open-missed-repair"].hidden;
-  await runCleanupTimer();
-  const actionVisibleAfterRegeneration = !elements["#open-missed-repair"].hidden;
-  await elements["#open-missed-repair"].dispatch("click"); await settle();
+  elements["#draft-preparation-mode"].value = "conservative";
+  await elements["#draft-preparation-mode"].dispatch("change"); await settle();
+  await confirmReview("Before. Carry amber parcel now. After.");
   const candidateRequest = requests.filter((item) => item.url.endsWith("/candidates")).at(-1).body;
   const overLimit = elements["#missed-repair-review-state"].dataset.state;
   await elements["#retain-observed-sentence"].dispatch("click");
@@ -364,26 +358,23 @@ async function runCleanupTimer() {
 
   await elements["#dismiss-missed-repair"].dispatch("click");
   original.value = "Before. Carry umber parcel. After.";
-  await elements["#run-cleanup"].dispatch("click"); await settle();
-  original.value = "Before. Carry amber parcel now. After.";
   await original.dispatch("input", { isTrusted: true });
-  candidateFailure = true;
-  await elements["#open-missed-repair"].dispatch("click"); await settle();
-  const failureState = elements["#missed-repair-review-state"].dataset.state;
-  const originalAfterFailure = original.value;
   await elements["#run-cleanup"].dispatch("click"); await settle();
+  candidateFailure = true;
+  await confirmReview("Before. Carry amber parcel now. After.");
+  const failureState = elements["#missed-repair-review-state"].dataset.state;
+  const preparedAfterFailure = elements["#prepared-text"].value;
+  await elements["#dismiss-missed-repair"].dispatch("click");
   candidateFailure = false;
   candidateStale = true;
-  original.value = "Before. Carry amber parcel later. After.";
-  await original.dispatch("input", { isTrusted: true });
-  await elements["#open-missed-repair"].dispatch("click"); await settle();
+  await confirmReview("Before. Carry amber parcel later. After.");
   const promptChangeState = elements["#missed-repair-review-state"].dataset.state;
   const personalWrites = requests.filter((item) =>
     item.url.startsWith("/api/personal-corrections/")
     && item.url !== "/api/personal-corrections/candidates");
   process.stdout.write(JSON.stringify({
-    actionVisibleDuringEdit, actionVisibleAfterRegeneration, candidateRequest,
-    overLimit, afterRemoval, selectedByDefault, stale, failureState, originalAfterFailure,
+    candidateRequest,
+    overLimit, afterRemoval, selectedByDefault, stale, failureState, preparedAfterFailure,
     promptChangeState,
     cleanupPromptVersionIds: requests
       .filter((item) => item.url === "/api/cleanup")
@@ -398,22 +389,20 @@ async function runCleanupTimer() {
     observed = json.loads(result.stdout)
 
     assert observed == {
-        "actionVisibleDuringEdit": True,
-        "actionVisibleAfterRegeneration": True,
         "candidateRequest": {
             "before_text": "Before. Carry umber parcel. After.",
             "after_text": "Before. Carry amber parcel now. After.",
-            "source_mode": "conservative",
-            "prompt_version_id": 7,
+            "source_mode": "user_confirmed",
+            "prompt_version_id": None,
             "correction_contract_version": "personal-correction-v1",
         },
         "overLimit": "error",
         "afterRemoval": "ready",
-        "selectedByDefault": [False, False],
+        "selectedByDefault": [False],
         "stale": "stale",
         "failureState": "error",
-        "originalAfterFailure": "Before. Carry amber parcel now. After.",
+        "preparedAfterFailure": "Before. Carry amber parcel now. After.",
         "promptChangeState": "stale",
-        "cleanupPromptVersionIds": [7, 7, 7, 7],
+        "cleanupPromptVersionIds": [7, 7],
         "personalWrites": 0,
     }
