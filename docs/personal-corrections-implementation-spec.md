@@ -87,7 +87,12 @@ anchored operations and distinct restrictions. The design does not select a new
 migration or exact schema layout. The reference tables below cannot make those
 unresolved implementation details ready to build. Fuzzy/semantic retrieval,
 import, outcome ratings, analytics, and post-confirmation typo assistance remain
-deferred; complete-loop usefulness acceptance is a separate decision.
+deferred. The owner-agreed
+[single-user usefulness assessment](personal-corrections-execution-guide.md#agreed-single-user-usefulness-assessment)
+defines usefulness acceptance separately from implementation correctness.
+Its design is agreed; execution and acceptance remain outstanding. The
+[usefulness decision](https://github.com/dmclark/sayloom/issues/164) remains open
+pending reviewed, separately authorized publication and tracker reconciliation.
 
 ## Confirmed outcome and non-goals
 
@@ -752,8 +757,14 @@ not mutated.
 
 ## Acceptance checks
 
-Implementation is complete only when the following evidence passes with
-synthetic text.
+The following implementation correctness checks must pass with synthetic text;
+they do not establish complete-loop usefulness acceptance. That additionally
+requires the owner-approved evidence package defined by the
+[agreed usefulness assessment](personal-corrections-execution-guide.md#agreed-single-user-usefulness-assessment).
+Neither passing these checks nor agreeing the assessment establishes its
+execution prerequisites or authorizes acceptance execution. The managed-backup
+check below applies to complete durable deletion, not a new prerequisite for
+the usefulness assessment design.
 
 ### Persistence and migration
 

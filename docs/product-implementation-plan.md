@@ -1,6 +1,6 @@
 # Sayloom product implementation plan
 
-- **Status:** Approved internal sequence; complete-loop design resolved, dependable-preparation and complete-loop acceptance unverified
+- **Status:** Approved internal sequence; complete-loop and usefulness assessment designs agreed, assessment execution outstanding, dependable-preparation and complete-loop acceptance unverified
 - **Audience:** Product, design, engineering, research, and delivery contributors
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
@@ -55,6 +55,16 @@ and common management/authorization boundaries. The bounded
 does not complete ordered mixed mappings or the loop. Current issues, not older
 disposition tables, own actionable state. This reconciliation creates no build
 tickets and does not advance or weaken the unverified preparation gate.
+
+The owner agreed the
+[single-user usefulness assessment design](personal-corrections-execution-guide.md#agreed-single-user-usefulness-assessment).
+Execution and owner acceptance remain outstanding: neither a working complete
+loop nor owner-accepted dependable preparation is established. Implementation
+correctness checks do not prove usefulness. The
+[usefulness decision](https://github.com/dmclark/sayloom/issues/164) remains open
+pending reviewed, separately authorized publication and tracker reconciliation.
+This design agreement authorizes no assessment execution, implementation, or
+operations and changes no phase order, deletion scope, or deferred backup policy.
 
 Implementation proceeds in this order:
 

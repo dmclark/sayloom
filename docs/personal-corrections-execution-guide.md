@@ -310,8 +310,12 @@ before any separately authorized implementation or tracker reconciliation.
 ## First usefulness gate
 
 The following is a capability checklist, not an executed or sufficient
-complete-loop acceptance result. [Complete-loop usefulness acceptance](https://github.com/dmclark/sayloom/issues/164)
-remains a separate decision. Its scenarios/thresholds are not selected here.
+complete-loop acceptance result. The owner agreed the assessment design below
+in [the usefulness design session](https://ampcode.com/threads/T-01a12ca2-46cb-736b-87ab-ffa97de2c104).
+[The usefulness acceptance decision](https://github.com/dmclark/sayloom/issues/164)
+remains open pending reviewed, separately authorized document publication and
+tracker reconciliation. Design agreement does not establish usefulness
+acceptance or authorize execution.
 
 1. Smart puts an inferred repair directly into Prepared, or the user supplies
    intended wording for a missed repair.
@@ -333,6 +337,104 @@ remains a separate decision. Its scenarios/thresholds are not selected here.
 Formal accuracy statistics are not part of this gate.
 All three repair types and management authorization boundaries are requirements;
 one replacement-only demonstration does not establish complete-loop acceptance.
+
+### Agreed single-user usefulness assessment
+
+This is the single home of the agreed assessment design. It is bounded
+single-user engineering evidence, not a pilot, statistical efficacy claim, or
+resumed formal evaluation.
+
+**Execution prerequisites — not established:** both a working complete loop and
+an owner-accepted [dependable-preparation evidence gate](https://github.com/dmclark/sayloom/issues/162#issuecomment-6112233798)
+are required. Gate agreement, passing repository checks, and the bounded
+Prepared-confirmation/replacement-saving delivery establish neither prerequisite
+and do not complete ordered mixed mappings. The
+[complete-loop resolution](https://github.com/dmclark/sayloom/issues/163#issuecomment-6113213278)
+remains binding. Execution requires separate authorization.
+
+#### Paired comparisons
+
+Compare manual preparation without automatic correction with automatic help.
+Also compare Smart without saved Personal Corrections with the same candidate
+using explicitly saved corrections. Keep Original, Writing domain, settings,
+and candidate version equivalent within each paired comparison. Allow direct
+Prepared editing wherever available. Report whole-workflow savings separately
+from incremental personalization benefit; do not attribute all Smart improvement
+to saved mappings.
+
+#### Frozen scenarios and repetitions
+
+Before later authorized execution, freeze ten owner-approved synthetic scenario
+groups:
+
+1. Replacement repair/save/reuse chain.
+2. Anchored addition repair/save/reuse chain.
+3. Anchored removal repair/save/reuse chain.
+4. Literal-use control.
+5. Contradictory-context control.
+6. Unresolved ambiguity/conflicting-mappings control.
+7. Already-correct wording control.
+8. Longer mixed passage.
+9. Rejected-repair and recovery interaction.
+10. Management sequence: disable, edit/cancel, reviewed revision, explicit
+    re-enable.
+
+The three chains collectively cover successful Smart repair, Prepared edit,
+and valid bound Original-edit save-review entry paths. Each includes initial
+repair/save and two later drafts with different surrounding wording and the
+exact normalized trigger, including cross-session reuse. Distribute short
+communication with people, application/assistant instructions, and Writing
+domains across the groups.
+
+Run three paired repetitions reset to equivalent starting conditions. Retain
+all attempts, including failures, rather than selecting successful runs. These
+repetitions are a small engineering repeatability check, not statistical proof.
+
+#### Observations and acceptance requirements
+
+Record:
+
+- purposeful repair operations, not individual keystrokes, and amount of
+  wording changed in Original and Prepared separately and combined;
+- regeneration rounds after initial preparation;
+- time to owner-acceptable wording ready for explicit copying/delivery;
+- review, saving, management, and recovery effort;
+- expected versus observed repairs and abstentions; and
+- owner judgments of intended meaning and whether savings are worthwhile.
+
+Require fewer Original corrections and fewer regeneration rounds across the
+correction-required set, allowing equality where the applicable baseline is
+already zero. A nonzero measure must improve; neither measure may worsen to buy
+improvement in the other. Combined editing burden must not increase. Moving
+work into direct Prepared edits cannot manufacture improvement.
+
+Keep setup costs visible and separately reported. Judge their payoff against
+only the two later drafts actually assessed, not hypothetical future savings.
+The owner must judge savings worthwhile after review/setup/recovery effort.
+No percentage-savings threshold was agreed.
+
+Every required repair/reuse and control expectation must pass independently.
+Meaning violations and inappropriate reuse cannot be averaged away. Retain the
+five-second preparation ceiling and additionally require owner judgment that
+the whole interaction is responsive enough for people and applications.
+
+Missing prerequisites or incomplete evidence mean **not assessable**. An unmet
+requirement means **fail**. Changing a requirement needs an explicit new
+decision, not an exception made during assessment. Final acceptance requires
+owner review and explicit approval of the complete evidence package for the
+exact candidate revision and relevant working state. Confidence in a positive
+effect is an expectation, not evidence; report unexpected failures.
+
+Use synthetic scenario identities and content-minimized observations. Trigger
+observed, mapping supplied, and intended repair produced events prove neither
+correctness nor causation. Keep private text, exports, and raw provider payloads
+out of repository and tracker evidence. Ordinary use and saved corrections do
+not authorize research reuse; discussion examples are not replacement rules.
+
+ADR-0002's local ownership, independent states, live-database deletion scope,
+and Personal-Corrections-before-inheritance sequence remain unchanged.
+Managed-backup policy stays deferred, not a new prerequisite for this assessment
+design; this assessment cannot establish complete durable deletion.
 
 ## Deferred tracks
 
