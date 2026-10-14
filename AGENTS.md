@@ -99,6 +99,13 @@ Triage uses the default canonical label vocabulary. See `docs/agents/triage-labe
 
 Domain documentation uses a single-context layout. See `docs/agents/domain.md`.
 
+Before proposing correction examples or benchmarks, read Product Purpose and
+Success in `PRODUCT.md` and explain how the cases exercise intended-text
+recovery. Distinguish owner-confirmed misunderstandings, synthetic cases, and
+preservation controls. Treat spelling-only cases as limited coverage and current
+implementation limits as implementation facts, not the product goal. Discussion
+evidence does not authorize evaluation reuse.
+
 ## Temporary recognition-repair record
 
 When discussing recognition repairs, read
