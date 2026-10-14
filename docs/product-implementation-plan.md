@@ -38,6 +38,8 @@ delivery from continuity and availability alone. Original remains an explicit
 fallback. The local basic Cleanup backup is an incomplete supporting capability,
 not a replacement for the broader Cleanup contract or contextual Smart repair.
 
+The [initial OpenRouter integration and qualification decision](https://github.com/dmclark/sayloom/issues/172) specifies one configured, replaceable model and one explicitly approved serving-provider route, with automatic provider/model fallback disabled. OpenRouter supersedes the interim Nebius-direct and earlier Gemini/OpenAI planning directions. No application configuration is qualified. Normal use requires configuration-specific privacy, preservation, responsiveness, and local-backup evidence under that decision; the existing combined dependable-preparation gate remains independently outstanding. The approved qualification spending ceiling is $2, but execution requires a separately approved frozen run plan and applicable permissions. This specification authorizes no implementation or operations.
+
 The map does not reorder the four phases below, which remain governed by
 ADR-0002 and the Personal Corrections execution guide. Agreement on an evidence
 contract does not establish that acceptance has passed, authorize execution, or
