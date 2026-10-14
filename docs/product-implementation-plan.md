@@ -63,8 +63,8 @@ The owner agreed the
 Execution and owner acceptance remain outstanding: neither a working complete
 loop nor owner-accepted dependable preparation is established. Implementation
 correctness checks do not prove usefulness. The
-[usefulness decision](https://github.com/dmclark/sayloom/issues/164) remains open
-pending reviewed, separately authorized publication and tracker reconciliation.
+[usefulness assessment design decision](https://github.com/dmclark/sayloom/issues/164#issuecomment-6113842273)
+is resolved, and its reviewed document reconciliation is published.
 This design agreement authorizes no assessment execution, implementation, or
 operations and changes no phase order, deletion scope, or deferred backup policy.
 
