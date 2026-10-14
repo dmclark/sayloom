@@ -63,6 +63,12 @@ A reviewable lexical addition, removal, or replacement. A repair may be proposed
 explicitly supplied by the user after either Cleanup or Smart misses intended wording.
 _Avoid_: Accepted correction, evaluation evidence
 
+**Recognition repair**:
+A proposed correction of wording that recognition rendered differently from what the user intended,
+using surrounding context to support word or phrase replacements, additions, or removals.
+Correctly spelled words can be recognition errors; unusual wording alone does not establish an error.
+_Avoid_: Spelling-only correction, generic rewriting, verified transcript recovery
+
 **Personal Correction**:
 A user-reviewed before → intended mapping explicitly saved for later contextual Smart reuse.
 It may describe a replacement or an anchored addition/removal; it is evidence of the user's

@@ -31,6 +31,12 @@ Sayloom helps people with non-standard speech turn imperfect Voiceitt-generated
 text—including words Voiceitt misunderstood—into the text they intended, then
 prepare that text for copying or delivery to another application.
 
+The primary outcome is intended-text recovery with less manual correction.
+This includes contextual repair of wrong words and multiword phrases, even
+when the recognized words are correctly spelled. Punctuation, spelling, and
+presentation improvements alone do not demonstrate that outcome. Current
+source-preserving cleanup is a starting point, not the definition of success.
+
 Sayloom receives text, never voice recordings. It cannot verify what a person
 said against audio. It instead uses the supplied text, surrounding context,
 user-controlled preferences, and user-specific knowledge to infer likely
