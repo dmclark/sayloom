@@ -190,6 +190,52 @@ provider client and preserves Original fail-open. Generic `OPENAI_API_KEY` is
 never used. Arbitrary provider endpoints, route orders, and production model IDs
 are not supported.
 
+OpenRouter is a separate opt-in, single-model route. Put these entries in the
+selected state's `environment` file (not a repository `.env`), using an editor
+to add the key and keeping the file mode `0600`:
+
+```sh
+LOCAL_TEXT_CLEANUP_ROUTE_ORDER=openrouter
+LOCAL_TEXT_OPENROUTER_API_KEY=<OPENROUTER_API_KEY>
+LOCAL_TEXT_OPENROUTER_MODEL=qwen/qwen3-30b-a3b-instruct-2507
+LOCAL_TEXT_CLEANUP_PAID_DATA_ACKNOWLEDGEMENT=paid-external-cleanup-v1
+LOCAL_TEXT_CLEANUP_TIMEOUT_SECONDS=30
+LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS=30
+```
+
+Run `scripts/dev.py preflight` to validate the file before a controlled restart.
+Only the explicit route selection activates OpenRouter; unused OpenRouter key
+and model settings do not alter Gemini-only or Gemini → OpenAI routing. The
+selected route ignores other provider credentials, requires the exact model,
+key, paid-data acknowledgement, and one deadline allocation, and disables
+cleanup clients if that contract is incomplete. Generic `OPENROUTER_API_KEY`
+is never used.
+
+OpenRouter requests use the fixed Chat Completions endpoint, always set
+`provider.zdr=true`, and require support for the structured-output parameters.
+The model is fixed, but OpenRouter may select among eligible downstream
+providers of that model; no downstream provider is pinned. ZDR restricts
+endpoint eligibility, not all transient processing: implicit in-memory caching
+may still occur. Keep OpenRouter content-logging and product-improvement opt-ins
+off. See [ZDR](https://openrouter.ai/docs/guides/features/zdr) and
+[data collection](https://openrouter.ai/docs/guides/privacy/data-collection).
+If no eligible endpoint is available, cleanup fails open rather than relaxing
+ZDR or selecting another model. OpenRouter payload traffic diagnostics are not
+enabled; normal logs remain metadata-only.
+
+Acceptance criteria for this opt-in integration:
+- Existing Gemini routes remain unchanged unless `openrouter` is selected.
+- Every inference request targets the fixed Qwen model with ZDR and structured
+  output required; there is no automatic model selection or cross-model fallback.
+- Conservative and Smart cleanup retain the existing source-preserving contract.
+- Missing credentials or acknowledgement create no client; HTTP, transport,
+  deadline, malformed, truncated, refused, and locally rejected output preserve Original.
+- Health, configuration, status, and Workspace disclose OpenRouter without keys
+  or operating text; normal logs contain metadata only.
+- Mock checks do not establish live compatibility, endpoint eligibility, latency,
+  or cleanup quality. Those require a funded key and a separately authorized
+  live synthetic request; do not use private operating text for that check.
+
 The Workspace's expandable **Cleanup route** disclosure and the sanitized
 `cleanup_configuration` object in `/health` and `/api/config` report the active
 status and provider/model order without credentials. Cross-provider cleanup sends

@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 import httpx
@@ -506,6 +507,192 @@ def test_acknowledged_cross_provider_route_is_exact_sanitized_and_falls_back_onc
     assert "synthetic-openai-key" not in serialized
     assert len(provider_clients) == 2
     assert all(provider_client.is_closed for provider_client in provider_clients)
+
+
+@pytest.mark.parametrize("mode", ["conservative", "smart"])
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        "success",
+        "http",
+        "transport",
+        "timeout",
+        "deadline",
+        "malformed",
+        "truncated",
+        "refused",
+        "unsafe",
+    ],
+)
+def test_openrouter_opt_in_request_and_fail_open_contract(
+    initialized_settings: Settings, monkeypatch, caplog, mode: str, outcome: str
+) -> None:
+    requests = []
+    clients = []
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if outcome == "deadline":
+            await asyncio.sleep(2)
+        if outcome == "http":
+            return httpx.Response(503, json={"error": {"message": "synthetic private error"}})
+        if outcome == "transport":
+            raise httpx.ConnectError("synthetic private transport", request=request)
+        if outcome == "timeout":
+            raise httpx.ReadTimeout("synthetic private timeout", request=request)
+        if outcome == "malformed":
+            return httpx.Response(200, json={"choices": [None]})
+        text = "Unrelated invented output." if outcome == "unsafe" else "Synthetic source."
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "finish_reason": "length" if outcome == "truncated" else "stop",
+                        "message": {
+                            "content": json.dumps({"prepared_text": text}),
+                            "refusal": "synthetic refusal" if outcome == "refused" else None,
+                        },
+                    }
+                ],
+                "usage": {"prompt_tokens": 17, "completion_tokens": 9},
+            },
+        )
+
+    def new_client(_timeout: float) -> httpx.AsyncClient:
+        client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr(app_module, "_new_provider_client", new_client)
+    settings = cross_provider_settings(
+        initialized_settings,
+        cleanup_route_order="openrouter",
+        openrouter_api_key="synthetic-openrouter-key",
+        openrouter_model="qwen/qwen3-30b-a3b-instruct-2507",
+        cleanup_route_attempt_seconds=(0.75,) if outcome == "deadline" else (30.0,),
+        cleanup_timeout_seconds=1.0 if outcome == "deadline" else 30.0,
+    )
+    with TestClient(create_app(settings)) as client:
+        config = client.get("/api/config")
+        assert (
+            config.json()["cleanup_configuration"]
+            == client.get("/health").json()["cleanup_configuration"]
+        )
+        response = client.post(
+            "/api/cleanup",
+            json={
+                "original_text": "synthetic source",
+                "correction_mode": mode,
+            },
+        )
+    configuration = config.json()["cleanup_configuration"]
+    assert configuration["status"] == "openrouter_only"
+    assert configuration["routes"] == [
+        {
+            "provider": "openrouter",
+            "model": "qwen/qwen3-30b-a3b-instruct-2507",
+        }
+    ]
+    assert configuration["fallback_enabled"] is False
+    assert configuration["paid_data_acknowledgement"] == PAID_DATA_ACKNOWLEDGEMENT
+    assert "ZDR-eligible" in configuration["disclosure"]["processing"]
+    result = response.json()
+    assert result["provider"] == "openrouter"
+    assert result["model"] == "qwen/qwen3-30b-a3b-instruct-2507"
+    assert result["prepared_text"] == (
+        "Synthetic source." if outcome == "success" else "synthetic source"
+    )
+    assert result["status"] == (
+        "prepared"
+        if outcome == "success"
+        else "timeout"
+        if outcome in {"timeout", "deadline"}
+        else "provider_error"
+    )
+    assert len(requests) == 1
+    assert len(clients) == 1 and clients[0].is_closed
+    request = requests[0]
+    assert str(request.url) == "https://openrouter.ai/api/v1/chat/completions"
+    assert request.headers["authorization"] == "Bearer synthetic-openrouter-key"
+    payload = json.loads(request.content)
+    assert payload["model"] == "qwen/qwen3-30b-a3b-instruct-2507"
+    assert "models" not in payload
+    assert payload["provider"] == {"zdr": True, "require_parameters": True}
+    assert payload["response_format"]["json_schema"]["strict"] is True
+    assert payload["messages"][0]["role"] == "system"
+    assert payload["messages"][1]["content"] == "<SOURCE_TEXT>\nsynthetic source\n</SOURCE_TEXT>"
+    if outcome == "success":
+        assert result["attempts"][0]["input_tokens"] == 17
+        assert result["attempts"][0]["output_tokens"] == 9
+    for private in ("synthetic-openrouter-key", "synthetic source", "synthetic private"):
+        assert private not in caplog.text
+        assert private not in config.text
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"openrouter_api_key": None},
+        {"openrouter_model": "openrouter/auto"},
+        {"paid_data_acknowledgement": None},
+        {"cleanup_route_attempt_seconds": None},
+        {"cleanup_route_attempt_seconds": (18.0, 12.0)},
+    ],
+)
+def test_invalid_openrouter_configuration_never_creates_a_client(
+    initialized_settings: Settings, monkeypatch, overrides: dict
+) -> None:
+    def unexpected_client(_timeout: float):
+        raise AssertionError("invalid configuration must not create a client")
+
+    monkeypatch.setattr(app_module, "_new_provider_client", unexpected_client)
+    values = dict(
+        cleanup_route_order="openrouter",
+        openrouter_api_key="synthetic-key",
+        openrouter_model="qwen/qwen3-30b-a3b-instruct-2507",
+        cleanup_route_attempt_seconds=(30.0,),
+    )
+    values.update(overrides)
+    with TestClient(create_app(cross_provider_settings(initialized_settings, **values))) as client:
+        assert client.get("/health").json()["cleanup_configuration"]["status"] == "invalid"
+        assert (
+            client.post("/api/cleanup", json={"original_text": "synthetic source"}).json()[
+                "prepared_text"
+            ]
+            == "synthetic source"
+        )
+
+
+def test_unused_openrouter_environment_does_not_change_existing_routes(
+    initialized_settings: Settings, monkeypatch
+) -> None:
+    monkeypatch.setenv("LOCAL_TEXT_OPENROUTER_API_KEY", "synthetic-router-key")
+    monkeypatch.setenv("LOCAL_TEXT_OPENROUTER_MODEL", "qwen/qwen3-30b-a3b-instruct-2507")
+    loaded = load_settings()
+    assert loaded.openrouter_api_key == "synthetic-router-key"
+    assert loaded.openrouter_model == "qwen/qwen3-30b-a3b-instruct-2507"
+    assert "synthetic-router-key" not in repr(loaded)
+    for route in (None, "gemini,openai"):
+        settings = (
+            cross_provider_settings(initialized_settings)
+            if route
+            else Settings(
+                Profile.DEVELOPMENT,
+                gemini_api_key="synthetic-key",
+                cleanup_route_attempt_seconds=(18.0, 12.0),
+                database_path=initialized_settings.database_path,
+            )
+        )
+        settings = replace(
+            settings,
+            openrouter_api_key=loaded.openrouter_api_key,
+            openrouter_model=loaded.openrouter_model,
+        )
+        configuration = (
+            TestClient(create_app(settings)).get("/health").json()["cleanup_configuration"]
+        )
+        assert configuration["status"] == ("cross_provider" if route else "gemini_only")
 
 
 def test_configured_routes_without_a_partition_schedule_fail_configuration(

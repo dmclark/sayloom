@@ -22,6 +22,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from local_text.cleanup import (
     GEMINI_37_FLASH,
     OPENAI_GPT_56_LUNA,
+    OPENROUTER_QWEN,
     CleanupPartitionSchedule,
     CleanupRequest,
     CleanupResult,
@@ -30,6 +31,7 @@ from local_text.cleanup import (
     CorrectionMode,
     GeminiAdapter,
     OpenAIAdapter,
+    OpenRouterAdapter,
     PreparationMode,
     SequentialCleanupProvider,
     lexical_repairs,
@@ -87,6 +89,19 @@ class CleanupRuntimeConfiguration:
                     "Routine cleanup does not retain Original, Prepared, or provider payloads."
                 ),
             }
+        elif self.status == "openrouter_only":
+            disclosure = {
+                "summary": "Paid OpenRouter cleanup",
+                "processing": (
+                    "Cleanup sends the current text and cleanup instruction to OpenRouter "
+                    "for paid external processing by a ZDR-eligible provider "
+                    "of the fixed Qwen model."
+                ),
+                "fallback": "No cross-model fallback. Failures preserve Original.",
+                "corpus": (
+                    "Routine cleanup does not retain Original, Prepared, or provider payloads."
+                ),
+            }
         elif self.status == "gemini_only":
             disclosure = {
                 "summary": "Gemini-only cleanup",
@@ -126,7 +141,9 @@ class CleanupRuntimeConfiguration:
             ],
             "fallback_enabled": len(self.routes) > 1,
             "paid_data_acknowledgement": (
-                PAID_DATA_ACKNOWLEDGEMENT if self.status == "cross_provider" else None
+                PAID_DATA_ACKNOWLEDGEMENT
+                if self.status in {"cross_provider", "openrouter_only"}
+                else None
             ),
             "validation_error": self.validation_error,
             "disclosure": disclosure,
@@ -134,6 +151,22 @@ class CleanupRuntimeConfiguration:
 
 
 def _cleanup_runtime_configuration(runtime: Settings) -> CleanupRuntimeConfiguration:
+    if runtime.cleanup_route_order == "openrouter":
+        if not runtime.openrouter_api_key:
+            return CleanupRuntimeConfiguration(
+                "invalid", validation_error="explicit_openrouter_credential_required"
+            )
+        if runtime.openrouter_model != OPENROUTER_QWEN:
+            return CleanupRuntimeConfiguration(
+                "invalid", validation_error="openrouter_model_must_be_qwen_3_30b_a3b_instruct_2507"
+            )
+        if runtime.paid_data_acknowledgement != PAID_DATA_ACKNOWLEDGEMENT:
+            return CleanupRuntimeConfiguration(
+                "invalid", validation_error="paid_data_acknowledgement_required"
+            )
+        return _configured_cleanup_routes(
+            runtime, "openrouter_only", (("openrouter", OPENROUTER_QWEN, "openrouter-account"),)
+        )
     cross_provider_requested = any(
         value is not None
         for value in (
@@ -367,8 +400,12 @@ def create_app(
                 if client is None:
                     client = _new_provider_client(runtime.cleanup_timeout_seconds)
                     clients[provider_id] = client
-                adapter = (
-                    GeminiAdapter(
+                if provider_id == "openrouter":
+                    adapter = OpenRouterAdapter(
+                        runtime.openrouter_api_key or "", client, model=model
+                    )
+                elif provider_id == "gemini":
+                    adapter = GeminiAdapter(
                         runtime.gemini_api_key or "",
                         model,
                         client,
@@ -377,8 +414,8 @@ def create_app(
                             runtime.provider_traffic_diagnostics_enabled
                         ),
                     )
-                    if provider_id == "gemini"
-                    else OpenAIAdapter(
+                else:
+                    adapter = OpenAIAdapter(
                         runtime.openai_api_key or "",
                         client,
                         model=model,
@@ -387,7 +424,6 @@ def create_app(
                             runtime.provider_traffic_diagnostics_enabled
                         ),
                     )
-                )
                 adapters.append(
                     CleanupRoute(
                         adapter=adapter,
@@ -403,7 +439,7 @@ def create_app(
                 provider=provider,
                 model=cleanup_configuration.routes[0][1],
                 timeout_seconds=runtime.cleanup_timeout_seconds,
-                provider_id="gemini",
+                provider_id=cleanup_configuration.routes[0][0],
             )
             yield
         finally:

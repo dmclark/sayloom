@@ -1539,7 +1539,12 @@ def test_configuration_preflight_accepts_valid_shared_and_state_entries(tmp_path
     selected = state_root / "selected/environment"
     shared.parent.mkdir(parents=True)
     shared.write_text("LOCAL_TEXT_GEMINI_MODEL=shared-synthetic-value\n")
-    selected.write_text("LOCAL_TEXT_GEMINI_MODEL=state-synthetic-value\n")
+    selected.write_text(
+        "LOCAL_TEXT_GEMINI_MODEL=state-synthetic-value\n"
+        "LOCAL_TEXT_OPENROUTER_API_KEY=synthetic-router-secret\n"
+        "LOCAL_TEXT_OPENROUTER_MODEL=qwen/qwen3-30b-a3b-instruct-2507\n"
+        "LOCAL_TEXT_CLEANUP_ROUTE_ORDER=openrouter\n"
+    )
     shared.chmod(0o600)
     selected.chmod(0o600)
 
@@ -1555,6 +1560,17 @@ def test_configuration_preflight_accepts_valid_shared_and_state_entries(tmp_path
     assert result.stdout == "Configuration ready for isolated-state restart: selected\n"
     assert "synthetic-value" not in result.stdout
     assert "synthetic-value" not in result.stderr
+    status = run_dev(
+        state_root,
+        "status",
+        "--state",
+        "selected",
+        environment={**os.environ, "HOME": str(home)},
+    )
+    assert "OpenRouter credential: configured" in status.stdout
+    assert "OpenRouter model: qwen/qwen3-30b-a3b-instruct-2507" in status.stdout
+    assert "Cleanup route order: openrouter" in status.stdout
+    assert "synthetic-router-secret" not in status.stdout + status.stderr
 
 
 @pytest.mark.parametrize(

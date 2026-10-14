@@ -26,8 +26,10 @@ MODEL_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 SAFE_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 GEMINI_37_FLASH = "gemini-3.7-flash"
 OPENAI_GPT_56_LUNA = "gpt-5.6-luna"
+OPENROUTER_QWEN = "qwen/qwen3-30b-a3b-instruct-2507"
 GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta"
 OPENAI_ENDPOINT = "https://api.openai.com/v1/responses"
+OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 SOURCE_TEXT_FRAME = "<SOURCE_TEXT>\n{original_text}\n</SOURCE_TEXT>"
 MAX_PREPARED_TEXT_CHARACTERS = 100_000
 GEMINI_MAX_OUTPUT_TOKENS = 65_536
@@ -694,6 +696,129 @@ class OpenAIAdapter:
 
 
 @dataclass(frozen=True)
+class OpenRouterAdapter:
+    """One fixed Qwen Chat Completions request, restricted to ZDR providers."""
+
+    api_key: str
+    client: httpx.AsyncClient
+    model: str = OPENROUTER_QWEN
+    provider_id: str = "openrouter"
+    quota_group_id: str = "openrouter-account"
+
+    def __post_init__(self) -> None:
+        if self.model != OPENROUTER_QWEN:
+            raise ValueError("OpenRouter adapter supports only the configured Qwen model")
+
+    async def clean(
+        self,
+        original_text: str,
+        system_prompt: str,
+        *,
+        task_context: str | None = None,
+        relevant_curated_knowledge: tuple[str, ...] = (),
+    ) -> ProviderOutput:
+        started = time.monotonic()
+        if not self.api_key:
+            failure = ProviderConfigurationError(
+                "provider API key is not configured", model=self.model
+            )
+            _attribute_failure(failure, self, started)
+            raise failure
+        payload = {
+            "model": self.model,
+            "provider": {"zdr": True, "require_parameters": True},
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": (
+                        frame_smart_evidence(
+                            original_text, task_context, relevant_curated_knowledge
+                        )
+                        if task_context or relevant_curated_knowledge
+                        else frame_source_text(original_text)
+                    ),
+                },
+            ],
+            "max_tokens": _output_token_cap(original_text, provider_max=32_768),
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "cleanup_result",
+                    "strict": True,
+                    "schema": PREPARED_TEXT_SCHEMA,
+                },
+            },
+        }
+        try:
+            response = await self.client.post(
+                OPENROUTER_ENDPOINT,
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json=payload,
+            )
+        except httpx.TimeoutException as error:
+            failure = ProviderTimeoutError("provider request timed out", model=self.model)
+            _attribute_failure(failure, self, started)
+            raise failure from error
+        except httpx.TransportError as error:
+            failure = ProviderTransportError("provider transport failure", model=self.model)
+            _attribute_failure(failure, self, started)
+            raise failure from error
+        if response.is_error:
+            failure = ProviderHTTPError(
+                response.status_code,
+                model=self.model,
+                provider_code=_provider_error_code(response),
+                retry_after_seconds=_parse_retry_after(response.headers.get("Retry-After")),
+            )
+            _attribute_failure(failure, self, started)
+            raise failure
+        input_tokens = output_tokens = None
+        try:
+            result = response.json()
+            usage = result.get("usage") if isinstance(result, dict) else None
+            if isinstance(usage, dict):
+                input_tokens = _optional_token_count(usage.get("prompt_tokens"))
+                output_tokens = _optional_token_count(usage.get("completion_tokens"))
+            choices = result.get("choices") if isinstance(result, dict) else None
+            if not isinstance(choices, list) or len(choices) != 1:
+                raise ProviderMalformedResponseError("provider returned malformed choices")
+            choice = choices[0]
+            if not isinstance(choice, dict):
+                raise ProviderMalformedResponseError("provider returned malformed choice")
+            message = choice.get("message")
+            if choice.get("finish_reason") == "content_filter" or (
+                isinstance(message, dict) and message.get("refusal")
+            ):
+                raise ProviderRejectedOutputError("provider refused output", safety_policy=True)
+            if choice.get("finish_reason") != "stop":
+                raise ProviderRejectedOutputError("provider did not complete structured output")
+            text = message.get("content") if isinstance(message, dict) else None
+            if not isinstance(text, str):
+                raise ProviderMalformedResponseError("provider returned malformed content")
+            prepared_text = _parse_prepared_text(text)
+        except json.JSONDecodeError as error:
+            failure = ProviderMalformedResponseError(
+                "provider returned invalid JSON", model=self.model
+            )
+            _attribute_failure(failure, self, started)
+            raise failure from error
+        except (ProviderMalformedResponseError, ProviderRejectedOutputError) as error:
+            _attribute_failure(error, self, started)
+            error.input_tokens = input_tokens
+            error.output_tokens = output_tokens
+            raise
+        return ProviderOutput(
+            text=prepared_text,
+            provider_id=self.provider_id,
+            model_id=self.model,
+            elapsed_ms=_elapsed_ms(started),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+
+
+@dataclass(frozen=True)
 class CleanupRoute:
     """One configured adapter/model attempt in a sequential route."""
 
@@ -705,7 +830,9 @@ class CleanupRoute:
             raise ValueError("provider quota group identifier is invalid")
         if not SAFE_IDENTIFIER.fullmatch(self.adapter.provider_id):
             raise ValueError("provider identifier is invalid")
-        if not MODEL_IDENTIFIER.fullmatch(self.adapter.model):
+        if self.adapter.model != OPENROUTER_QWEN and not MODEL_IDENTIFIER.fullmatch(
+            self.adapter.model
+        ):
             raise ValueError("provider model identifier is invalid")
         adapter_quota_group = getattr(self.adapter, "quota_group_id", None)
         if adapter_quota_group is not None and adapter_quota_group != self.quota_group_id:
@@ -1816,7 +1943,7 @@ def _log_provider_traffic(
 
 
 def _safe_model(model: str) -> str:
-    return model if MODEL_IDENTIFIER.fullmatch(model) else "invalid"
+    return model if model == OPENROUTER_QWEN or MODEL_IDENTIFIER.fullmatch(model) else "invalid"
 
 
 def _safe_identifier(identifier: str | None) -> str:
