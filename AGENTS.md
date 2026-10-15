@@ -29,6 +29,13 @@ preservation controls. Treat spelling-only cases as limited coverage and current
 implementation limits as implementation facts, not the product goal. Discussion
 evidence does not authorize evaluation reuse.
 
+## Development-time conversational capture aid
+
+When asked to configure, enable, pause, or use conversational correction capture,
+read `docs/agents/conversational-correction-capture.md`. This is an opt-in
+development aid independent of Sayloom's application. This guidance does not
+enable collection or authorize access to historical private repair records.
+
 ## Temporary recognition-repair record
 
 When discussing recognition repairs, read
