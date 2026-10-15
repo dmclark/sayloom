@@ -20,6 +20,17 @@ keep runtime and secret material outside Git.
 - For triage, read `docs/agents/triage-labels.md` for the canonical label vocabulary.
 - For domain documentation, read `docs/agents/domain.md` for the single-context layout.
 
+## Voiceitt integration boundary
+
+The owner confirms that Voiceitt performs an initial pass followed by an automatic
+second pass, which can change correct wording into incorrect wording. Sayloom
+currently receives only the final text; agents must not assume access to both
+versions or claim to identify which pass introduced an error from final text alone.
+
+The owner confirms that obtaining both versions would require switching to
+Voiceitt's API. That switch is out of scope for now because of its financial
+implications. Current development must not depend on first-pass access.
+
 ## Correction examples and benchmarks
 
 Before proposing correction examples or benchmarks, read Product Purpose and
