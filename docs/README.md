@@ -64,6 +64,7 @@ itself rather than being duplicated here.
 
 | Document | Status |
 | --- | --- |
+| [OpenRouter model-pair integration and roadmap reconciliation](drafts/openrouter-model-pair.md) | Review draft for the GPT-4.1/Mini candidate pair, experimental integration, and proposed #159/#172 reconciliation. No model qualification, paid execution, or normal-use acceptance. |
 | [Partner participant invitation](drafts/partner-participant-invitation.md) and [rendered PDF draft](drafts/partner-participant-invitation-draft.pdf) | Working draft with unresolved bracketed details; not participant-ready. |
 | [Partner demonstration](drafts/partner-demo.html) | Illustrative demonstration collateral, not efficacy evidence or authorization. |
 

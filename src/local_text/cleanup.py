@@ -11,7 +11,7 @@ import random
 import re
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from email.utils import parsedate_to_datetime
 from enum import StrEnum
 from typing import Annotated, Any, Literal, Protocol
@@ -28,6 +28,9 @@ GEMINI_37_FLASH = "gemini-3.7-flash"
 OPENAI_GPT_56_LUNA = "gpt-5.6-luna"
 GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta"
 OPENAI_ENDPOINT = "https://api.openai.com/v1/responses"
+OPENROUTER_MODELS = frozenset({"openai/gpt-4.1", "openai/gpt-4.1-mini"})
+OPENROUTER_ENDPOINTS = frozenset({"azure", "azure/swedencentral"})
+OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 SOURCE_TEXT_FRAME = "<SOURCE_TEXT>\n{original_text}\n</SOURCE_TEXT>"
 MAX_PREPARED_TEXT_CHARACTERS = 100_000
 GEMINI_MAX_OUTPUT_TOKENS = 65_536
@@ -694,6 +697,146 @@ class OpenAIAdapter:
 
 
 @dataclass(frozen=True)
+class OpenRouterAdapter:
+    """One pinned experimental GPT route; never log text or retry internally."""
+
+    api_key: str = field(repr=False)
+    model: str
+    serving_endpoint: str
+    client: httpx.AsyncClient
+    provider_id: str = "openrouter"
+    quota_group_id: str = "openrouter-account"
+
+    def __post_init__(self) -> None:
+        if self.model not in OPENROUTER_MODELS:
+            raise ValueError("unsupported OpenRouter model")
+        if self.serving_endpoint not in OPENROUTER_ENDPOINTS:
+            raise ValueError("unsupported OpenRouter serving endpoint")
+
+    async def clean(
+        self,
+        original_text: str,
+        system_prompt: str,
+        *,
+        task_context: str | None = None,
+        relevant_curated_knowledge: tuple[str, ...] = (),
+    ) -> ProviderOutput:
+        started = time.monotonic()
+        # Qualification's narrower input ceiling applies to this experimental route only.
+        if (
+            len(original_text) + len(task_context or "") + sum(map(len, relevant_curated_knowledge))
+            > 12_000
+        ):
+            raise ProviderFailure(
+                "OpenRouter input exceeds supported bound",
+                failure_class=ProviderFailureClass.INVALID_LOCAL_REQUEST,
+                model=self.model,
+            )
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": (
+                        frame_smart_evidence(
+                            original_text, task_context, relevant_curated_knowledge
+                        )
+                        if task_context or relevant_curated_knowledge
+                        else frame_source_text(original_text)
+                    ),
+                },
+            ],
+            "max_completion_tokens": _output_token_cap(original_text, provider_max=32_768),
+            "provider": {
+                "only": [self.serving_endpoint],
+                "allow_fallbacks": False,
+                "zdr": True,
+                "require_parameters": True,
+                "data_collection": "deny",
+            },
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "cleanup_result",
+                    "strict": True,
+                    "schema": PREPARED_TEXT_SCHEMA,
+                },
+            },
+        }
+        try:
+            if not self.api_key:
+                raise ProviderConfigurationError("provider API key is not configured")
+            try:
+                response = await self.client.post(
+                    OPENROUTER_ENDPOINT,
+                    headers={"Authorization": f"Bearer {self.api_key}"},
+                    json=payload,
+                )
+            except httpx.TimeoutException as error:
+                raise ProviderTimeoutError("provider request timed out") from error
+            except httpx.TransportError as error:
+                raise ProviderTransportError("provider transport failure") from error
+            if response.is_error:
+                failure = ProviderHTTPError(
+                    response.status_code,
+                    provider_code=_provider_error_code(response),
+                    retry_after_seconds=_parse_retry_after(response.headers.get("Retry-After")),
+                )
+                if response.status_code == 402:
+                    failure.failure_class = ProviderFailureClass.PERMANENT_QUOTA
+                elif response.status_code == 403:
+                    failure.failure_class = ProviderFailureClass.SAFETY_POLICY
+                elif response.status_code == 400:
+                    failure.failure_class = ProviderFailureClass.INVALID_LOCAL_REQUEST
+                raise failure
+            try:
+                body = response.json()
+            except json.JSONDecodeError as error:
+                raise ProviderMalformedResponseError("provider returned invalid JSON") from error
+            if not isinstance(body, dict) or body.get("provider") != "Azure":
+                # A route discrepancy is terminal, not permission to submit elsewhere.
+                raise ProviderFailure(
+                    "serving provider unverifiable", provider_code="route_mismatch"
+                )
+            choices = body.get("choices")
+            if (
+                not isinstance(choices, list)
+                or len(choices) != 1
+                or not isinstance(choices[0], dict)
+            ):
+                raise ProviderMalformedResponseError("provider returned invalid choices")
+            choice = choices[0]
+            message = choice.get("message")
+            if choice.get("finish_reason") == "content_filter" or (
+                isinstance(message, dict) and message.get("refusal")
+            ):
+                raise ProviderFailure(
+                    "provider safety refusal",
+                    failure_class=ProviderFailureClass.SAFETY_POLICY,
+                )
+            if choice.get("finish_reason") != "stop" or not isinstance(message, dict):
+                raise ProviderMalformedResponseError("provider output incomplete")
+            content = message.get("content")
+            if not isinstance(content, str):
+                raise ProviderMalformedResponseError("provider returned missing text")
+            text = _parse_prepared_text(content)
+            usage = body.get("usage")
+            usage = usage if isinstance(usage, dict) else {}
+            return ProviderOutput(
+                text=text,
+                provider_id=self.provider_id,
+                model_id=self.model,
+                elapsed_ms=_elapsed_ms(started),
+                input_tokens=_optional_token_count(usage.get("prompt_tokens")),
+                output_tokens=_optional_token_count(usage.get("completion_tokens")),
+            )
+        except ProviderFailure as error:
+            _attribute_failure(error, self, started)
+            raise
+
+
+@dataclass(frozen=True)
 class CleanupRoute:
     """One configured adapter/model attempt in a sequential route."""
 
@@ -705,7 +848,9 @@ class CleanupRoute:
             raise ValueError("provider quota group identifier is invalid")
         if not SAFE_IDENTIFIER.fullmatch(self.adapter.provider_id):
             raise ValueError("provider identifier is invalid")
-        if not MODEL_IDENTIFIER.fullmatch(self.adapter.model):
+        if not MODEL_IDENTIFIER.fullmatch(self.adapter.model) and not (
+            self.adapter.provider_id == "openrouter" and self.adapter.model in OPENROUTER_MODELS
+        ):
             raise ValueError("provider model identifier is invalid")
         adapter_quota_group = getattr(self.adapter, "quota_group_id", None)
         if adapter_quota_group is not None and adapter_quota_group != self.quota_group_id:
@@ -1816,7 +1961,7 @@ def _log_provider_traffic(
 
 
 def _safe_model(model: str) -> str:
-    return model if MODEL_IDENTIFIER.fullmatch(model) else "invalid"
+    return model if MODEL_IDENTIFIER.fullmatch(model) or model in OPENROUTER_MODELS else "invalid"
 
 
 def _safe_identifier(identifier: str | None) -> str:

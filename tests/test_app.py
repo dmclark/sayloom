@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 import httpx
@@ -421,6 +422,120 @@ def cross_provider_settings(initialized_settings: Settings, **overrides) -> Sett
     }
     values.update(overrides)
     return Settings(**values)
+
+
+@pytest.mark.parametrize("mode", ["conservative", "smart"])
+@pytest.mark.parametrize(
+    "primary_failure", [503, 402, 403, 429, "invalid_output", "success", "refusal", "route"]
+)
+def test_openrouter_pair_falls_back_with_original_and_reports_model(
+    initialized_settings: Settings, monkeypatch, primary_failure, mode
+) -> None:
+    models = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        models.append(body["model"])
+        assert body["messages"][1]["content"] == ("<SOURCE_TEXT>\nsynthetic source\n</SOURCE_TEXT>")
+        if len(models) == 1 and isinstance(primary_failure, int):
+            return httpx.Response(primary_failure)
+        prepared = (
+            "Unrelated words."
+            if len(models) == 1 and primary_failure == "invalid_output"
+            else "Synthetic source."
+        )
+        return httpx.Response(
+            200,
+            json={
+                "provider": "other" if primary_failure == "route" else "Azure",
+                "choices": [
+                    {
+                        "finish_reason": "content_filter"
+                        if primary_failure == "refusal"
+                        else "stop",
+                        "message": {
+                            "content": json.dumps({"prepared_text": prepared}),
+                        },
+                    }
+                ],
+            },
+        )
+
+    monkeypatch.setattr(
+        app_module,
+        "_new_provider_client",
+        lambda timeout: httpx.AsyncClient(
+            transport=httpx.MockTransport(respond),
+        ),
+    )
+    settings = replace(
+        initialized_settings,
+        openrouter_api_key="synthetic-key",
+        openrouter_models=("openai/gpt-4.1", "openai/gpt-4.1-mini"),
+        openrouter_endpoints=("azure", "azure"),
+        cleanup_route_order="openrouter",
+        paid_data_acknowledgement=PAID_DATA_ACKNOWLEDGEMENT,
+        cleanup_timeout_seconds=4,
+        cleanup_route_attempt_seconds=(1.5, 2.5),
+    )
+    with TestClient(create_app(settings)) as client:
+        config = client.get("/api/config").json()["cleanup_configuration"]
+        result = client.post(
+            "/api/cleanup",
+            json={
+                "original_text": "synthetic source",
+                "correction_mode": mode,
+            },
+        ).json()
+    assert config["status"] == "openrouter_experimental"
+    assert config["fallback_enabled"] is True
+    assert result["provider"] == "openrouter"
+    if primary_failure in {402, 403, 429, "refusal", "route"}:
+        assert result["prepared_text"] == "synthetic source"
+        assert len(models) == 1
+    else:
+        assert result["prepared_text"] == "Synthetic source."
+        assert len(models) == (1 if primary_failure == "success" else 2)
+    assert result["model"] == models[-1]
+    assert models == ["openai/gpt-4.1", "openai/gpt-4.1-mini"][: len(models)]
+    assert [attempt["model"] for attempt in result["attempts"]] == models
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"profile": Profile.RELEASE},
+        {"paid_data_acknowledgement": None},
+        {"openrouter_endpoints": ()},
+        {"openrouter_models": ("openai/gpt-4.1", "openai/gpt-4.1")},
+        {"cleanup_timeout_seconds": 5},
+        {"cleanup_route_attempt_seconds": (3, 2)},
+        {"cleanup_route_order": None},
+    ],
+)
+def test_invalid_openrouter_configuration_never_creates_clients(
+    initialized_settings: Settings, monkeypatch, overrides
+) -> None:
+    def unexpected_client(timeout):
+        pytest.fail("invalid configuration must not create a client")
+
+    monkeypatch.setattr(app_module, "_new_provider_client", unexpected_client)
+    values = dict(
+        openrouter_api_key="synthetic-key",
+        cleanup_route_order="openrouter",
+        openrouter_models=("openai/gpt-4.1", "openai/gpt-4.1-mini"),
+        openrouter_endpoints=("azure", "azure"),
+        paid_data_acknowledgement=PAID_DATA_ACKNOWLEDGEMENT,
+        cleanup_timeout_seconds=4,
+        cleanup_route_attempt_seconds=(1.5, 2.5),
+    )
+    values.update(overrides)
+    with TestClient(create_app(replace(initialized_settings, **values))) as client:
+        config = client.get("/api/config").json()["cleanup_configuration"]
+        result = client.post("/api/cleanup", json={"original_text": "synthetic source"}).json()
+    assert config["available"] is False
+    assert config["status"] == "invalid"
+    assert result["prepared_text"] == "synthetic source"
 
 
 @pytest.mark.parametrize("mode", ["conservative", "smart"])

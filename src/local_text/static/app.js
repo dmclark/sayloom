@@ -937,6 +937,8 @@
       const item = document.createElement("li");
       const provider = route.provider === "openai"
         ? "OpenAI"
+        : route.provider === "openrouter"
+          ? "OpenRouter"
         : route.provider.charAt(0).toUpperCase() + route.provider.slice(1);
       item.textContent = `${provider} · ${route.model}`;
       elements.cleanupRouteList.append(item);
@@ -952,7 +954,9 @@
       : "";
 
     elements.modelLabel.textContent = routes.length
-      ? routes.map((route) => route.provider === "openai" ? "OpenAI" : "Gemini").join(" → ")
+      ? routes.map((route) => route.provider === "openrouter"
+        ? `OpenRouter · ${route.model}`
+        : route.provider === "openai" ? "OpenAI" : "Gemini").join(" → ")
       : configuration?.status === "invalid"
         ? "Cleanup configuration invalid"
         : "Cleanup configuration needed";

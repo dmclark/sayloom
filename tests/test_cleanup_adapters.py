@@ -28,6 +28,113 @@ from local_text.cleanup import (
 )
 
 
+@pytest.mark.parametrize("model", ["openai/gpt-4.1", "openai/gpt-4.1-mini"])
+def test_openrouter_pins_endpoint_and_parses_complete_output(model: str) -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "https://openrouter.ai/api/v1/chat/completions"
+        body = json.loads(request.content)
+        assert body["model"] == model
+        assert body["provider"] == {
+            "only": ["azure"],
+            "allow_fallbacks": False,
+            "zdr": True,
+            "require_parameters": True,
+            "data_collection": "deny",
+        }
+        assert body["max_completion_tokens"] == 764
+        assert "max_tokens" not in body
+        assert body["response_format"]["json_schema"]["schema"] == PREPARED_TEXT_SCHEMA
+        assert body["messages"][1]["content"] == ("<SOURCE_TEXT>\nsynthetic source\n</SOURCE_TEXT>")
+        return httpx.Response(
+            200,
+            json={
+                "provider": "Azure",
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "content": '{"prepared_text":"Synthetic source."}',
+                        },
+                    }
+                ],
+                "usage": {"prompt_tokens": 19, "completion_tokens": 8},
+            },
+        )
+
+    async def exercise() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            output = await cleanup_module.OpenRouterAdapter(
+                "synthetic-key",
+                model,
+                "azure",
+                client,
+            ).clean("synthetic source", "Preserve words")
+        assert output.text == "Synthetic source."
+        assert output.model_id == model
+        assert output.provider_id == "openrouter"
+        assert (output.input_tokens, output.output_tokens) == (19, 8)
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("content,finish", [(None, "stop"), ("{}", "length")])
+def test_openrouter_rejects_missing_or_incomplete_content(content, finish) -> None:
+    async def exercise() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(
+                    200,
+                    json={
+                        "provider": "Azure",
+                        "choices": [
+                            {
+                                "finish_reason": finish,
+                                "message": {"content": content},
+                            }
+                        ],
+                    },
+                )
+            )
+        ) as client:
+            with pytest.raises(ProviderMalformedResponseError):
+                await cleanup_module.OpenRouterAdapter(
+                    "synthetic-key",
+                    "openai/gpt-4.1",
+                    "azure",
+                    client,
+                ).clean("synthetic source", "Preserve words")
+
+    asyncio.run(exercise())
+
+
+def test_openrouter_counts_context_in_input_bound_without_truncation() -> None:
+    calls = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        evidence = json.loads(json.loads(request.content)["messages"][1]["content"].split("\n")[1])
+        calls.append(evidence)
+        return httpx.Response(200, json={
+            "provider": "Azure", "choices": [{"finish_reason": "stop", "message": {
+                "content": '{"prepared_text":"Synthetic output."}',
+            }}],
+        })
+
+    async def exercise() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            adapter = cleanup_module.OpenRouterAdapter(
+                "synthetic-key", "openai/gpt-4.1-mini", "azure", client,
+            )
+            await adapter.clean("é" * 11_980, "Preserve words", task_context="x" * 20)
+            with pytest.raises(cleanup_module.ProviderFailure) as caught:
+                await adapter.clean("é" * 11_980, "Preserve words", task_context="x" * 21)
+            assert caught.value.failure_class == ProviderFailureClass.INVALID_LOCAL_REQUEST
+        assert len(calls) == 1
+        assert calls[0]["original_text"] == "é" * 11_980
+        assert calls[0]["task_context"] == "x" * 20
+
+    asyncio.run(exercise())
+
+
 def gemini_response(
     prepared_text: str = "Synthetic prepared text.",
     *,

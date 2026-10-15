@@ -22,6 +22,9 @@ class Settings:
     gemini_model: str = "gemini-3.5-flash"
     openai_api_key: str | None = field(default=None, repr=False)
     openai_model: str | None = None
+    openrouter_api_key: str | None = field(default=None, repr=False)
+    openrouter_models: tuple[str, ...] = ()
+    openrouter_endpoints: tuple[str, ...] = ()
     cleanup_route_order: str | None = None
     gemini_quota_group_id: str | None = None
     openai_quota_group_id: str | None = None
@@ -100,6 +103,17 @@ def load_settings() -> Settings:
         gemini_model=os.getenv("LOCAL_TEXT_GEMINI_MODEL", "gemini-3.5-flash"),
         openai_api_key=os.getenv("LOCAL_TEXT_OPENAI_API_KEY"),
         openai_model=os.getenv("LOCAL_TEXT_OPENAI_MODEL"),
+        openrouter_api_key=os.getenv("LOCAL_TEXT_OPENROUTER_API_KEY"),
+        openrouter_models=tuple(
+            part.strip()
+            for part in os.getenv("LOCAL_TEXT_OPENROUTER_MODELS", "").split(",")
+            if part.strip()
+        ),
+        openrouter_endpoints=tuple(
+            part.strip()
+            for part in os.getenv("LOCAL_TEXT_OPENROUTER_ENDPOINTS", "").split(",")
+            if part.strip()
+        ),
         cleanup_route_order=os.getenv("LOCAL_TEXT_CLEANUP_ROUTE_ORDER"),
         gemini_quota_group_id=os.getenv("LOCAL_TEXT_GEMINI_QUOTA_GROUP_ID"),
         openai_quota_group_id=os.getenv("LOCAL_TEXT_OPENAI_QUOTA_GROUP_ID"),

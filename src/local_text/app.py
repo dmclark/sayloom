@@ -22,6 +22,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from local_text.cleanup import (
     GEMINI_37_FLASH,
     OPENAI_GPT_56_LUNA,
+    OPENROUTER_ENDPOINTS,
+    OPENROUTER_MODELS,
     CleanupPartitionSchedule,
     CleanupRequest,
     CleanupResult,
@@ -30,6 +32,7 @@ from local_text.cleanup import (
     CorrectionMode,
     GeminiAdapter,
     OpenAIAdapter,
+    OpenRouterAdapter,
     PreparationMode,
     SequentialCleanupProvider,
     lexical_repairs,
@@ -72,7 +75,20 @@ class CleanupRuntimeConfiguration:
         return bool(self.routes)
 
     def public(self) -> dict[str, object]:
-        if self.status == "cross_provider":
+        if self.status == "openrouter_experimental":
+            disclosure = {
+                "summary": "Experimental OpenRouter model fallback — not qualified",
+                "processing": (
+                    "Preparation sends current text and instructions through OpenRouter to "
+                    "the configured Azure endpoint for paid external processing."
+                ),
+                "fallback": (
+                    "After an eligible failure, the secondary model may receive the same text "
+                    "within the shared cloud budget. No local Cleanup backup is installed."
+                ),
+                "corpus": "Routine preparation does not retain text or provider payloads.",
+            }
+        elif self.status == "cross_provider":
             disclosure = {
                 "summary": "Paid Gemini → OpenAI fallback",
                 "processing": (
@@ -126,7 +142,9 @@ class CleanupRuntimeConfiguration:
             ],
             "fallback_enabled": len(self.routes) > 1,
             "paid_data_acknowledgement": (
-                PAID_DATA_ACKNOWLEDGEMENT if self.status == "cross_provider" else None
+                PAID_DATA_ACKNOWLEDGEMENT
+                if self.status in {"cross_provider", "openrouter_experimental"}
+                else None
             ),
             "validation_error": self.validation_error,
             "disclosure": disclosure,
@@ -134,6 +152,41 @@ class CleanupRuntimeConfiguration:
 
 
 def _cleanup_runtime_configuration(runtime: Settings) -> CleanupRuntimeConfiguration:
+    if runtime.cleanup_route_order == "openrouter" or any(
+        (
+            runtime.openrouter_models,
+            runtime.openrouter_endpoints,
+        )
+    ):
+        error = None
+        if runtime.profile is not Profile.DEVELOPMENT:
+            error = "openrouter_development_only"
+        elif runtime.cleanup_route_order != "openrouter":
+            error = "explicit_openrouter_route_required"
+        elif not runtime.openrouter_api_key:
+            error = "explicit_openrouter_credential_required"
+        elif (
+            len(runtime.openrouter_models) != 2
+            or set(runtime.openrouter_models) != OPENROUTER_MODELS
+        ):
+            error = "two_distinct_openrouter_candidates_required"
+        elif len(runtime.openrouter_endpoints) != 2 or any(
+            endpoint not in OPENROUTER_ENDPOINTS for endpoint in runtime.openrouter_endpoints
+        ):
+            error = "explicit_openrouter_endpoints_required"
+        elif runtime.paid_data_acknowledgement != PAID_DATA_ACKNOWLEDGEMENT:
+            error = "paid_data_acknowledgement_required"
+        elif not 0 < runtime.cleanup_timeout_seconds < 5:
+            error = "openrouter_cloud_budget_must_leave_five_second_reserve"
+        if error:
+            return CleanupRuntimeConfiguration("invalid", validation_error=error)
+        return _configured_cleanup_routes(
+            runtime,
+            "openrouter_experimental",
+            tuple(
+                ("openrouter", model, "openrouter-account") for model in runtime.openrouter_models
+            ),
+        )
     cross_provider_requested = any(
         value is not None
         for value in (
@@ -362,7 +415,9 @@ def create_app(
         clients: dict[str, httpx.AsyncClient] = {}
         try:
             adapters = []
-            for provider_id, model, quota_group_id in cleanup_configuration.routes:
+            for route_index, (provider_id, model, quota_group_id) in enumerate(
+                cleanup_configuration.routes
+            ):
                 client = clients.get(provider_id)
                 if client is None:
                     client = _new_provider_client(runtime.cleanup_timeout_seconds)
@@ -378,6 +433,14 @@ def create_app(
                         ),
                     )
                     if provider_id == "gemini"
+                    else OpenRouterAdapter(
+                        runtime.openrouter_api_key or "",
+                        model,
+                        runtime.openrouter_endpoints[route_index],
+                        client,
+                        quota_group_id=quota_group_id,
+                    )
+                    if provider_id == "openrouter"
                     else OpenAIAdapter(
                         runtime.openai_api_key or "",
                         client,
@@ -403,7 +466,7 @@ def create_app(
                 provider=provider,
                 model=cleanup_configuration.routes[0][1],
                 timeout_seconds=runtime.cleanup_timeout_seconds,
-                provider_id="gemini",
+                provider_id=cleanup_configuration.routes[0][0],
             )
             yield
         finally:
