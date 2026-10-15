@@ -1631,8 +1631,18 @@ def test_runtime_environment_passes_supported_runtime_configuration(
     config_root = tmp_path / "home/.config/local-text/development"
     environment_path = config_root / "environment"
     environment_path.parent.mkdir(parents=True)
-    environment_path.write_text("LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS=18,12\n")
+    environment_path.write_text(
+        "LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS=18,12\n"
+        "LOCAL_TEXT_OPENROUTER_API_KEY=synthetic-shared-key\n"
+        "LOCAL_TEXT_OPENROUTER_MODELS=openai/gpt-4.1,openai/gpt-4.1-mini\n"
+        "LOCAL_TEXT_OPENROUTER_ENDPOINTS=azure,azure\n"
+    )
     environment_path.chmod(0o600)
+    selected_environment = state_root / "selected/environment"
+    selected_environment.write_text(
+        "LOCAL_TEXT_OPENROUTER_MODELS=openai/gpt-4.1-mini,openai/gpt-4.1\n"
+    )
+    selected_environment.chmod(0o600)
 
     scripts = str(REPOSITORY_ROOT / "scripts")
     sys.path.insert(0, scripts)
@@ -1678,6 +1688,11 @@ def test_runtime_environment_passes_supported_runtime_configuration(
         module.main()
 
     assert captured_environment["LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS"] == "18,12"
+    assert captured_environment["LOCAL_TEXT_OPENROUTER_API_KEY"] == "synthetic-shared-key"
+    assert captured_environment["LOCAL_TEXT_OPENROUTER_MODELS"] == (
+        "openai/gpt-4.1-mini,openai/gpt-4.1"
+    )
+    assert captured_environment["LOCAL_TEXT_OPENROUTER_ENDPOINTS"] == "azure,azure"
     assert captured_environment["LOCAL_TEXT_PROVIDER_TRAFFIC_DIAGNOSTICS_FILE"] == str(
         state_root / "selected/.provider-traffic-diagnostics"
     )
