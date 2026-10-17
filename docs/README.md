@@ -49,6 +49,7 @@ itself rather than being duplicated here.
 | [Personal Corrections execution guide](personal-corrections-execution-guide.md) | Current four-phase execution order—state-root migration, Evidence Collection retirement, Personal Corrections, then new-state inheritance—and the live implementation-surface ownership map for navigating that work. |
 | [Personal Corrections implementation specification](personal-corrections-implementation-spec.md) | Confirmed complete-loop review, explicit saving, contextual Smart reuse of replacements and anchored additions/removals, management, live-database deletion, export, and inheritance boundaries. Replacement-oriented schema/API/export and older migration/ticket sections are limited references requiring technical reconciliation, not build instructions; managed-backup policy and runtime/complete-loop acceptance remain unresolved. |
 | [Product implementation plan](product-implementation-plan.md) | Approved broader capability plan reconciled to the four-phase Personal Corrections sequence. |
+| [Provider response-screening protocol](provider-response-screening-protocol.md) | Reusable synthetic response-reliability procedure; each run needs fresh explicit privacy, spending and execution approval. Not application qualification or activation authority. |
 | [Raycast Target Management redesign implementation specification](raycast-target-management-implementation-spec.md) | Review-ready implementation contract for installed-application discovery, managed target lifecycle, readiness, safety, migration, and isolated real-device acceptance. |
 | [Agent issue-tracker guidance](agents/issue-tracker.md), [triage labels](agents/triage-labels.md), [domain-doc guidance](agents/domain.md), and [workflow preferences](agents/workflow-preferences.md) | Current repository workflow guidance within each file's scope. |
 
@@ -71,6 +72,7 @@ itself rather than being duplicated here.
 
 | Document | Superseded or completed by |
 | --- | --- |
+| [Frozen provider-screening reference bundle](archive/provider-response-screening/README.md) | Historical synthetic fixtures, source configurations and non-executable runner; the current response-screening protocol governs separately authorized reuse. Historical approval/pricing fields grant no new execution permission. |
 | [Intended-meaning evidence collection contract](intended-meaning-evidence-collection-contract.md) | ADR-0002 and the live Personal Corrections direction. Retired historical contract retained at its current path; no live collection or participant-package tooling remains, and it grants no collection or evaluation authority. |
 | [Correction benchmark pipeline](archive/correction-benchmark-pipeline.md) | Fixed eight-arm Smart scaffold; superseded for prototype acceptance by the automatic-strategy specification, map, and harness. |
 | [Cleanup resilience and local evaluation design](archive/cleanup-resilience-evaluation.md) | Abandoned source-preserving corpus and benchmark path. No current evaluation model is authorized; renewed research requires a new approved purpose and contract. |
