@@ -872,23 +872,17 @@ def test_list_prune_and_remove_manage_only_registered_state_data(tmp_path: Path)
         ),
     }
 
-    listed = run_dev(state_root, "list")
-    preview = run_dev(state_root, "prune", environment=isolated_environment)
+    listed = run_dev(state_root, "list", environment=isolated_environment)
 
     assert listed.returncode == 0
     assert "stale" in listed.stdout.lower()
-    assert preview.returncode == 0
-    assert preview.stdout.splitlines() == [
-        f"Orphaned state: stale ({stale_path.parent}; "
-        f"missing checkout {tmp_path / 'deleted-worktree'})",
-        "Preview only. Run scripts/dev.py prune --apply to remove these resources.",
-    ]
+    assert "yes: orphaned state" in listed.stdout
     assert stale_path.exists()
 
     applied = run_dev(
         state_root,
-        "prune",
-        "--apply",
+        "list",
+        "--prune",
         environment={**isolated_environment, "HOME": str(tmp_path / "home")},
     )
     assert applied.returncode == 0
@@ -943,7 +937,7 @@ def test_list_prune_and_remove_manage_only_registered_state_data(tmp_path: Path)
     assert not (current_root / "legacy-two").exists()
 
 
-def test_list_orders_and_aligns_states_with_short_paths_and_runner_status(
+def test_list_orders_and_aligns_states_with_short_paths_and_prune_status(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     scripts = str(REPOSITORY_ROOT / "scripts")
@@ -975,17 +969,253 @@ def test_list_orders_and_aligns_states_with_short_paths_and_runner_status(
         repository=first_repository,
         port=7500,
     )
-    monkeypatch.setattr(module, "amp_runner_repositories", lambda: {first_repository})
+    monkeypatch.setattr(module, "supacode_worktrees", lambda: {})
+    monkeypatch.setattr(module, "repository_worktrees", lambda: set())
     monkeypatch.setattr(module, "service_is_loaded", lambda _state: False)
 
     module.print_registered_states(state_root)
 
     lines = capsys.readouterr().out.splitlines()
     assert lines == [
-        "STATE        PORT  CHECKOUT  SERVICE  RUNNER  REPOSITORY",
-        f"lower-port   7500  stale     stopped  ✓       ~/.missing-{tmp_path.name}/first",
-        f"higher-port  7600  stale     stopped          ~/.missing-{tmp_path.name}/second",
+        "STATE        PORT  CHECKOUT  SERVICE  PRUNE                REPOSITORY",
+        "lower-port   7500  stale     stopped  yes: orphaned state  "
+        f"~/.missing-{tmp_path.name}/first",
+        "higher-port  7600  stale     stopped  yes: orphaned state  "
+        f"~/.missing-{tmp_path.name}/second",
     ]
+
+
+@pytest.mark.parametrize(
+    ("status", "present", "in_repository", "expected"),
+    [
+        ("archived", True, True, "no: Git status unavailable"),
+        ("archived", False, True, "no: missing checkout; cannot verify Git status"),
+        (None, False, False, "yes: orphaned state"),
+        (None, True, True, "no: not registered with Supacode"),
+        ("archived", True, False, "no: outside this Git repository"),
+        ("archived", False, False, "no: outside this Git repository"),
+    ],
+)
+def test_list_explains_prune_eligibility(
+    tmp_path: Path, monkeypatch, capsys, status, present, in_repository, expected
+) -> None:
+    module = load_dev_module("sayloom_dev_list_eligibility_script")
+    repository = tmp_path / "checkout"
+    if present:
+        repository.mkdir()
+    root = tmp_path / "states"
+    write_foreign_state(root, name="fixture", repository=repository, port=7500)
+    monkeypatch.setattr(
+        module, "supacode_worktrees",
+        lambda: {} if status is None else {repository: ("fixture-id", status)},
+    )
+    monkeypatch.setattr(
+        module, "repository_worktrees", lambda: {repository} if in_repository else set(),
+    )
+    monkeypatch.setattr(module, "service_is_loaded", lambda _state: True)
+    monkeypatch.setattr(
+        module, "amp_runner_processes",
+        lambda **_kwargs: pytest.fail("list must not inspect runners"),
+    )
+
+    module.print_registered_states(root)
+
+    header, row = capsys.readouterr().out.splitlines()
+    assert "RUNNER" not in header
+    assert "PRUNE" in header
+    assert expected in row
+    assert "running" in row
+
+    monkeypatch.setattr(module, "stop_amp_runners", lambda _repository: None)
+    monkeypatch.setattr(module, "stop_service", lambda _state: False)
+    monkeypatch.setattr(module, "plist_path", lambda _state: tmp_path / "fixture.plist")
+    monkeypatch.setattr(
+        module, "legacy_configuration_path",
+        lambda _state: tmp_path / "legacy" / "config" / "fixture" / "environment",
+    )
+    monkeypatch.setattr(
+        "builtins.input", lambda _prompt: pytest.fail("list --prune must not prompt"),
+    )
+
+    arguments = module.parser().parse_args(["--state-root", str(root), "list", "--prune"])
+    assert module.command(arguments) == 0
+    eligible = expected.startswith("yes:")
+    assert (root / "fixture").exists() is not eligible
+    assert repository.exists() is (present and not eligible)
+
+
+@pytest.fixture
+def git_prune_fixture(tmp_path: Path, monkeypatch):
+    module = load_dev_module("sayloom_dev_git_prune_script")
+    primary = tmp_path / "primary"
+    primary.mkdir()
+
+    def git(*arguments: str, cwd: Path = primary) -> str:
+        return subprocess.run(
+            ["git", *arguments], cwd=cwd, check=True, capture_output=True, text=True,
+        ).stdout.strip()
+
+    git("init", "-b", "main")
+    git("config", "user.name", "Fixture")
+    git("config", "user.email", "fixture@example.invalid")
+    (primary / "tracked").write_text("base\n")
+    git("add", "tracked")
+    git("commit", "-m", "base")
+    git("update-ref", "refs/remotes/origin/main", "HEAD")
+    repositories = {"primary": primary}
+    for name in (
+        "current", "pinned", "unpinned", "archived", "dirty", "untracked",
+        "unpushed", "unmerged", "unlisted",
+    ):
+        repositories[name] = tmp_path / name
+        git("worktree", "add", "-b", name, str(repositories[name]))
+    (repositories["dirty"] / "tracked").write_text("uncommitted\n")
+    (repositories["untracked"] / "new").write_text("untracked\n")
+    for name in ("unpushed", "unmerged"):
+        (repositories[name] / "tracked").write_text(f"{name}\n")
+        git("commit", "-am", name, cwd=repositories[name])
+    # Local main contains an unpublished commit; merging alone must not allow deletion.
+    git("merge", "--ff-only", "unpushed")
+    git("update-ref", "refs/remotes/origin/unmerged", "unmerged")
+    statuses = {
+        repository: (module.parse.quote(f"{repository}/", safe=""), "unpinned")
+        for repository in repositories.values()
+    }
+    for name, status in (("primary", "main"), ("pinned", "pinned"), ("archived", "archived")):
+        statuses[repositories[name]] = (statuses[repositories[name]][0], status)
+    root = tmp_path / "states"
+    for index, (name, repository) in enumerate(repositories.items()):
+        if name == "unlisted":
+            continue
+        manifest = write_foreign_state(root, name=name, repository=repository, port=7500 + index)
+        (manifest.parent / "environment").write_text("synthetic environment\n")
+        (manifest.parent / "local-text.sqlite3").write_bytes(b"synthetic database")
+    write_foreign_state(root, name="pinned-extra", repository=repositories["pinned"], port=7600)
+    monkeypatch.setattr(module, "repository_root", lambda: repositories["current"])
+    monkeypatch.setattr(module, "supacode_worktrees", lambda: statuses.copy())
+    monkeypatch.setattr(module, "service_is_loaded", lambda _state: False)
+    monkeypatch.setattr(module, "stop_amp_runners", lambda _repository: None)
+    monkeypatch.setattr(module, "stop_service", lambda _state: False)
+    monkeypatch.setattr(module, "plist_path", lambda state: tmp_path / f"{state.name}.plist")
+    monkeypatch.setattr(
+        module, "legacy_configuration_path",
+        lambda state: tmp_path / "legacy" / "config" / state.name / "environment",
+    )
+    events = []
+    real_run = subprocess.run
+
+    def run(command, **kwargs):
+        if command[0] != "supacode":
+            return real_run(command, **kwargs)
+        operation = command[2]
+        repository = Path(module.parse.unquote(command[4])).resolve()
+        events.append((operation, repository))
+        if operation == "archive":
+            statuses[repository] = (statuses[repository][0], "archived")
+        else:
+            assert operation == "delete" and statuses[repository][1] == "archived"
+            git("worktree", "remove", str(repository))
+            statuses.pop(repository)
+            # Simulate Supacode's delete hook having already removed an associated state.
+            if repository == repositories["pinned"]:
+                module.shutil.rmtree(root / "pinned-extra")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(module.subprocess, "run", run)
+    return module, root, repositories, events
+
+
+def test_list_uses_git_safety_not_pin_or_archive_status(git_prune_fixture, capsys) -> None:
+    module, root, repositories, events = git_prune_fixture
+    module.print_registered_states(root)
+    rows = {line.split()[0]: line for line in capsys.readouterr().out.splitlines()[1:]}
+    for name in ("pinned", "unpinned", "archived", "pinned-extra"):
+        assert "yes: clean, pushed, merged" in rows[name]
+    for name, reason in (
+        ("primary", "primary worktree"), ("current", "current worktree"),
+        ("dirty", "uncommitted changes"), ("untracked", "uncommitted changes"),
+        ("unpushed", "unpushed commits"), ("unmerged", "not merged into local main"),
+    ):
+        assert f"no: {reason}" in rows[name]
+    assert events == []
+    assert all(repository.exists() for repository in repositories.values())
+
+
+def test_list_prune_archives_and_deletes_only_git_safe_listed_worktrees(
+    git_prune_fixture, monkeypatch
+) -> None:
+    module, root, repositories, events = git_prune_fixture
+    monkeypatch.setattr("builtins.input", lambda _prompt: pytest.fail("must not prompt"))
+    arguments = module.parser().parse_args(["--state-root", str(root), "list", "--prune"])
+    assert module.command(arguments) == 0
+    for name in ("pinned", "unpinned", "archived"):
+        assert not repositories[name].exists()
+        assert not (root / name).exists()
+        expected = [("delete", repositories[name])]
+        if name != "archived":
+            expected.insert(0, ("archive", repositories[name]))
+        assert [event for event in events if event[1] == repositories[name]] == expected
+    assert not (root / "pinned-extra").exists()
+    for name in ("primary", "current", "dirty", "untracked", "unpushed", "unmerged", "unlisted"):
+        assert repositories[name].exists()
+        if name != "unlisted":
+            assert (root / name / "environment").read_text() == "synthetic environment\n"
+            assert (root / name / "local-text.sqlite3").read_bytes() == b"synthetic database"
+
+
+def test_list_prune_rechecks_git_before_archiving(git_prune_fixture, monkeypatch) -> None:
+    module, root, repositories, events = git_prune_fixture
+
+    def new_work(repository):
+        (repository / "new-work").write_text("changed after list\n")
+
+    monkeypatch.setattr(module, "stop_amp_runners", new_work)
+    with pytest.raises(SystemExit, match="uncommitted changes"):
+        module.print_registered_states(root, prune=True)
+    assert events == []
+    assert repositories["pinned"].exists() and (root / "pinned").exists()
+
+
+@pytest.mark.parametrize("failure", ["archive", "new-work"])
+def test_list_prune_preserves_resources_when_archiving_is_unsafe(
+    git_prune_fixture, monkeypatch, failure
+) -> None:
+    module, root, repositories, events = git_prune_fixture
+    run = module.subprocess.run
+
+    def changed_archive(command, **kwargs):
+        if command[:3] == ["supacode", "worktree", "archive"]:
+            if failure == "archive":
+                raise subprocess.CalledProcessError(1, command)
+            result = run(command, **kwargs)
+            (repositories["pinned"] / "new-work").write_text("changed during archive\n")
+            return result
+        return run(command, **kwargs)
+
+    monkeypatch.setattr(module.subprocess, "run", changed_archive)
+    expected = subprocess.CalledProcessError if failure == "archive" else SystemExit
+    with pytest.raises(expected):
+        module.print_registered_states(root, prune=True)
+    assert not any(operation == "delete" for operation, _repository in events)
+    assert repositories["pinned"].exists() and (root / "pinned" / "environment").exists()
+
+
+@pytest.mark.parametrize("missing", ["main", "remotes"])
+def test_list_blocks_pruning_without_git_evidence(git_prune_fixture, capsys, missing) -> None:
+    module, root, repositories, events = git_prune_fixture
+    refs = ["refs/heads/main"] if missing == "main" else [
+        "refs/remotes/origin/main", "refs/remotes/origin/unmerged",
+    ]
+    for ref in refs:
+        module.subprocess.run(
+            ["git", "update-ref", "-d", ref], cwd=repositories["primary"], check=True,
+        )
+    module.print_registered_states(root, prune=True)
+    rows = {line.split()[0]: line for line in capsys.readouterr().out.splitlines()[1:]}
+    reason = "Git status unavailable" if missing == "main" else "unpushed commits"
+    assert f"no: {reason}" in rows["pinned"]
+    assert events == []
+    assert repositories["pinned"].exists() and (root / "pinned").exists()
 
 
 def test_amp_runner_processes_maps_runner_pids_to_checkout_paths(
@@ -1103,13 +1333,22 @@ def test_prune_apply_stops_runner_before_deleting_worktree_and_state(
         port=unused_port(),
     )
     worktree_id = "%2Fmanaged-worktree%2F"
+    unlisted = tmp_path / "archived-without-state"
+    unlisted.mkdir()
     events: list[str] = []
     monkeypatch.setattr(
         module,
         "supacode_worktrees",
-        lambda: {repository.resolve(): (worktree_id, "archived")},
+        lambda: {
+            repository.resolve(): (worktree_id, "archived"),
+            unlisted.resolve(): ("unlisted-id", "archived"),
+        },
     )
-    monkeypatch.setattr(module, "repository_worktrees", lambda: {repository.resolve()})
+    monkeypatch.setattr(
+        module, "repository_worktrees", lambda: {repository.resolve(), unlisted.resolve()},
+    )
+    monkeypatch.setattr(module, "worktree_prune_reason", lambda _repository: None)
+    monkeypatch.setattr(module, "service_is_loaded", lambda _state: False)
     monkeypatch.setattr(
         module, "stop_amp_runners", lambda _repository: events.append("stop runner")
     )
@@ -1133,27 +1372,23 @@ def test_prune_apply_stops_runner_before_deleting_worktree_and_state(
         lambda _root, state, *, confirmed: events.append(f"remove state {state.name}"),
     )
 
-    module.prune(state_root, apply=False)
+    module.print_registered_states(state_root)
 
-    assert capsys.readouterr().out.splitlines() == [
-        f"Archived worktree: {repository}",
-        f"  State: also-managed ({state_root / 'also-managed'})",
-        f"  State: managed ({state_root / 'managed'})",
-        "Preview only. Run scripts/dev.py prune --apply to remove these resources.",
-    ]
+    assert capsys.readouterr().out.count("yes: clean, pushed, merged") == 2
     assert events == []
 
-    module.prune(state_root, apply=True)
+    arguments = module.parser().parse_args(["--state-root", str(state_root), "list", "--prune"])
+    assert module.command(arguments) == 0
 
-    assert events == [
+    assert events[:2] == [
         "stop runner",
         "delete worktree",
-        "remove state also-managed",
-        "remove state managed",
     ]
+    assert set(events[2:]) == {"remove state also-managed", "remove state managed"}
+    assert unlisted.exists()
 
 
-def test_prune_protects_non_archived_foreign_and_unregistered_worktrees(
+def test_prune_protects_unsafe_foreign_and_unregistered_worktrees(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     scripts = str(REPOSITORY_ROOT / "scripts")
@@ -1206,13 +1441,11 @@ def test_prune_protects_non_archived_foreign_and_unregistered_worktrees(
         "stop_amp_runners",
         lambda _repository: pytest.fail("protected worktrees must not be inspected for shutdown"),
     )
+    monkeypatch.setattr(module, "worktree_prune_reason", lambda _repository: "uncommitted changes")
 
-    module.prune(state_root, apply=True)
+    module.print_registered_states(state_root, prune=True)
 
-    assert (
-        capsys.readouterr().out
-        == "No archived worktrees or orphaned development states found.\n"
-    )
+    assert "No prunable development states found." in capsys.readouterr().out
     assert all((state_root / name / "state.json").exists() for name in repositories)
 
 
@@ -1246,6 +1479,8 @@ def test_prune_apply_preserves_worktree_and_state_when_runner_does_not_stop(
         lambda: {repository.resolve(): ("%2Fmanaged-worktree%2F", "archived")},
     )
     monkeypatch.setattr(module, "repository_worktrees", lambda: {repository.resolve()})
+    monkeypatch.setattr(module, "worktree_prune_reason", lambda _repository: None)
+    monkeypatch.setattr(module, "service_is_loaded", lambda _state: False)
     monkeypatch.setattr(
         module,
         "stop_amp_runners",
@@ -1258,7 +1493,7 @@ def test_prune_apply_preserves_worktree_and_state_when_runner_does_not_stop(
     )
 
     with pytest.raises(SystemExit, match="runner remained active"):
-        module.prune(state_root, apply=True)
+        module.print_registered_states(state_root, prune=True)
 
     assert repository.exists()
     assert manifest.exists()
@@ -1365,12 +1600,17 @@ def test_help_lists_checkout_service_database_and_cleanup_commands() -> None:
         "list",
         "migrate-state-root",
         "remove",
-        "prune",
         "db",
     ):
         assert command_name in result.stdout
     assert "evidence-package" not in result.stdout
     assert "Running without a command is equivalent to status" in result.stdout
+    list_help = run_dev(Path("unused"), "list", "--help")
+    assert list_help.returncode == 0
+    assert "--prune" in list_help.stdout
+    assert "without confirmation" in " ".join(list_help.stdout.split())
+    for removed_command in ("prune", "retire"):
+        assert run_dev(Path("unused"), removed_command).returncode != 0
 
     logs_help = run_dev(Path("unused"), "logs", "--help")
     assert logs_help.returncode == 0

@@ -850,10 +850,6 @@ def amp_runner_processes(*, required: bool = False) -> dict[Path, set[int]]:
     return runners
 
 
-def amp_runner_repositories() -> set[Path]:
-    return set(amp_runner_processes())
-
-
 def stop_amp_runners(repository: Path) -> None:
     repository = repository.resolve()
     runners = amp_runner_processes(required=True).get(repository, set())
@@ -914,28 +910,77 @@ def abbreviated_path(path: Path) -> str:
     return str(Path("~") / relative) if relative.parts else "~"
 
 
-def print_registered_states(root: Path) -> None:
+def worktree_prune_reason(repository: Path) -> str | None:
+    if repository == repository_root().resolve():
+        return "current worktree"
+
+    def git(*arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["git", *arguments], cwd=repository, check=check, capture_output=True, text=True,
+        )
+
+    try:
+        common = git("rev-parse", "--path-format=absolute", "--git-common-dir").stdout.strip()
+        if repository == Path(common).resolve().parent:
+            return "primary worktree"
+        if git(
+            "--no-optional-locks", "status", "--porcelain",
+            "--untracked-files=all", "--ignore-submodules=none",
+        ).stdout:
+            return "uncommitted changes"
+        if int(git("rev-list", "--count", "HEAD", "--not", "--remotes").stdout) > 0:
+            return "unpushed commits"
+        merged = git("merge-base", "--is-ancestor", "HEAD", "refs/heads/main", check=False)
+        if merged.returncode == 1:
+            return "not merged into local main"
+        merged.check_returncode()
+    except (OSError, subprocess.CalledProcessError):
+        return "Git status unavailable"
+    return None
+
+
+def print_registered_states(root: Path, *, prune: bool = False) -> None:
     states = sorted(registered_states(root), key=lambda state: (state.port, state.name))
     if not states:
         print("No development states are registered.")
         return
-    runner_repositories = amp_runner_repositories()
+    supacode = supacode_worktrees()
+    worktrees = repository_worktrees()
+    prunable: dict[Path, list[State]] = {}
     rows: list[tuple[str, ...]] = []
     for state in states:
         repository = Path(state.repository_root)
         checkout = "present" if repository.is_dir() else "stale"
         service = "running" if service_is_loaded(state) else "stopped"
+        resolved = repository.resolve()
+        entry = supacode.get(resolved)
+        eligible = False
+        if entry is None and checkout == "stale":
+            prune_status = "yes: orphaned state"
+            eligible = True
+        elif entry is None:
+            prune_status = "no: not registered with Supacode"
+        elif resolved not in worktrees:
+            prune_status = "no: outside this Git repository"
+        elif checkout == "stale":
+            prune_status = "no: missing checkout; cannot verify Git status"
+        else:
+            reason = worktree_prune_reason(resolved)
+            eligible = reason is None
+            prune_status = f"no: {reason}" if reason else "yes: clean, pushed, merged"
+        if eligible:
+            prunable.setdefault(resolved, []).append(state)
         rows.append(
             (
                 state.name,
                 str(state.port),
                 checkout,
                 service,
-                "✓" if repository.resolve() in runner_repositories else "",
+                prune_status,
                 abbreviated_path(repository),
             )
         )
-    headers = ("STATE", "PORT", "CHECKOUT", "SERVICE", "RUNNER", "REPOSITORY")
+    headers = ("STATE", "PORT", "CHECKOUT", "SERVICE", "PRUNE", "REPOSITORY")
     widths = [
         max(len(header), *(len(row[index]) for row in rows))
         for index, header in enumerate(headers)
@@ -943,65 +988,48 @@ def print_registered_states(root: Path) -> None:
     for row in (headers, *rows):
         print("  ".join(f"{value:<{widths[index]}}" for index, value in enumerate(row)).rstrip())
 
+    if prune:
+        if not prunable:
+            print("No prunable development states found.")
+        for repository, associated in prunable.items():
+            stop_amp_runners(repository)
+            entry = supacode.get(repository)
+            if entry is not None:
+                if supacode_worktrees().get(repository) != entry:
+                    fail(f"worktree registration changed; preserving {repository}; list again")
+                reason = worktree_prune_reason(repository)
+                if reason is not None:
+                    fail(f"preserving {repository}: {reason}; list again")
+                if entry[1] != "archived":
+                    subprocess.run(
+                        ["supacode", "worktree", "archive", "--worktree", entry[0], "--background"],
+                        check=True,
+                    )
+                if supacode_worktrees().get(repository) != (entry[0], "archived"):
+                    fail(f"worktree is not archived; preserving {repository}; list again")
+                reason = worktree_prune_reason(repository)
+                if reason is not None:
+                    fail(f"preserving {repository}: {reason}; list again")
+                delete_supacode_worktree(root, repository, entry[0], associated)
+            else:
+                if repository.is_dir() or repository in supacode_worktrees():
+                    fail(f"checkout registration changed; preserving {repository}; list again")
+                for state in associated:
+                    if state_path(root, state.name).exists():
+                        remove_state(root, state, confirmed=True)
 
-def prune(root: Path, *, apply: bool) -> None:
-    states_by_repository: dict[Path, list[State]] = {}
-    for state in registered_states(root):
-        states_by_repository.setdefault(Path(state.repository_root).resolve(), []).append(state)
 
-    supacode = supacode_worktrees()
-    archived: list[tuple[Path, str, list[State]]] = []
-    for repository in sorted(repository_worktrees(), key=str):
-        entry = supacode.get(repository)
-        if entry is None or entry[1] != "archived":
-            continue
-        states = sorted(states_by_repository.get(repository, []), key=lambda state: state.name)
-        archived.append((repository, entry[0], states))
-    orphaned = sorted(
-        (
-            state
-            for repository, states in states_by_repository.items()
-            if not repository.is_dir() and repository not in supacode
-            for state in states
-        ),
-        key=lambda state: state.name,
+def delete_supacode_worktree(
+    root: Path, repository: Path, worktree_id: str, states: list[State]
+) -> None:
+    subprocess.run(
+        ["supacode", "worktree", "delete", "--worktree", worktree_id, "--background"],
+        check=True,
     )
-    if not archived and not orphaned:
-        print("No archived worktrees or orphaned development states found.")
-        return
-    for repository, _worktree_id, states in archived:
-        print(f"Archived worktree: {repository}")
-        for state in states:
-            print(f"  State: {state.name} ({state.state_directory})")
-    for state in orphaned:
-        print(
-            f"Orphaned state: {state.name} ({state.state_directory}; "
-            f"missing checkout {state.repository_root})"
-        )
-    if not apply:
-        print("Preview only. Run scripts/dev.py prune --apply to remove these resources.")
-        return
-
-    for repository, worktree_id, states in archived:
-        stop_amp_runners(repository)
-        subprocess.run(
-            ["supacode", "worktree", "delete", "--worktree", worktree_id, "--background"],
-            check=True,
-        )
-        print(f"Removed Supacode worktree {repository}")
-        for state in states:
-            if state_path(root, state.name).exists():
-                remove_state(root, state, confirmed=True)
-
-    orphaned_by_repository: dict[Path, list[State]] = {}
-    for state in orphaned:
-        repository = Path(state.repository_root).resolve()
-        orphaned_by_repository.setdefault(repository, []).append(state)
-    for repository, states in orphaned_by_repository.items():
-        stop_amp_runners(repository)
-        for state in states:
-            if state_path(root, state.name).exists():
-                remove_state(root, state, confirmed=True)
+    print(f"Removed Supacode worktree {repository}")
+    for state in states:
+        if state_path(root, state.name).exists():
+            remove_state(root, state, confirmed=True)
 
 
 def db_command(state: State, arguments: argparse.Namespace) -> int:
@@ -1066,11 +1094,7 @@ def command(arguments: argparse.Namespace) -> int:
         return 0
 
     if operation == "list":
-        print_registered_states(root)
-        return 0
-
-    if operation == "prune":
-        prune(root, apply=arguments.apply)
+        print_registered_states(root, prune=arguments.prune)
         return 0
 
     if operation == "remove" and arguments.all:
@@ -1122,9 +1146,9 @@ def parser() -> argparse.ArgumentParser:
   scripts/dev.py logs --provider-traffic
                                 temporarily log and follow exact provider traffic
   scripts/dev.py list            show every registered development state
+  scripts/dev.py list --prune    delete entries marked yes in the PRUNE column, without prompting
   scripts/dev.py migrate-state-root
                                 migrate all legacy registrations to the XDG root
-  scripts/dev.py prune           preview archived-worktree and orphaned-state cleanup
 
 database commands:
   scripts/dev.py db              report schema status without mutation
@@ -1137,7 +1161,8 @@ state data:
   ${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/
 
 state-root and database migrations are explicit; normal startup performs neither.
-status and prune are read-only unless prune receives --apply.
+status and list are read-only unless list receives --prune.
+list --prune permanently deletes eligible worktrees and associated state databases/environments.
 """,
         formatter_class=HelpFormatter,
     )
@@ -1202,7 +1227,12 @@ status and prune are read-only unless prune receives --apply.
         help="temporarily log exact provider content and follow until interrupted",
     )
 
-    subparsers.add_parser("list", help="list every registered state")
+    list_parser = subparsers.add_parser("list", help="list every registered state")
+    list_parser.add_argument(
+        "--prune", action="store_true",
+        help="permanently delete entries marked yes in PRUNE, including associated "
+        "databases/environments, without confirmation",
+    )
 
     state_root_migration = subparsers.add_parser(
         "migrate-state-root",
@@ -1222,13 +1252,6 @@ status and prune are read-only unless prune receives --apply.
         "--all", action="store_true", help="remove all states bound to this checkout"
     )
     remove_parser.add_argument("-y", "--yes", action="store_true", help="skip confirmation")
-
-    prune_parser = subparsers.add_parser(
-        "prune", help="find archived worktrees and orphaned states"
-    )
-    prune_parser.add_argument(
-        "--apply", action="store_true", help="remove reported worktrees and states"
-    )
 
     database = subparsers.add_parser("db", help="run focused database administration")
     database.add_argument("--state", help=argparse.SUPPRESS)

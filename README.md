@@ -29,7 +29,7 @@ Requirements: macOS, Python 3.12+, and [uv](https://docs.astral.sh/uv/).
 uv sync --locked
 scripts/dev.py \
   --state-root "$HOME/Library/Application Support/local-text/dev-states" \
-  prune --apply  # optional, separate cleanup of archived states
+  list --prune  # optional, permanently delete entries marked yes without prompting
 scripts/dev.py migrate-state-root  # once for states in macOS Application Support
 scripts/dev.py init
 scripts/dev.py
@@ -46,7 +46,7 @@ Development states now live under
 `${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/`. The explicit
 `migrate-state-root` command moves every registration from the former
 `~/Library/Application Support/local-text/dev-states/` root. You may run the
-legacy-root `prune --apply` command shown above first to remove eligible
+legacy-root `list --prune` command shown above first to remove eligible
 archived states; migration never invokes pruning. After validating all source
 and destination registrations, migration stops only the registered development
 services it will move and verifies that they are stopped. It copies all states
@@ -100,14 +100,27 @@ the current checkout to that port and atomically repoint each installed managed
 Raycast alias to that checkout; the previous owner moves to the current
 state's old port. Alias conflicts are rejected before state changes. Production
 remains separate on reserved port 7532. Use
-`scripts/dev.py list` to inspect every registration, `remove` to delete the
-current checkout's external state after confirmation, and `prune` to preview
-Supacode-archived worktrees in this Git repository plus states whose checkout
-no longer exists and has no Supacode registration. `prune --apply` stops any Amp
-runner bound to each reported checkout, deletes archived worktrees through
-Supacode, and removes every associated state directory, including its
-environment. Primary, pinned, unpinned, foreign-repository, and unregistered
-worktrees are never prune candidates.
+`scripts/dev.py list` to inspect every registration and its Prune eligibility,
+including the reason for each no. `remove` deletes the current checkout's
+external state after confirmation.
+
+**`scripts/dev.py list --prune` permanently deletes entries marked yes without
+a confirmation prompt, including their associated state databases and
+environments.** Listed Supacode worktrees in this Git repository qualify only
+when they have no uncommitted changes (including untracked files), no unpushed
+commits, and their HEAD is fully merged into local `main`. Pin and archive
+status do not affect eligibility. "Pushed" means every HEAD commit is reachable
+from a cached remote-tracking ref; this command does not fetch. Missing Git
+evidence blocks pruning. The current and primary checkouts, foreign-repository
+worktrees, and worktrees without Supacode registration are protected.
+
+Cleanup stops checkout-bound Amp runners, rechecks eligibility, archives the
+worktree through Supacode if necessary, then checks Git safety again before
+deleting the worktree and associated states. Failures preserve the affected
+resources; a worktree already archived during pruning may remain archived.
+Orphaned states (missing checkout and no Supacode registration) remain eligible
+for state-only cleanup. Plain `list` remains read-only.
+
 The tracked `supacode.json` runs `init` after Supacode creates a worktree, maps
 its repeatable run command to the controlled `restart`, and runs
 `remove --all --yes` only before deletion. Reversible archive leaves state
