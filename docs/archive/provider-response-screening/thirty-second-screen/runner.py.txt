@@ -1,0 +1,308 @@
+"""Isolated synthetic diagnostic. Never restart a started run or replace attempts."""
+import asyncio
+import copy
+from datetime import datetime, timezone
+from decimal import Decimal as D
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import sys
+import time
+
+import httpx
+
+ROOT = Path(__file__).resolve().parent
+ART = ROOT.parent
+LEDGER = ART / 'provider-spending-ledger.json'
+OWNER = 'T-01a14713-03f3-7275-8fc2-376b3467ab62'
+CONFIGS = {
+    'nebius': ('nebius', 'NEBIUS_API_KEY', D('0.0134576')),
+    'openrouter': ('openrouter', 'LOCAL_TEXT_OPENROUTER_API_KEY', D('0.0571072')),
+    'direct_openai': ('direct-openai', 'OPENAI_API_KEY', D('0.0571072')),
+}
+
+
+def now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def read(path):
+    return json.loads(path.read_text())
+
+
+def save(path, data):
+    pending = path.with_suffix(path.suffix + '.pending')
+    with pending.open('w') as f:
+        json.dump(data, f, indent=2)
+        f.write('\n')
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(pending, path)
+    fd = os.open(path.parent, os.O_DIRECTORY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def append(path, data):
+    with path.open('a') as f:
+        f.write(json.dumps(data) + '\n')
+        f.flush()
+        os.fsync(f.fileno())
+
+
+def digest(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+
+
+def batch_for(ledger, provider):
+    return next(b for b in ledger['executed_batches'] if b['id'] == provider + '-thirty-second-screen')
+
+
+def totals(ledger, provider):
+    batches = [b for b in ledger['executed_batches'] if b['provider'] == provider]
+    reserved = sum((D(b['reserved_usd']) for b in batches), D(0))
+    assert reserved <= D(ledger['ceilings'][provider])
+    known = sum((D(b['known_cost_usd']) for b in batches), D(0))
+    field = 'known_response_reported_cost_usd' if provider == 'openrouter' else 'known_cost_estimate_usd'
+    ledger['totals'][provider] = dict(attempts=sum(b['attempts'] for b in batches),
+        retained_reserved_usd=str(reserved), unknown_cost_attempts=sum(len(b.get('unknown_cost_attempts', [])) for b in batches),
+        remaining_after_reservations_usd=str(D(ledger['ceilings'][provider]) - reserved), **{field: str(known)})
+
+
+def reserve(ledger, provider, index):
+    batch = batch_for(ledger, provider)
+    amount = CONFIGS[provider][2]
+    assert ledger['sole_execution_owner'] == OWNER
+    assert batch['attempts'] + 1 == index and index <= 30
+    assert D(batch['reserved_usd']) + amount <= D(batch['maximum_new_reservation_usd'])
+    batch.update(attempts=index, reserved_usd=str(D(batch['reserved_usd']) + amount), status='running')
+    batch['unknown_cost_attempts'].append(index)
+    totals(ledger, provider)
+
+
+def prepare():
+    assert not (ROOT / 'state.json').exists(), 'Already prepared; do not overwrite'
+    ledger = read(LEDGER)
+    assert ledger['sole_execution_owner'] == OWNER
+    assert [ledger['totals'][p]['retained_reserved_usd'] for p in CONFIGS] == ['0.2801568', '1.08556480', '1.1992512']
+    save(ROOT / 'historical-ledger-before-batch.json', ledger)
+    ledger['thirty_second_authorization'] = dict(at=now(), additional_maximum_usd='3.83016',
+        previous_ceilings=copy.deepcopy(ledger['ceilings']), synthetic_only=True,
+        source_thread='T-01a14706-fdfd-7491-9062-bb693db3f681', no_historical_reservations_released=True)
+    source = read(ART / 'nebius-response-screen/manifest.json')
+    for provider, (name, key, amount) in CONFIGS.items():
+        assert os.getenv(key), 'Missing credential: ' + key
+        old = read(ART / (name + '-response-screen/manifest.json'))
+        plan = copy.deepcopy(old)
+        plan['deadline_seconds'] = 30
+        plan['source_manifest_sha256'] = hashlib.sha256((ART / (name + '-response-screen/manifest.json')).read_bytes()).hexdigest()
+        plan['maximum_new_reservation_usd'] = str(amount * 30)
+        plan['scheduling'] = 'First windows start at offsets 0, 500, 1000 seconds for Nebius, OpenRouter, direct OpenAI. Each second window targets its actual first dispatch + 1800 seconds. One sequential dispatcher; no overlapping calls.'
+        for key in ('prior_unreconciled_reservation_usd', 'maximum_cumulative_reservation_usd', 'openrouter_attempts'):
+            plan.pop(key, None)
+        assert plan['cases'] == source['cases'] and len(plan['jobs']) == 30
+        for j, s in zip(plan['jobs'], source['jobs'], strict=True):
+            assert j['body']['messages'] == s['body']['messages']
+            assert all(j[k] == s[k] for k in ('window', 'repetition', 'case'))
+            assert sum(len(m['content'].encode()) for m in j['body']['messages']) + 4096 < 110000
+        out = ROOT / provider
+        out.mkdir()
+        save(out / 'manifest.json', plan)
+        ledger['ceilings'][provider] = str(D(ledger['ceilings'][provider]) + amount * 30)
+        ledger['executed_batches'].append(dict(id=provider + '-thirty-second-screen', provider=provider,
+            attempts=0, reserved_usd='0', known_cost_usd='0', unknown_cost_attempts=[],
+            timely_valid_responses=0, status='prepared', maximum_new_reservation_usd=str(amount * 30),
+            evidence=f'thirty-second-screen/{provider}/attempts.jsonl',
+            cost_basis='Response usage.cost' if provider == 'openrouter' else 'Usage tokens at verified prices; estimate, not invoice'))
+        totals(ledger, provider)
+    save(LEDGER, ledger)
+    save(ROOT / 'state.json', dict(status='prepared', owner=OWNER, prepared_at=now()))
+    print('Prepared three new thirty-second batches; same sole ledger owner; no inference dispatched', flush=True)
+
+
+def validate(provider, plan, status, data):
+    if status != 200:
+        return False, 'http_rejection', None, None
+    if not isinstance(data, dict):
+        return False, 'missing_usage_evidence', None, None
+    if data.get('model') != plan['model'] or data.get('error'):
+        return False, 'unexpected_configuration', None, None
+    if provider == 'direct_openai' and data.get('object') != 'chat.completion':
+        return False, 'unexpected_envelope', None, None
+    if provider == 'openrouter':
+        if data.get('provider') != 'Azure':
+            return False, 'unexpected_provider', None, None
+        meta = data.get('openrouter_metadata')
+        if meta is not None:
+            if not isinstance(meta, dict) or meta.get('attempt', 1) != 1 or meta.get('requested', plan['model']) != plan['model']:
+                return False, 'unexpected_router_metadata', None, None
+            if any(a.get('provider') != 'Azure' for a in meta.get('attempts') or []):
+                return False, 'unexpected_route', None, None
+            if any(e.get('selected') and e.get('provider') != 'Azure' for e in (meta.get('endpoints') or {}).get('available') or []):
+                return False, 'unexpected_route', None, None
+    usage = data.get('usage') or {}
+    prompt, completion = usage.get('prompt_tokens'), usage.get('completion_tokens')
+    if type(prompt) is not int or type(completion) is not int or not 0 < prompt <= 110000 or not 0 <= completion <= 8192:
+        return False, 'missing_or_out_of_bounds_usage', None, None
+    if provider == 'openrouter':
+        try:
+            cost = D(str(usage['cost']))
+        except (KeyError, ArithmeticError):
+            return False, 'missing_usage_cost', None, None
+        if not cost.is_finite() or not 0 <= cost <= CONFIGS[provider][2]:
+            return False, 'out_of_bounds_cost', None, None
+    elif provider == 'nebius':
+        cost = (D(prompt) * D('.1') + D(completion) * D('.3')) / 1000000
+    else:
+        cached = (usage.get('prompt_tokens_details') or {}).get('cached_tokens', 0)
+        if type(cached) is not int or not 0 <= cached <= prompt:
+            return False, 'invalid_cached_usage', None, None
+        cost = (D(prompt-cached) * D('.4') + D(cached) * D('.1') + D(completion) * D('1.6')) / 1000000
+    choices = data.get('choices')
+    choice = choices[0] if isinstance(choices, list) and len(choices) == 1 and isinstance(choices[0], dict) else {}
+    message = choice.get('message') or {}
+    text = message.get('content') if isinstance(message, dict) else None
+    valid = bool(choice.get('finish_reason') == 'stop' and not choice.get('error')
+        and isinstance(text, str) and text.strip() and not message.get('tool_calls') and not message.get('refusal'))
+    if provider == 'direct_openai':
+        valid = valid and message.get('role') == 'assistant'
+    return valid, None, cost, text
+
+
+async def attempt(client, provider, plan, job, deadline=30):
+    row = dict(success=False, dispatched_at=now())
+    start = time.monotonic()
+    fatal, cost, text = None, None, None
+    try:
+        async with asyncio.timeout(deadline):
+            response = await client.post(plan['url'], json=job['body'])
+            row['http_status'] = response.status_code
+            row['body_received_seconds'] = time.monotonic() - start
+            try:
+                data = response.json()
+            except ValueError:
+                data = None
+            row['response'] = data
+            row['success'], fatal, cost, text = validate(provider, plan, response.status_code, data)
+            row['outcome'] = fatal or ('complete_valid_response' if row['success'] else 'invalid_or_incomplete_text')
+    except (TimeoutError, httpx.TimeoutException):
+        row['outcome'] = 'absolute_deadline_timeout'
+    except httpx.RequestError as e:
+        row.update(outcome='transport_failure', error_class=type(e).__name__)
+    row['elapsed_seconds'] = time.monotonic() - start
+    if row['elapsed_seconds'] > deadline:
+        row.update(success=False, outcome='absolute_deadline_timeout')
+    row['within_five_seconds'] = row['success'] and row['elapsed_seconds'] <= 5
+    row['within_ten_seconds'] = row['success'] and row['elapsed_seconds'] <= 10
+    if text is not None:
+        expected = next(c['expected'] for c in plan['cases'] if c['id'] == job['case'])
+        row.update(output=text, quality_exact_match=text == expected, quality_trimmed_match=text.strip() == expected.strip())
+    if cost is not None:
+        row['known_cost_usd'] = str(cost)
+    row['fatal'] = fatal
+    return row
+
+
+async def screen(provider, window):
+    out = ROOT / provider
+    plan = read(out / 'manifest.json')
+    original = read(ART / (CONFIGS[provider][0] + '-response-screen/manifest.json'))
+    assert plan['jobs'] == original['jobs'] and plan['cases'] == original['cases']
+    assert plan['url'] == original['url'] and plan['model'] == original['model'] and plan['deadline_seconds'] == 30
+    ledger = read(LEDGER)
+    batch = batch_for(ledger, provider)
+    assert batch['attempts'] == (window - 1) * 15
+    headers = {'Authorization': 'Bearer ' + os.environ[CONFIGS[provider][1]]}
+    headers.update(plan.get('metadata_request_header', {}))
+    rows = [json.loads(line) for line in (out / 'attempts.jsonl').read_text().splitlines()] if window == 2 else []
+    reason, first = 'completed', None
+    async with httpx.AsyncClient(headers=headers, timeout=None, trust_env=False, follow_redirects=False,
+                                 transport=httpx.AsyncHTTPTransport(retries=0)) as client:
+        for index, job in enumerate(plan['jobs'], 1):
+            if job['window'] != window:
+                continue
+            if rows and index not in (1, 16):
+                await asyncio.sleep(2)
+            reserve(ledger, provider, index)
+            save(LEDGER, ledger)
+            append(out / 'dispatch-ledger.jsonl', dict(attempt=index, at=now(), fixture=job['case'],
+                window=job['window'], repetition=job['repetition'], reservation_usd=str(CONFIGS[provider][2]),
+                body_sha256=digest(job['body'])))
+            if first is None:
+                first = time.monotonic()
+                append(out / 'window-starts.jsonl', dict(window=window, at=now(), monotonic=first))
+            row = await attempt(client, provider, plan, job)
+            row.update(attempt=index, fixture=job['case'], window=job['window'], repetition=job['repetition'])
+            append(out / 'attempts.jsonl', row)
+            rows.append(row)
+            if 'known_cost_usd' in row:
+                batch['known_cost_usd'] = str(D(batch['known_cost_usd']) + D(row['known_cost_usd']))
+                batch['unknown_cost_attempts'].remove(index)
+            batch['timely_valid_responses'] = sum(r['success'] for r in rows)
+            totals(ledger, provider)
+            save(LEDGER, ledger)
+            print(provider, json.dumps({k:v for k,v in row.items() if k not in ('response', 'output')}), flush=True)
+            if row['fatal'] or sum(not r['success'] for r in rows) >= 3:
+                reason = row['fatal'] or '28_of_30_no_longer_possible'
+                break
+    summary = dict(provider=provider, attempts=len(rows), successes=sum(r['success'] for r in rows),
+        within_five_seconds=sum(r['within_five_seconds'] for r in rows), failures=sum(not r['success'] for r in rows),
+        within_ten_seconds=sum(r['within_ten_seconds'] for r in rows),
+        exact_matches=sum(r.get('quality_exact_match', False) for r in rows),
+        returned_texts=sum('output' in r for r in rows), stop_reason=reason, finished_at=now(),
+        passed_screen=len(rows) == 30 and sum(r['success'] for r in rows) >= 28,
+        reserved_usd=batch['reserved_usd'], known_cost_usd=batch['known_cost_usd'],
+        unknown_cost_attempts=batch['unknown_cost_attempts'], application_qualification='not_tested')
+    status = 'finished' if reason != 'completed' or window == 2 else 'window_one_complete'
+    summary['status'] = status
+    batch.update(status=status, stop_reason=reason)
+    save(LEDGER, ledger)
+    save(out / 'summary.json', summary)
+    save(out / 'state.json', dict(status=status, summary=summary))
+    print(json.dumps(summary), flush=True)
+    return first, status
+
+
+async def wait_until(target):
+    delay = target - time.monotonic()
+    if delay < -1:
+        raise RuntimeError('Window scheduling missed target; stop rather than silently change spacing')
+    if delay > 0:
+        await asyncio.sleep(delay)
+
+
+async def run():
+    state = read(ROOT / 'state.json')
+    assert state['status'] == 'prepared', 'Started run cannot restart; uncertain calls stay reserved'
+    assert read(LEDGER)['sole_execution_owner'] == OWNER
+    save(ROOT / 'state.json', dict(status='running', started_at=now(), owner=OWNER))
+    anchor, starts = time.monotonic(), {}
+    for slot, provider in enumerate(CONFIGS):
+        await wait_until(anchor + slot * 500)
+        first, status = await screen(provider, 1)
+        starts[provider] = (first, status)
+        await asyncio.sleep(2)
+    for provider, (first, status) in starts.items():
+        if status == 'finished':
+            continue
+        print(provider, 'waiting for second window at first dispatch + 1800 seconds', flush=True)
+        await wait_until(first + 1800)
+        await screen(provider, 2)
+        await asyncio.sleep(2)
+    save(ROOT / 'state.json', dict(status='finished', finished_at=now(), owner=OWNER))
+
+
+if __name__ == '__main__':
+    # One lock covers all configurations and the sole cumulative ledger.
+    with (ART / 'provider-screen-execution.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if sys.argv[1:] == ['prepare']:
+            prepare()
+        elif sys.argv[1:] == ['run']:
+            asyncio.run(run())
+        else:
+            raise SystemExit('Use prepare or run')
