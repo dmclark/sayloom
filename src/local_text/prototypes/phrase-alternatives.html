@@ -1,0 +1,276 @@
+<!doctype html>
+<!-- THROWAWAY #185: compare manual entry with visible, predefined alternatives.
+     Run: python -m http.server 7540 --directory src/local_text/prototypes
+     No application scripts, APIs, storage, providers, or production routes. -->
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phrase alternatives · Sayloom prototype #185</title>
+<style>
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: #eceae4; color: #111820; font: 16px/1.5 Avenir, sans-serif; }
+main { max-width: 1120px; margin: auto; padding: 24px 28px 48px; }
+header { border-bottom: 1px solid #111820; margin-bottom: 20px; }
+h1, h2 { font-family: Palatino, Georgia, serif; font-weight: 500; }
+h1 { font-size: 30px; margin: 6px 0; } h2 { font-size: 23px; margin: 0; }
+p { margin: 8px 0 16px; } .eyebrow { color: #5e6874; font-size: 12px; letter-spacing: .1em; }
+button, select { font: inherit; padding: 8px 12px; border: 1px solid #b9bec6; border-radius: 3px; background: #fffdf7; color: #111820; cursor: pointer; }
+button:hover { background: #dbeaf6; } button:disabled { opacity: .6; cursor: default; }
+button[aria-pressed="true"], .primary { background: #1769aa; color: #fffdf7; }
+.primary:hover { background: #0b3f6b; }
+:focus-visible { outline: 3px solid #1769aa; outline-offset: 3px; }
+.toolbar, .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
+.sheet { background: #fffdf7; border: 1px solid #b9bec6; padding: 20px; margin-top: 16px; }
+.workspace { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 24px; }
+.workspace.manual { grid-template-columns: 1fr; }
+label { display: block; font-weight: 600; }
+.editor { position: relative; margin-top: 12px; background: #fffdf7; }
+textarea, .phrase-highlights { width: 100%; padding: 14px; border: 1px solid #b9bec6; border-radius: 2px; font: 21px/1.7 Charter, Georgia, serif; letter-spacing: normal; }
+textarea { position: relative; display: block; min-height: 240px; resize: vertical; background: transparent; color: #111820; }
+.phrase-highlights { position: absolute; inset: 0; pointer-events: none; color: transparent; overflow: hidden; white-space: pre-wrap; overflow-wrap: break-word; }
+.phrase-highlights mark { color: transparent; background: var(--phrase-tint); }
+.muted, small { color: #5e6874; } .muted { font-size: 14px; }
+.suggestion { padding: 12px; margin-top: 8px; border-bottom: 1px solid #b9bec6; background: var(--phrase-tint); }
+.suggestion:last-child { border-bottom: 0; }
+.suggestion p { margin: 4px 0 8px; } .suggestion button { margin: 3px 4px 3px 0; text-align: left; }
+.phrase-editor { margin-top: 12px; }
+.phrase-editor input { width: 100%; min-width: 0; padding: 10px; margin: 8px 0; border: 1px solid #b9bec6; border-radius: 2px; background: #fffdf7; color: #111820; font: inherit; }
+blockquote { margin: 12px 0; padding-left: 14px; border-left: 3px solid #b9bec6; }
+#status { min-height: 24px; color: #0b3f6b; }
+details { margin-top: 16px; } summary { cursor: pointer; }
+@media (max-width: 760px) { main { padding: 16px 12px 36px; } .workspace { grid-template-columns: 1fr; } .sheet { padding: 14px; } h1 { font-size: 26px; } textarea, .phrase-highlights { font-size: 19px; } }
+</style>
+<main>
+<header id="prototype-purpose">
+  <div class="eyebrow">SAYLOOM · THROWAWAY INTERACTION PROTOTYPE · #185</div>
+  <h1>Try a repair, then check the whole passage.</h1>
+  <p>Does choosing visible alternatives reduce the effort of correcting text? Nothing here generates or automatically repairs wording.</p>
+</header>
+<section id="exercise-controls">
+  <label for="exercise">Synthetic exercise</label>
+  <div class="toolbar">
+    <select id="exercise"><option value="0">1 · A meeting note</option><option value="1">2 · A delivery note</option></select>
+    <button id="reset">Reset both drafts for this exercise</button>
+  </div>
+  <p id="brief"></p>
+  <div class="toolbar" role="group" aria-label="Comparison mode">
+    <button id="manual" aria-pressed="false">Manual only</button>
+    <button id="alternatives" aria-pressed="true">Visible alternatives</button>
+  </div>
+  <p class="muted">Each mode keeps its own draft in this tab. Try both in either order. Reset affects only this exercise. Switching modes does not copy edits.</p>
+</section>
+<section class="sheet" id="working-sheet">
+  <div class="workspace" id="workspace">
+    <div id="passage-panel">
+      <h2 id="mode-title">Visible alternatives</h2>
+      <label for="passage">Current passage — edit any wording directly</label>
+      <div class="editor">
+        <div id="highlights" class="phrase-highlights" aria-hidden="true"></div>
+        <textarea id="passage" spellcheck="false" aria-describedby="review-warning"></textarea>
+      </div>
+      <p class="muted" id="review-warning">Unmarked text is not verified. Suggestions can be wrong or miss an error. Check the entire passage, not just the marked phrases.</p>
+      <div class="actions"><button class="primary" id="copy">Copy current passage</button></div>
+      <p id="status" role="status" aria-live="polite"></p>
+    </div>
+    <aside id="choices-panel" aria-label="Predefined phrase alternatives">
+      <h2>Possible wording</h2>
+      <p class="muted">Faint matching backgrounds connect phrases to their choices, not approval. If you make no change, copying uses the current wording. “Find / edit” opens a phrase-only field; after you apply an edit, its label follows your wording.</p>
+      <button id="reject-all">Reject all remaining alternatives</button>
+      <div id="choices"></div>
+    </aside>
+  </div>
+</section>
+<details id="source-panel"><summary>Inspect the unchanged synthetic starting passage</summary><blockquote id="source"></blockquote></details>
+<section class="sheet" id="feedback">
+  <h2>What was the whole task like?</h2>
+  <p>After trying both modes, tell me in the thread: which took less effort overall, including reading choices, finding the right place, entering repairs, and final checking? Did the choices distract you or make you overlook other errors?</p>
+  <p class="muted">Synthetic interaction only, not a benchmark. This cannot establish alternative-generation quality, recognition fidelity, missed-error rates, real provider latency, or savings. No winner is assumed; decision #179 stays open.</p>
+  <p class="muted">Use synthetic text only. No application APIs, providers, saving, learning, or target delivery. Drafts live only in memory and disappear on reload. Copying is a separate explicit clipboard action; no feedback or text is collected by this prototype.</p>
+</section>
+</main>
+<script>
+const exercises = [
+  {
+    brief: 'Invented intended message: Ask Mira to move the planning call to Thursday and bring the budget outline. Keep “planning call” in the second sentence. Ask for the revised agenda before lunch. Correct the whole note in both modes.',
+    text: 'Please ask Mira to move the planning call to thirsty and bring the bucket outline. The planning call still needs a quiet room. Send the reversed agenda before launch.',
+    phrases: [
+      { wording: 'planning call', options: ['planning hall', 'planting call'] },
+      { wording: 'thirsty', options: ['Thursday', 'Tuesday'] },
+      { wording: 'bucket outline', options: ['budget outline', 'booking outline'] },
+      { wording: 'reversed agenda', options: ['reserved agenda', 'reverse agenda'] },
+    ],
+  },
+  {
+    brief: 'Invented intended message: Leave the parcel at the side entrance, not the main entrance. Keep the later “main entrance” unchanged. Ask Niko to check the delivery window and leave the receipt on the kitchen table.',
+    text: 'Leave the parcel at the main entrance, not the front desk. The main entrance closes at six. Ask Niko to check the discovery window and leave the receipt on the chicken table.',
+    phrases: [
+      { wording: 'main entrance', options: ['side entrance', 'rear entrance'] },
+      { wording: 'discovery window', options: ['delivery window', 'display window'] },
+      { wording: 'chicken table', options: ['checking table', 'chicken label'] },
+    ],
+  },
+];
+const $ = id => document.getElementById(id);
+let exerciseIndex = 0;
+let mode = new URLSearchParams(location.search).get('variant') === 'manual' ? 'manual' : 'alternatives';
+function fresh(exercise) {
+  return { text: exercise.text, phrases: exercise.phrases.map(phrase => ({
+    ...phrase, start: exercise.text.indexOf(phrase.wording),
+    end: exercise.text.indexOf(phrase.wording) + phrase.wording.length, state: 'available',
+  })) };
+}
+const drafts = exercises.map(exercise => ({ manual: fresh(exercise), alternatives: fresh(exercise) }));
+const current = () => drafts[exerciseIndex][mode];
+const phraseTints = ['#edf1f3', '#f3efe5', '#eeedf4', '#f3ece8'];
+function renderHighlights() {
+  const mirror = $('highlights'); mirror.replaceChildren();
+  let offset = 0;
+  if (mode === 'alternatives') current().phrases.forEach((phrase, index) => {
+    if (phrase.state === 'unavailable') return;
+    mirror.append(document.createTextNode(current().text.slice(offset, phrase.start)));
+    const mark = document.createElement('mark');
+    mark.style.setProperty('--phrase-tint', phraseTints[index]);
+    mark.textContent = current().text.slice(phrase.start, phrase.end); mirror.append(mark);
+    offset = phrase.end;
+  });
+  mirror.append(document.createTextNode(current().text.slice(offset) + '\n'));
+  mirror.style.width = `${$('passage').clientWidth + 2}px`;
+  mirror.scrollTop = $('passage').scrollTop;
+  mirror.scrollLeft = $('passage').scrollLeft;
+}
+$('passage').addEventListener('scroll', renderHighlights);
+new ResizeObserver(renderHighlights).observe($('passage'));
+function renderChoices() {
+  $('choices').replaceChildren();
+  current().phrases.forEach((phrase, index) => {
+    const row = document.createElement('section');
+    row.className = 'suggestion'; row.id = `phrase-${index}`;
+    row.style.setProperty('--phrase-tint', phraseTints[index]);
+    const heading = document.createElement('p');
+    const strong = document.createElement('strong');
+    strong.textContent = `${index + 1}. ${phrase.wording}`; heading.append(strong); row.append(heading);
+    const note = document.createElement('p'); note.className = 'muted';
+    const wording = current().text.slice(phrase.start, phrase.end);
+    note.textContent = phrase.state === 'unavailable'
+      ? 'Edited across a phrase boundary — continue in the passage editor.'
+      : `Current: “${wording}” · ${phrase.state === 'available' ? 'used if unchanged' : phrase.state}`;
+    row.append(note);
+    function button(label, action) {
+      const control = document.createElement('button'); control.textContent = label;
+      control.onclick = action; row.append(control);
+      return control;
+    }
+    if (phrase.state === 'available') {
+      phrase.options.forEach(option => button(`Use “${option}”`, () => {
+        const draft = current(); const before = draft.text;
+        const after = before.slice(0, phrase.start) + option + before.slice(phrase.end);
+        // Selection is bound to a tracked range, never a global phrase replacement.
+        updateText(after, phrase.start, phrase.end, option.length);
+        phrase.state = 'Selected replacement';
+        $('passage').value = after; renderChoices();
+        $(`phrase-${index}`).querySelector('.edit-phrase').focus();
+        $('status').textContent = `Replaced this occurrence with “${option}”. Check the surrounding passage.`;
+      }));
+    }
+    if (phrase.state !== 'unavailable') {
+      const editButton = button(phrase.state === 'available' ? 'Find / edit' : `Edit “${wording || '(empty phrase)'}”`, () => {
+        row.querySelectorAll('button').forEach(control => { control.hidden = true; });
+        const form = document.createElement('form'); form.className = 'phrase-editor';
+        form.innerHTML = `<label for="phrase-editor-${index}">Edit this phrase only</label>
+          <input id="phrase-editor-${index}" type="text" autocomplete="off" aria-describedby="phrase-help-${index}">
+          <p class="muted" id="phrase-help-${index}">Arrow keys stay in this field. Use wording applies it to this occurrence; Cancel leaves the passage unchanged.</p>
+          <button class="primary" type="submit">Use wording</button><button type="button">Cancel</button>`;
+        const field = form.querySelector('input'); field.value = wording;
+        form.onsubmit = event => {
+          event.preventDefault();
+          const draft = current();
+          const after = draft.text.slice(0, phrase.start) + field.value + draft.text.slice(phrase.end);
+          updateText(after, phrase.start, phrase.end, field.value.length);
+          phrase.state = 'Edited manually';
+          $('passage').value = after; renderChoices();
+          $(`phrase-${index}`).querySelector('.edit-phrase').focus();
+          $('status').textContent = 'Phrase edit applied to this occurrence only. Check the whole passage before copying.';
+        };
+        const cancel = () => {
+          renderChoices(); $(`phrase-${index}`).querySelector('.edit-phrase').focus();
+          $('status').textContent = 'Phrase edit cancelled. No wording changed.';
+        };
+        form.querySelector('[type="button"]').onclick = cancel;
+        field.onkeydown = event => { if (event.key === 'Escape') { event.preventDefault(); cancel(); } };
+        row.append(form); field.focus(); field.select();
+        $('status').textContent = 'Editing this phrase only. The passage stays unchanged until you choose Use wording.';
+      });
+      editButton.className = 'edit-phrase';
+    }
+    if (phrase.state === 'available') {
+      button('Keep current wording', () => { phrase.state = 'Kept current wording'; renderChoices(); $('status').textContent = 'No wording changed.'; });
+    }
+    $('choices').append(row);
+  });
+  $('reject-all').disabled = !current().phrases.some(phrase => phrase.state === 'available');
+  renderHighlights();
+}
+function updateText(text, start, end, insertedLength) {
+  const draft = current(); const delta = insertedLength - (end - start);
+  for (const phrase of draft.phrases) {
+    if (phrase.state === 'unavailable') continue;
+    if (start >= phrase.start && end <= phrase.end) {
+      phrase.end += delta; phrase.state = 'Edited manually';
+    } else if (end <= phrase.start) { phrase.start += delta; phrase.end += delta; }
+    else if (start < phrase.end) phrase.state = 'unavailable';
+  }
+  draft.text = text;
+}
+let pendingEdit = null;
+$('passage').addEventListener('beforeinput', event => {
+  pendingEdit = event.inputType.startsWith('insert') ? {
+    before: current().text, start: $('passage').selectionStart, end: $('passage').selectionEnd,
+  } : null;
+});
+$('passage').addEventListener('input', () => {
+  const before = current().text, after = $('passage').value;
+  let start = 0, end = before.length, afterEnd = after.length;
+  while (start < end && start < afterEnd && before[start] === after[start]) start++;
+  while (end > start && afterEnd > start && before[end - 1] === after[afterEnd - 1]) { end--; afterEnd--; }
+  if (pendingEdit && pendingEdit.before === before) {
+    const inserted = after.length - before.length + pendingEdit.end - pendingEdit.start;
+    if (inserted >= 0 && after.slice(0, pendingEdit.start) === before.slice(0, pendingEdit.start)
+        && after.slice(pendingEdit.start + inserted) === before.slice(pendingEdit.end)) {
+      // Native selection disambiguates insertion beside identical spaces or letters.
+      start = pendingEdit.start; end = pendingEdit.end; afterEnd = start + inserted;
+    }
+  }
+  pendingEdit = null;
+  updateText(after, start, end, afterEnd - start);
+  renderChoices(); $('status').textContent = 'Manual edits are in the current passage. Check all wording before copying.';
+});
+function render() {
+  const exercise = exercises[exerciseIndex];
+  $('brief').textContent = exercise.brief; $('source').textContent = exercise.text;
+  $('passage').value = current().text; $('status').textContent = '';
+  $('choices-panel').hidden = mode === 'manual'; $('workspace').classList.toggle('manual', mode === 'manual');
+  $('mode-title').textContent = mode === 'manual' ? 'Manual only' : 'Visible alternatives';
+  for (const key of ['manual', 'alternatives']) $(key).setAttribute('aria-pressed', String(mode === key));
+  renderChoices();
+}
+for (const key of ['manual', 'alternatives']) $(key).onclick = () => {
+  mode = key; const url = new URL(location.href); url.searchParams.set('variant', mode);
+  history.replaceState(null, '', url); render();
+};
+$('exercise').onchange = () => { exerciseIndex = Number($('exercise').value); render(); };
+$('reset').onclick = () => {
+  drafts[exerciseIndex] = { manual: fresh(exercises[exerciseIndex]), alternatives: fresh(exercises[exerciseIndex]) }; render();
+  $('status').textContent = 'Both drafts reset to the synthetic starting passage.';
+};
+$('reject-all').onclick = () => {
+  current().phrases.forEach(phrase => { if (phrase.state === 'available') phrase.state = 'Rejected alternatives — wording unchanged'; });
+  renderChoices(); $('status').textContent = 'All remaining alternatives rejected. You can still edit any text.';
+};
+$('copy').onclick = async () => {
+  try { await navigator.clipboard.writeText(current().text); $('status').textContent = 'Current passage copied. Nothing was delivered or saved by the prototype.'; }
+  catch { $('passage').focus(); $('passage').select(); $('status').textContent = 'Clipboard unavailable. The whole passage is selected; use your browser’s Copy command.'; }
+};
+render();
+</script>
+</html>
