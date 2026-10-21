@@ -1,6 +1,7 @@
 import asyncio
 import json
 
+import httpx
 import pytest
 from pydantic import ValidationError
 
@@ -27,6 +28,75 @@ from local_text.cleanup import (
     _validate_output,
 )
 from local_text.prompts import SMART_CORRECTION_SYSTEM_PROMPT, SOURCE_PRESERVING_SYSTEM_PROMPT
+
+
+@pytest.mark.parametrize(
+    ("status", "body", "failure_class"),
+    [
+        (402, {}, ProviderFailureClass.PERMANENT_QUOTA),
+        (403, {}, ProviderFailureClass.SAFETY_POLICY),
+        (200, {"provider": "unexpected"}, ProviderFailureClass.UNKNOWN),
+        (200, {"provider": "Azure", "choices": []}, ProviderFailureClass.INVALID_OUTPUT),
+        (
+            200,
+            {
+                "provider": "Azure",
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"content": json.dumps({"prepared_text": "x" * 100_001})},
+                    }
+                ],
+            },
+            ProviderFailureClass.INVALID_OUTPUT,
+        ),
+        (
+            200,
+            {"provider": "Azure", "choices": [{"finish_reason": "content_filter"}]},
+            ProviderFailureClass.SAFETY_POLICY,
+        ),
+        (
+            200,
+            {"provider": "Azure", "choices": [{"finish_reason": "length"}]},
+            ProviderFailureClass.INVALID_OUTPUT,
+        ),
+        (
+            200,
+            {
+                "provider": "Azure",
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"content": '{"wrong_field":"do not accept"}'},
+                    }
+                ],
+            },
+            ProviderFailureClass.INVALID_OUTPUT,
+        ),
+    ],
+)
+def test_openrouter_failures_preserve_original_and_safe_attribution(
+    status: int, body: dict, failure_class: ProviderFailureClass
+) -> None:
+    async def run():
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(lambda _request: httpx.Response(status, json=body))
+        ) as client:
+            adapter = cleanup_module.OpenRouterAdapter(
+                "synthetic-router-secret", "openai/gpt-4.1", client, serving_endpoint="azure"
+            )
+            result = await CleanupService(
+                provider=adapter, model=adapter.model, timeout_seconds=30
+            ).clean(
+                CleanupRequest(original_text="synthetic source", enabled=True),
+                system_prompt=SOURCE_PRESERVING_SYSTEM_PROMPT,
+            )
+        assert result.prepared_text == "synthetic source"
+        assert result.attempts[0].failure_class is failure_class
+        assert result.attempts[0].provider == "openrouter"
+        assert "synthetic-router-secret" not in repr(adapter) + result.model_dump_json()
+
+    asyncio.run(run())
 
 
 class StaticProvider:

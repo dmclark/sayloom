@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 import httpx
@@ -424,8 +425,9 @@ def cross_provider_settings(initialized_settings: Settings, **overrides) -> Sett
 
 
 @pytest.mark.parametrize("mode", ["conservative", "smart"])
+@pytest.mark.parametrize("with_openrouter", [False, True])
 def test_acknowledged_cross_provider_route_is_exact_sanitized_and_falls_back_once(
-    initialized_settings: Settings, monkeypatch, mode: str
+    initialized_settings: Settings, monkeypatch, mode: str, with_openrouter: bool
 ) -> None:
     requests: list[httpx.Request] = []
 
@@ -461,10 +463,18 @@ def test_acknowledged_cross_provider_route_is_exact_sanitized_and_falls_back_onc
 
     monkeypatch.setattr(app_module, "_new_provider_client", new_client)
     settings = cross_provider_settings(initialized_settings)
+    if with_openrouter:
+        settings = replace(
+            settings,
+            openrouter_api_key="synthetic-router-key",
+            openrouter_models=("openai/gpt-4.1", "openai/gpt-4.1-mini"),
+            openrouter_endpoints=("azure", "azure/swedencentral"),
+        )
 
     with TestClient(create_app(settings)) as client:
         configuration_response = client.get("/api/config")
         health_response = client.get("/health")
+        assert requests == []
         result = client.post(
             "/api/cleanup",
             json={
@@ -504,8 +514,54 @@ def test_acknowledged_cross_provider_route_is_exact_sanitized_and_falls_back_onc
     serialized = configuration_response.text + health_response.text
     assert "synthetic-gemini-key" not in serialized
     assert "synthetic-openai-key" not in serialized
+    assert "synthetic-router-key" not in serialized
     assert len(provider_clients) == 2
     assert all(provider_client.is_closed for provider_client in provider_clients)
+
+
+@pytest.mark.parametrize("primary_status", [200, 503])
+def test_openai_primary_only_uses_gemini_after_qualifying_failure(
+    initialized_settings: Settings, monkeypatch, primary_status: int
+) -> None:
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        if request.url.host == "api.openai.com":
+            return httpx.Response(primary_status, json={
+                "status": "completed", "output": [{"type": "message", "content": [{
+                    "type": "output_text", "text": '{"prepared_text":"Synthetic source."}'
+                }]}],
+            })
+        assert request.url.host == "generativelanguage.googleapis.com"
+        return httpx.Response(200, json={"candidates": [{"content": {"parts": [{
+            "text": '{"prepared_text":"Synthetic source!"}'
+        }]}}]})
+
+    monkeypatch.setattr(app_module, "_new_provider_client", lambda _timeout: httpx.AsyncClient(
+        transport=httpx.MockTransport(respond)))
+    settings = cross_provider_settings(initialized_settings, cleanup_route_order="openai,gemini")
+    with TestClient(create_app(settings)) as client:
+        configuration = client.get("/api/config").json()["cleanup_configuration"]
+        assert requests == []
+        result = client.post(
+            "/api/cleanup", json={"original_text": "synthetic source", "enabled": True}
+        )
+    assert configuration["routes"] == [
+        {"provider": "openai", "model": "gpt-5.6-luna"},
+        {"provider": "gemini", "model": "gemini-3.7-flash"},
+    ]
+    assert configuration["disclosure"]["summary"] == "Paid OpenAI → Gemini fallback"
+    assert "to paid OpenAI" in configuration["disclosure"]["processing"]
+    assert "qualifying OpenAI failure" in configuration["disclosure"]["fallback"]
+    assert "to paid Gemini" in configuration["disclosure"]["fallback"]
+    assert [r.url.host for r in requests] == (["api.openai.com"] if primary_status == 200 else [
+        "api.openai.com", "generativelanguage.googleapis.com"
+    ])
+    assert result.json()["provider"] == ("openai" if primary_status == 200 else "gemini")
+    assert result.json()["prepared_text"] == (
+        "Synthetic source." if primary_status == 200 else "Synthetic source!"
+    )
 
 
 def test_configured_routes_without_a_partition_schedule_fail_configuration(
@@ -535,8 +591,9 @@ def test_configured_routes_without_a_partition_schedule_fail_configuration(
     assert calls == 0
 
 
+@pytest.mark.parametrize("route_order", ["gemini,openai", "openai,gemini"])
 def test_unacknowledged_cross_provider_configuration_creates_no_client_and_fails_open(
-    initialized_settings: Settings, monkeypatch
+    initialized_settings: Settings, monkeypatch, route_order: str
 ) -> None:
     calls = 0
 
@@ -546,7 +603,9 @@ def test_unacknowledged_cross_provider_configuration_creates_no_client_and_fails
         raise AssertionError("invalid configuration must not create a provider client")
 
     monkeypatch.setattr(app_module, "_new_provider_client", unexpected_client)
-    settings = cross_provider_settings(initialized_settings, paid_data_acknowledgement=None)
+    settings = cross_provider_settings(
+        initialized_settings, paid_data_acknowledgement=None, cleanup_route_order=route_order
+    )
 
     with TestClient(create_app(settings)) as client:
         configuration_response = client.get("/api/config")
@@ -569,7 +628,8 @@ def test_unacknowledged_cross_provider_configuration_creates_no_client_and_fails
 @pytest.mark.parametrize(
     ("overrides", "expected_error"),
     [
-        ({"cleanup_route_order": "openai,gemini"}, "route_order_must_be_gemini_openai"),
+        ({"cleanup_route_order": "openai,openrouter"},
+         "route_order_must_be_gemini_openai_or_openai_gemini"),
         ({"gemini_api_key_is_explicit": False}, "explicit_gemini_credential_required"),
         ({"gemini_model": "gemini-3.5-flash"}, "gemini_model_must_be_gemini_3_7_flash"),
         ({"openai_api_key": None}, "explicit_openai_credential_required"),
@@ -600,6 +660,219 @@ def test_invalid_cross_provider_variants_create_no_clients(
     assert configuration["validation_error"] == expected_error
     assert configuration["routes"] == []
     assert calls == 0
+
+
+@pytest.mark.parametrize(
+    "providers", [("GEMINI",), ("OPENAI",), ("OPENROUTER",), ("GEMINI", "OPENAI", "OPENROUTER")]
+)
+def test_provider_settings_coexist_without_selecting_or_executing_new_routes(
+    initialized_settings: Settings, monkeypatch, providers: tuple[str, ...]
+) -> None:
+    environment = {
+        "LOCAL_TEXT_DATABASE_PATH": str(initialized_settings.database_path),
+        "LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS": "18,12",
+    }
+    for provider in providers:
+        environment[f"LOCAL_TEXT_{provider}_API_KEY"] = f"synthetic-{provider}-key"
+        environment[f"LOCAL_TEXT_{provider}_MODEL"] = {
+            "GEMINI": "gemini-3.5-flash",
+            "OPENAI": "gpt-5.6-luna",
+            "OPENROUTER": "qwen/qwen3-30b-a3b-instruct-2507",
+        }[provider]
+    if "OPENROUTER" in providers:
+        environment["LOCAL_TEXT_OPENROUTER_MODELS"] = "openai/gpt-4.1,openai/gpt-4.1-mini"
+        environment["LOCAL_TEXT_OPENROUTER_ENDPOINTS"] = "azure,azure/swedencentral"
+    monkeypatch.setattr(os, "environ", environment)
+    settings = load_settings()
+    for provider in providers:
+        assert getattr(settings, f"{provider.lower()}_api_key") == f"synthetic-{provider}-key"
+    if "OPENROUTER" in providers:
+        assert settings.openrouter_model == "qwen/qwen3-30b-a3b-instruct-2507"
+        assert settings.openrouter_models == ("openai/gpt-4.1", "openai/gpt-4.1-mini")
+        assert settings.openrouter_endpoints == ("azure", "azure/swedencentral")
+
+    def unexpected_request(_request):
+        pytest.fail("credentials and startup must not execute providers")
+
+    monkeypatch.setattr(
+        app_module,
+        "_new_provider_client",
+        lambda _timeout: httpx.AsyncClient(transport=httpx.MockTransport(unexpected_request)),
+    )
+    with TestClient(create_app(settings)) as client:
+        response = client.get("/api/config")
+        configuration = response.json()["cleanup_configuration"]
+        disabled = client.post(
+            "/api/cleanup", json={"original_text": "synthetic source", "enabled": False}
+        )
+    assert configuration["status"] == ("gemini_only" if "GEMINI" in providers else "unavailable")
+    assert configuration["routes"] == (
+        [
+            {"provider": "gemini", "model": "gemini-3.5-flash"},
+            {"provider": "gemini", "model": "gemini-2.5-flash"},
+        ]
+        if "GEMINI" in providers
+        else []
+    )
+    assert disabled.json()["prepared_text"] == "synthetic source"
+    for provider in providers:
+        assert f"synthetic-{provider}-key" not in response.text + repr(settings)
+
+
+@pytest.mark.parametrize("model_form", ["singular", "plural", "both"])
+@pytest.mark.parametrize("profile", [Profile.DEVELOPMENT, Profile.RELEASE])
+def test_openrouter_normal_route_requires_request_and_returns_prepared_text(
+    initialized_settings: Settings, monkeypatch, model_form: str, profile: Profile
+) -> None:
+    model = "qwen/qwen3-30b-a3b-instruct-2507"
+    settings = replace(
+        cross_provider_settings(initialized_settings),
+        profile=profile,
+        cleanup_route_order="openrouter",
+        openrouter_api_key="synthetic-router-key",
+        openrouter_model=None if model_form == "plural" else model,
+        openrouter_models=(model,) if model_form != "singular" else (),
+        cleanup_route_attempt_seconds=(30,),
+    )
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"content": json.dumps({"prepared_text": "Synthetic source."})},
+                    }
+                ]
+            },
+        )
+
+    monkeypatch.setattr(
+        app_module,
+        "_new_provider_client",
+        lambda _timeout: httpx.AsyncClient(transport=httpx.MockTransport(respond)),
+    )
+    with TestClient(create_app(settings)) as client:
+        config = client.get("/api/config").json()["cleanup_configuration"]
+        assert requests == []
+        response = client.post(
+            "/api/cleanup", json={"original_text": "synthetic source", "enabled": True}
+        )
+    assert config["status"] == "openrouter_only"
+    assert config["routes"] == [{"provider": "openrouter", "model": model}]
+    assert config["paid_data_acknowledgement"] == PAID_DATA_ACKNOWLEDGEMENT
+    assert response.json()["prepared_text"] == "Synthetic source."
+    assert response.json()["provider"] == "openrouter"
+    assert len(requests) == 1
+    assert requests[0].url.host == "openrouter.ai"
+    assert requests[0].headers["authorization"] == "Bearer synthetic-router-key"
+    payload = json.loads(requests[0].content)
+    assert payload["provider"] == {
+        "zdr": True,
+        "require_parameters": True,
+        "data_collection": "deny",
+    }
+    assert payload["messages"][1]["content"] == "<SOURCE_TEXT>\nsynthetic source\n</SOURCE_TEXT>"
+    assert payload["response_format"]["json_schema"]["schema"] == {
+        "type": "object", "required": ["prepared_text"], "additionalProperties": False,
+        "properties": {"prepared_text": {
+            "type": "string", "description": "The prepared version of the supplied Original text."
+        }},
+    }
+    assert "synthetic-router-key" not in response.text + json.dumps(config)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error"),
+    [
+        ({"openrouter_api_key": None}, "explicit_openrouter_credential_required"),
+        ({"paid_data_acknowledgement": None}, "paid_data_acknowledgement_required"),
+        ({"openrouter_model": "openai/gpt-4.1"}, "conflicting_openrouter_model_settings"),
+        ({"openrouter_models": ("unlisted/model",)}, "unsupported_openrouter_models"),
+        ({"openrouter_endpoints": ("unknown",)}, "invalid_openrouter_endpoints"),
+        ({"openrouter_models": ("openai/gpt-4.1",)}, "explicit_openrouter_endpoints_required"),
+        ({"cleanup_route_attempt_seconds": (18, 12)}, "route_attempt_allocation_count_mismatch"),
+    ],
+)
+def test_invalid_openrouter_configuration_never_creates_clients(
+    initialized_settings: Settings, monkeypatch, overrides: dict, error: str
+) -> None:
+    settings = replace(
+        initialized_settings,
+        cleanup_route_order="openrouter",
+        openrouter_api_key="synthetic-router-key",
+        openrouter_models=("qwen/qwen3-30b-a3b-instruct-2507",),
+        cleanup_route_attempt_seconds=(30,),
+        paid_data_acknowledgement=PAID_DATA_ACKNOWLEDGEMENT,
+    )
+    settings = replace(settings, **overrides)
+    monkeypatch.setattr(
+        app_module,
+        "_new_provider_client",
+        lambda _timeout: pytest.fail("invalid configuration must not create clients"),
+    )
+    with TestClient(create_app(settings)) as client:
+        config = client.get("/health").json()["cleanup_configuration"]
+        result = client.post(
+            "/api/cleanup", json={"original_text": "synthetic source", "enabled": True}
+        )
+    assert config["validation_error"] == error
+    assert config["routes"] == []
+    assert result.json()["prepared_text"] == "synthetic source"
+    assert result.json()["status"] == "disabled"
+
+
+def test_openrouter_pair_preserves_order_and_pinned_endpoints(
+    initialized_settings: Settings, monkeypatch
+) -> None:
+    settings = replace(
+        initialized_settings,
+        cleanup_route_order="openrouter",
+        openrouter_api_key="synthetic-router-key",
+        openrouter_models=("openai/gpt-4.1-mini", "openai/gpt-4.1"),
+        openrouter_endpoints=("azure/swedencentral", "azure"),
+        cleanup_route_attempt_seconds=(18, 12),
+        paid_data_acknowledgement=PAID_DATA_ACKNOWLEDGEMENT,
+    )
+    payloads = []
+
+    def respond(request):
+        payloads.append(json.loads(request.content))
+        if len(payloads) == 1:
+            return httpx.Response(503, json={"error": {"code": "service_unavailable"}})
+        return httpx.Response(
+            200,
+            json={
+                "provider": "Azure",
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"content": '{"prepared_text":"Synthetic source."}'},
+                    }
+                ],
+            },
+        )
+
+    monkeypatch.setattr(
+        app_module,
+        "_new_provider_client",
+        lambda _timeout: httpx.AsyncClient(transport=httpx.MockTransport(respond)),
+    )
+    with TestClient(create_app(settings)) as client:
+        result = client.post(
+            "/api/cleanup", json={"original_text": "synthetic source", "enabled": True}
+        )
+    assert result.json()["prepared_text"] == "Synthetic source."
+    assert result.json()["model"] == "openai/gpt-4.1"
+    assert [payload["model"] for payload in payloads] == ["openai/gpt-4.1-mini", "openai/gpt-4.1"]
+    assert [payload["provider"]["only"] for payload in payloads] == [
+        ["azure/swedencentral"],
+        ["azure"],
+    ]
+    assert all(payload["provider"]["allow_fallbacks"] is False for payload in payloads)
 
 
 def test_generic_openai_key_never_activates_openai(
