@@ -177,10 +177,16 @@ LOCAL_TEXT_GEMINI_API_KEY=replace-with-your-key
 # LOCAL_TEXT_CLEANUP_TIMEOUT_SECONDS=30
 ```
 
-With no cross-provider settings, this remains the compatible Gemini-only route:
+With no explicit route order, this remains the compatible Gemini-only route:
 the selected Gemini model followed by `gemini-2.5-flash` within the existing
 30-second total deadline. Existing `GEMINI_API_KEY` and `GOOGLE_API_KEY` values
 remain compatible with that legacy route.
+
+Gemini, direct OpenAI, and OpenRouter settings may coexist in the same file.
+Credentials and model settings do not select new routes or issue requests at startup.
+Unselected provider settings do not change the active route. Each selected route
+requires `LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS`, with one positive allocation per
+attempt, totaling no more than the cleanup timeout (for example, `18,12` within 30 seconds).
 
 Cross-provider fallback is activated only by this complete, exact contract:
 
@@ -193,15 +199,51 @@ LOCAL_TEXT_OPENAI_API_KEY=replace-with-paid-openai-key
 LOCAL_TEXT_OPENAI_MODEL=gpt-5.6-luna
 LOCAL_TEXT_OPENAI_QUOTA_GROUP_ID=openai-paid-project
 LOCAL_TEXT_CLEANUP_PAID_DATA_ACKNOWLEDGEMENT=paid-external-cleanup-v1
+LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS=18,12
 # Optional:
 # LOCAL_TEXT_CLEANUP_TIMEOUT_SECONDS=30
 ```
 
 The quota-group identifiers must be valid technical identifiers and must differ.
-Any missing, invalid, or unacknowledged cross-provider setting disables every
-provider client and preserves Original fail-open. Generic `OPENAI_API_KEY` is
+To use direct OpenAI first with Gemini as fallback, set
+`LOCAL_TEXT_CLEANUP_ROUTE_ORDER=openai,gemini`; all other cross-provider requirements
+remain the same. Attempt allocations follow route order (`18,12` gives OpenAI
+18 seconds and Gemini 12 seconds). A state-specific override can change just this
+route-order key without changing the shared provider configuration.
+
+Once cross-provider fallback is selected, any missing, invalid, or unacknowledged
+setting disables every provider client and preserves Original fail-open. Generic `OPENAI_API_KEY` is
 never used. Arbitrary provider endpoints, route orders, and production model IDs
 are not supported.
+
+OpenRouter is also available for normal application cleanup, independently of
+benchmarks or evaluation tools. Select it explicitly:
+
+```sh
+LOCAL_TEXT_CLEANUP_ROUTE_ORDER=openrouter
+LOCAL_TEXT_OPENROUTER_API_KEY=replace-with-openrouter-key
+LOCAL_TEXT_OPENROUTER_MODEL=qwen/qwen3-30b-a3b-instruct-2507
+LOCAL_TEXT_CLEANUP_PAID_DATA_ACKNOWLEDGEMENT=paid-external-cleanup-v1
+LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS=30
+```
+
+`LOCAL_TEXT_OPENROUTER_MODELS` accepts an ordered comma-separated list of one or
+two distinct models. It supports the Qwen model above, `openai/gpt-4.1`, and
+`openai/gpt-4.1-mini`. The singular `MODEL` remains compatible; if both forms are
+set, they must describe the same single model when OpenRouter is selected.
+Conflicts fail closed rather than silently choosing one form. State overrides
+replace the same key; to switch forms, remove or empty the inherited plural key
+and ensure the singular value agrees, or remove the singular key from shared settings.
+
+GPT models require `LOCAL_TEXT_OPENROUTER_ENDPOINTS`, one serving endpoint per
+model in matching order: `azure` or `azure/swedencentral`. For example, use
+`MODELS=openai/gpt-4.1,openai/gpt-4.1-mini`, `ENDPOINTS=azure,azure/swedencentral`
+(both with the `LOCAL_TEXT_OPENROUTER_` prefix), and allocations `18,12`.
+These are serving-provider identifiers, not arbitrary URLs. Pinned routes prohibit
+OpenRouter endpoint fallback and reject responses whose serving provider is not Azure.
+All OpenRouter requests require ZDR, deny data collection, and require parameter support.
+The existing shared deadline, qualifying-failure fallback, and Original fail-open
+rules apply. Generic `OPENROUTER_API_KEY` is not used.
 
 The Workspace's expandable **Cleanup route** disclosure and the sanitized
 `cleanup_configuration` object in `/health` and `/api/config` report the active

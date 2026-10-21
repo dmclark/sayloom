@@ -927,6 +927,7 @@
   function renderCleanupConfiguration(configuration) {
     const routes = Array.isArray(configuration?.routes) ? configuration.routes : [];
     const disclosure = configuration?.disclosure || {};
+    const providerNames = { gemini: "Gemini", openai: "OpenAI", openrouter: "OpenRouter" };
     elements.cleanupDisclosure.dataset.status = configuration?.status || "unavailable";
     elements.cleanupDisclosureSummary.textContent = typeof disclosure.summary === "string"
       ? disclosure.summary
@@ -935,9 +936,7 @@
     routes.forEach((route) => {
       if (typeof route?.provider !== "string" || typeof route?.model !== "string") return;
       const item = document.createElement("li");
-      const provider = route.provider === "openai"
-        ? "OpenAI"
-        : route.provider.charAt(0).toUpperCase() + route.provider.slice(1);
+      const provider = providerNames[route.provider] || route.provider;
       item.textContent = `${provider} · ${route.model}`;
       elements.cleanupRouteList.append(item);
     });
@@ -952,7 +951,7 @@
       : "";
 
     elements.modelLabel.textContent = routes.length
-      ? routes.map((route) => route.provider === "openai" ? "OpenAI" : "Gemini").join(" → ")
+      ? routes.map((route) => providerNames[route.provider] || route.provider).join(" → ")
       : configuration?.status === "invalid"
         ? "Cleanup configuration invalid"
         : "Cleanup configuration needed";

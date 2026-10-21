@@ -1731,44 +1731,48 @@ def test_state_rejects_unknown_and_root_escaping_selection(tmp_path: Path) -> No
 
 
 @pytest.mark.parametrize(
-    "entry",
+    "key",
     [
-        "LOCAL_TEXT_DATABASE_PATH=/tmp/other.sqlite3",
-        "LOCAL_TEXT_EVIDENCE_PACKAGE_DIRECTORY=/tmp/retired-evidence-package",
+        "LOCAL_TEXT_DATABASE_PATH",
+        "LOCAL_TEXT_CLEANUP_ROUTE_ORDRE",
+        "OPENAI_API_KEY",
     ],
 )
-def test_runtime_environment_rejects_unsupported_configuration(
-    tmp_path: Path, entry: str
+@pytest.mark.parametrize("command", ["preflight", "status"])
+def test_configuration_warns_and_ignores_unknown_entries(
+    tmp_path: Path, key: str, command: str
 ) -> None:
     state_root = tmp_path / "states"
     assert run_dev(state_root, "create", "selected").returncode == 0
-    manifest = json.loads((state_root / "selected/state.json").read_text())
     home = tmp_path / "home"
-    environment_path = home / ".config/local-text/development/environment"
-    environment_path.parent.mkdir(parents=True)
-    environment_path.write_text(f"{entry}\n")
-    environment_path.chmod(0o600)
+    shared = home / ".config/local-text/development/environment"
+    selected = state_root / "selected/environment"
+    shared.parent.mkdir(parents=True)
+    for path, model in ((shared, "shared-model"), (selected, "selected-model")):
+        path.write_text(
+            "# synthetic configuration\n"
+            f"{key}=synthetic-secret\n"
+            f"LOCAL_TEXT_GEMINI_MODEL={model}\n"
+        )
+        path.chmod(0o600)
     environment = {**os.environ, "HOME": str(home)}
-    rejected = subprocess.run(
-        [
-            str(REPOSITORY_ROOT / "scripts/run-development.py"),
-            "--state-root",
-            str(state_root),
-            "--state",
-            "selected",
-            "--label",
-            manifest["label"],
-            "--port",
-            str(manifest["port"]),
-        ],
-        cwd=REPOSITORY_ROOT,
-        env=environment,
-        text=True,
-        capture_output=True,
-        check=False,
+    assert run_dev(state_root, "init", environment=environment).returncode == 0
+
+    result = run_dev(
+        state_root, command, "--state", "selected", environment=environment
     )
-    assert rejected.returncode != 0
-    assert "invalid environment entry" in rejected.stderr
+
+    assert result.returncode == 0, result.stderr
+    assert result.stderr.splitlines() == [
+        f"warning: ignoring unknown environment variable {key} at {selected}:2",
+        f"warning: ignoring unknown environment variable {key} at {shared}:2",
+    ]
+    assert "synthetic-secret" not in result.stdout + result.stderr
+    assert f"{key}=" not in result.stdout + result.stderr
+    if command == "status":
+        assert "Gemini model: selected-model" in result.stdout
+        assert "Cleanup route order: legacy Gemini-only" in result.stdout
+        assert "OpenAI credential: missing" in result.stdout
 
 
 def test_configuration_preflight_accepts_valid_shared_and_state_entries(tmp_path: Path) -> None:
@@ -1862,8 +1866,14 @@ def test_restart_preflights_configuration_before_repository_verification(
         module.restart(selected)
 
 
+@pytest.mark.parametrize(
+    "providers", [("GEMINI",), ("OPENAI",), ("OPENROUTER",), ("GEMINI", "OPENAI", "OPENROUTER")]
+)
 def test_runtime_environment_passes_supported_runtime_configuration(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    providers: tuple[str, ...],
 ) -> None:
     state_root = tmp_path / "states"
     assert run_dev(state_root, "create", "selected").returncode == 0
@@ -1871,8 +1881,33 @@ def test_runtime_environment_passes_supported_runtime_configuration(
     config_root = tmp_path / "home/.config/local-text/development"
     environment_path = config_root / "environment"
     environment_path.parent.mkdir(parents=True)
-    environment_path.write_text("LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS=18,12\n")
+    shared_values = {"LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS": "18,12"}
+    for provider in providers:
+        shared_values[f"LOCAL_TEXT_{provider}_API_KEY"] = f"synthetic-{provider}-key"
+        shared_values[f"LOCAL_TEXT_{provider}_MODEL"] = f"shared-{provider}-model"
+    if "OPENROUTER" in providers:
+        shared_values["LOCAL_TEXT_OPENROUTER_MODELS"] = "openai/gpt-4.1,openai/gpt-4.1-mini"
+        shared_values["LOCAL_TEXT_OPENROUTER_ENDPOINTS"] = "azure,azure"
+    environment_path.write_text(
+        "LOCAL_TEXT_CLEANUP_ROUTE_ORDRE=openai\n"
+        "OPENAI_API_KEY=synthetic-ignored-key\n"
+        + "".join(f"{key}={value}\n" for key, value in shared_values.items())
+    )
     environment_path.chmod(0o600)
+    selected_values = {
+        f"LOCAL_TEXT_{provider}_MODEL": f"selected-{provider}-model" for provider in providers
+    }
+    if "OPENROUTER" in providers:
+        selected_values["LOCAL_TEXT_OPENROUTER_ENDPOINTS"] = "azure,azure/swedencentral"
+    selected_path = state_root / "selected/environment"
+    selected_path.write_text(
+        "LOCAL_TEXT_DATABASE_PATH=synthetic-ignored-path\n"
+        + "".join(f"{key}={value}\n" for key, value in selected_values.items())
+    )
+    selected_path.chmod(0o600)
+    for provider in ("GEMINI", "OPENAI", "OPENROUTER"):
+        monkeypatch.setenv(f"LOCAL_TEXT_{provider}_API_KEY", "ambient-must-not-leak")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "ambient-must-not-leak")
 
     scripts = str(REPOSITORY_ROOT / "scripts")
     sys.path.insert(0, scripts)
@@ -1918,6 +1953,25 @@ def test_runtime_environment_passes_supported_runtime_configuration(
         module.main()
 
     assert captured_environment["LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS"] == "18,12"
+    for key, value in {**shared_values, **selected_values}.items():
+        assert captured_environment[key] == value
+    for provider in {"GEMINI", "OPENAI", "OPENROUTER"} - set(providers):
+        assert f"LOCAL_TEXT_{provider}_API_KEY" not in captured_environment
+    assert "OPENROUTER_API_KEY" not in captured_environment
+    assert "OPENAI_API_KEY" not in captured_environment
+    assert "LOCAL_TEXT_DATABASE_PATH" not in captured_environment
+    assert "LOCAL_TEXT_CLEANUP_ROUTE_ORDRE" not in captured_environment
+    assert "LOCAL_TEXT_CLEANUP_ROUTE_ORDER" not in captured_environment
+    warnings = capsys.readouterr().err
+    assert warnings.splitlines() == [
+        "warning: ignoring unknown environment variable LOCAL_TEXT_DATABASE_PATH "
+        f"at {selected_path}:1",
+        "warning: ignoring unknown environment variable LOCAL_TEXT_CLEANUP_ROUTE_ORDRE "
+        f"at {environment_path}:1",
+        "warning: ignoring unknown environment variable OPENAI_API_KEY "
+        f"at {environment_path}:2",
+    ]
+    assert "synthetic-ignored" not in warnings
     assert captured_environment["LOCAL_TEXT_PROVIDER_TRAFFIC_DIAGNOSTICS_FILE"] == str(
         state_root / "selected/.provider-traffic-diagnostics"
     )
@@ -1939,6 +1993,7 @@ def test_shared_configuration_is_overridden_by_checkout_state_without_printing_s
     legacy.parent.mkdir(parents=True)
     secret = "synthetic-secret-not-for-output"
     openai_secret = "synthetic-openai-secret-not-for-output"
+    openrouter_secret = "synthetic-openrouter-secret-not-for-output"
     shared.write_text(
         f"LOCAL_TEXT_GEMINI_API_KEY={secret}\n"
         "LOCAL_TEXT_GEMINI_MODEL=shared-model\n"
@@ -1946,6 +2001,10 @@ def test_shared_configuration_is_overridden_by_checkout_state_without_printing_s
         f"LOCAL_TEXT_OPENAI_API_KEY={openai_secret}\n"
         "LOCAL_TEXT_OPENAI_MODEL=gpt-5.6-luna\n"
         "LOCAL_TEXT_OPENAI_QUOTA_GROUP_ID=openai-paid-project\n"
+        f"LOCAL_TEXT_OPENROUTER_API_KEY={openrouter_secret}\n"
+        "LOCAL_TEXT_OPENROUTER_MODEL=qwen/qwen3-30b-a3b-instruct-2507\n"
+        "LOCAL_TEXT_OPENROUTER_MODELS=openai/gpt-4.1,openai/gpt-4.1-mini\n"
+        "LOCAL_TEXT_OPENROUTER_ENDPOINTS=azure,azure/swedencentral\n"
         "LOCAL_TEXT_CLEANUP_ROUTE_ORDER=gemini,openai\n"
         "LOCAL_TEXT_CLEANUP_PAID_DATA_ACKNOWLEDGEMENT=paid-external-cleanup-v1\n"
     )
@@ -1971,11 +2030,15 @@ def test_shared_configuration_is_overridden_by_checkout_state_without_printing_s
     assert "OpenAI credential: configured" in status.stdout
     assert "OpenAI model: gpt-5.6-luna" in status.stdout
     assert "OpenAI quota group: configured" in status.stdout
+    assert "OpenRouter credential: configured" in status.stdout
+    assert "OpenRouter model: qwen/qwen3-30b-a3b-instruct-2507" in status.stdout
     assert "Paid-data acknowledgement: configured" in status.stdout
     assert secret not in status.stdout
     assert secret not in status.stderr
     assert openai_secret not in status.stdout
     assert openai_secret not in status.stderr
+    assert openrouter_secret not in status.stdout
+    assert openrouter_secret not in status.stderr
 
     initialized = run_dev(
         state_root,

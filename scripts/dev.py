@@ -126,6 +126,13 @@ def print_configuration_status(state: State) -> None:
         "OpenAI quota group: "
         f"{'configured' if 'LOCAL_TEXT_OPENAI_QUOTA_GROUP_ID' in configuration else 'missing'}"
     )
+    print(
+        "OpenRouter credential: "
+        f"{'configured' if 'LOCAL_TEXT_OPENROUTER_API_KEY' in configuration else 'missing'}"
+    )
+    for key in ("MODEL", "MODELS", "ENDPOINTS"):
+        value = configuration.get(f"LOCAL_TEXT_OPENROUTER_{key}", "missing")
+        print(f"OpenRouter {key.lower()}: {value}")
     acknowledgement = configuration.get("LOCAL_TEXT_CLEANUP_PAID_DATA_ACKNOWLEDGEMENT")
     print(
         "Paid-data acknowledgement: "

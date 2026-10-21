@@ -5,6 +5,7 @@ import json
 import os
 import re
 import socket
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -30,12 +31,17 @@ ALLOWED_ENVIRONMENT_KEYS = {
     "LOCAL_TEXT_OPENAI_API_KEY",
     "LOCAL_TEXT_OPENAI_MODEL",
     "LOCAL_TEXT_OPENAI_QUOTA_GROUP_ID",
+    "LOCAL_TEXT_OPENROUTER_API_KEY",
+    "LOCAL_TEXT_OPENROUTER_MODEL",
+    "LOCAL_TEXT_OPENROUTER_MODELS",
+    "LOCAL_TEXT_OPENROUTER_ENDPOINTS",
     "LOCAL_TEXT_CLEANUP_TIMEOUT_SECONDS",
 }
 APPLICATION_ENVIRONMENT_KEYS = ALLOWED_ENVIRONMENT_KEYS | {
     "GEMINI_API_KEY",
     "GOOGLE_API_KEY",
     "OPENAI_API_KEY",
+    "OPENROUTER_API_KEY",
     "LOCAL_TEXT_DATABASE_PATH",
     "LOCAL_TEXT_DEVELOPMENT_STATE_NAME",
     "LOCAL_TEXT_PROFILE",
@@ -209,12 +215,18 @@ def load_environment_file(path: Path) -> dict[str, str]:
         if not stripped or stripped.startswith("#"):
             continue
         match = ENVIRONMENT_LINE.fullmatch(stripped)
-        if match is None or match.group(1) not in ALLOWED_ENVIRONMENT_KEYS:
+        if match is None:
             fail(
                 f"invalid environment entry at {path}:{line_number}; fix or remove this "
                 "line, then run scripts/dev.py preflight"
             )
         key, value = match.groups()
+        if key not in ALLOWED_ENVIRONMENT_KEYS:
+            print(
+                f"warning: ignoring unknown environment variable {key} at {path}:{line_number}",
+                file=sys.stderr,
+            )
+            continue
         if key in values:
             fail(
                 f"duplicate environment entry at {path}:{line_number}; keep one entry "
