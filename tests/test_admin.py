@@ -1731,44 +1731,48 @@ def test_state_rejects_unknown_and_root_escaping_selection(tmp_path: Path) -> No
 
 
 @pytest.mark.parametrize(
-    "entry",
+    "key",
     [
-        "LOCAL_TEXT_DATABASE_PATH=/tmp/other.sqlite3",
-        "LOCAL_TEXT_EVIDENCE_PACKAGE_DIRECTORY=/tmp/retired-evidence-package",
+        "LOCAL_TEXT_DATABASE_PATH",
+        "LOCAL_TEXT_CLEANUP_ROUTE_ORDRE",
+        "OPENAI_API_KEY",
     ],
 )
-def test_runtime_environment_rejects_unsupported_configuration(
-    tmp_path: Path, entry: str
+@pytest.mark.parametrize("command", ["preflight", "status"])
+def test_configuration_warns_and_ignores_unknown_entries(
+    tmp_path: Path, key: str, command: str
 ) -> None:
     state_root = tmp_path / "states"
     assert run_dev(state_root, "create", "selected").returncode == 0
-    manifest = json.loads((state_root / "selected/state.json").read_text())
     home = tmp_path / "home"
-    environment_path = home / ".config/local-text/development/environment"
-    environment_path.parent.mkdir(parents=True)
-    environment_path.write_text(f"{entry}\n")
-    environment_path.chmod(0o600)
+    shared = home / ".config/local-text/development/environment"
+    selected = state_root / "selected/environment"
+    shared.parent.mkdir(parents=True)
+    for path, model in ((shared, "shared-model"), (selected, "selected-model")):
+        path.write_text(
+            "# synthetic configuration\n"
+            f"{key}=synthetic-secret\n"
+            f"LOCAL_TEXT_GEMINI_MODEL={model}\n"
+        )
+        path.chmod(0o600)
     environment = {**os.environ, "HOME": str(home)}
-    rejected = subprocess.run(
-        [
-            str(REPOSITORY_ROOT / "scripts/run-development.py"),
-            "--state-root",
-            str(state_root),
-            "--state",
-            "selected",
-            "--label",
-            manifest["label"],
-            "--port",
-            str(manifest["port"]),
-        ],
-        cwd=REPOSITORY_ROOT,
-        env=environment,
-        text=True,
-        capture_output=True,
-        check=False,
+    assert run_dev(state_root, "init", environment=environment).returncode == 0
+
+    result = run_dev(
+        state_root, command, "--state", "selected", environment=environment
     )
-    assert rejected.returncode != 0
-    assert "invalid environment entry" in rejected.stderr
+
+    assert result.returncode == 0, result.stderr
+    assert result.stderr.splitlines() == [
+        f"warning: ignoring unknown environment variable {key} at {selected}:2",
+        f"warning: ignoring unknown environment variable {key} at {shared}:2",
+    ]
+    assert "synthetic-secret" not in result.stdout + result.stderr
+    assert f"{key}=" not in result.stdout + result.stderr
+    if command == "status":
+        assert "Gemini model: selected-model" in result.stdout
+        assert "Cleanup route order: legacy Gemini-only" in result.stdout
+        assert "OpenAI credential: missing" in result.stdout
 
 
 def test_configuration_preflight_accepts_valid_shared_and_state_entries(tmp_path: Path) -> None:
