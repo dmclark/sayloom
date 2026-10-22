@@ -29,6 +29,11 @@ or explicit instructions in the current request.
 - For implementation changes, affected checks usually include
   `uv run ruff check .` and relevant `uv run pytest` coverage. Documentation-only
   changes normally need diff and content checks, not application tests.
+- Use desktop-only scope for normal UI development, testing, mockups, and design
+  reviews. Defer mobile layouts, narrow-viewport checks, and mobile interaction
+  testing to the separate later mobile UI stage in
+  [the Wayfinder map](https://github.com/dmclark/sayloom/issues/159).
+  Start mobile work only when that stage is explicitly selected.
 - Run each affected test group after the final relevant edit; rerun only when
   later changes could affect it. Assign any requested full integration baseline
   to one owner after implementation and baseline repairs are resolved.

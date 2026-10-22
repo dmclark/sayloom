@@ -6,7 +6,9 @@ Read this before verifying UI changes. Use synthetic data in an isolated runtime
   tests, and accessibility snapshots. Assert behavior separately from appearance.
 - For appearance changes (layout, styling, clipping, responsive behavior, or
   modals), capture the affected components and inspect the rendered result.
-  Cover representative affected states and, where applicable, desktop and 390px widths.
+  Cover representative affected states at desktop widths. Follow
+  [workflow preferences](workflow-preferences.md) for the deferred mobile UI stage;
+  normal development does not require mobile or 390px captures.
 - Inspect every retained screenshot and reuse unchanged captures. Ask before
   inspecting more than three screenshots in one task. Report the number inspected
   and what each verified.
