@@ -48,6 +48,7 @@ from local_text.personal_corrections import (
     PersonalCorrectionRevisionConflictError,
     PersonalCorrectionStore,
 )
+from local_text.phrase_trial import trial_router
 from local_text.prompt_store import PromptNotFoundError, PromptRecord, PromptStore, SeedStateError
 from local_text.state import OutgoingStateStore, OutgoingStateUpdate
 from local_text.target_adapter import TargetAdapter, TargetArtifactError
@@ -57,7 +58,8 @@ from local_text.targets import TargetDefinition, generate_command
 STATIC_DIRECTORY = Path(__file__).parent / "static"
 INDEX_TEMPLATE = (STATIC_DIRECTORY / "index.html").read_text()
 STATIC_VERSION = sha256(
-    b"".join((STATIC_DIRECTORY / filename).read_bytes() for filename in ("app.css", "app.js"))
+    b"".join((STATIC_DIRECTORY / filename).read_bytes()
+             for filename in ("app.css", "app.js", "trial.js"))
 ).hexdigest()[:12]
 PAID_DATA_ACKNOWLEDGEMENT = "paid-external-cleanup-v1"
 CROSS_PROVIDER_ROUTE_ORDER = "gemini,openai"
@@ -362,6 +364,7 @@ def create_app(
     settings: Settings | None = None,
     cleanup_service: CleanupService | None = None,
     target_adapter: TargetAdapter | None = None,
+    trial_transport: httpx.AsyncBaseTransport | None = None,
 ) -> FastAPI:
     runtime = settings or load_settings()
     database = ApplicationDatabase(runtime.resolved_database_path)
@@ -369,7 +372,9 @@ def create_app(
     prompts = PromptStore(database)
     targets = TargetStore(database)
     personal_corrections = PersonalCorrectionStore(database)
-    adapter = target_adapter or TargetAdapter(runtime.resolved_raycast_directory)
+    adapter = target_adapter or TargetAdapter(
+        runtime.resolved_raycast_directory, stable=runtime.stable_instance,
+    )
     configuration_error: str | None = None
     preparation_default = PreparationMode.CONSERVATIVE
     if schema.ready:
@@ -472,12 +477,16 @@ def create_app(
     application = FastAPI(title=runtime.page_title, lifespan=lifespan)
     application.state.cleanup_service = cleanup_service or disabled_cleanup
     application.mount("/static", StaticFiles(directory=STATIC_DIRECTORY), name="static")
+    if runtime.trial_directory is not None:
+        application.include_router(trial_router(
+            runtime.trial_directory, runtime.openai_api_key, trial_transport,
+        ))
 
     @application.exception_handler(RequestValidationError)
     async def privacy_safe_validation_error(
         request: Request, exc: RequestValidationError
     ) -> Response:
-        if request.url.path.startswith("/api/personal-corrections"):
+        if request.url.path.startswith(("/api/personal-corrections", "/api/trial")):
             return JSONResponse(
                 status_code=422,
                 headers={"Cache-Control": "no-store"},
@@ -547,6 +556,7 @@ def create_app(
             "profile": runtime.profile,
             "development_state": runtime.development_state_name,
             "preparation_default": prompts.preparation_default(),
+            **({"trial_available": True} if runtime.trial_directory is not None else {}),
             "cleanup_available": cleanup_available,
             "cleanup_model": cleanup_configuration.routes[0][1]
             if cleanup_configuration.routes
@@ -848,7 +858,7 @@ def create_app(
             raise HTTPException(status_code=404, detail="target does not exist") from exc
 
     def target_response(target: TargetRecord) -> dict[str, object]:
-        generated = generate_command(target.id, target.definition)
+        generated = generate_command(target.id, target.definition, stable=runtime.stable_instance)
         observation = adapter.observe(target.id, generated)
         primary_state = "disabled" if not target.enabled else observation.installation.value
         return {
@@ -912,7 +922,7 @@ def create_app(
                     "retry_action": "Enable the target, then install it.",
                 },
             )
-        generated = generate_command(target.id, target.definition)
+        generated = generate_command(target.id, target.definition, stable=runtime.stable_instance)
         try:
             adapter.install(target.id, generated)
         except TargetArtifactError as exc:
@@ -924,7 +934,7 @@ def create_app(
     def disable_target(target_id: str) -> dict[str, object]:
         require_configuration()
         target = target_or_404(target_id)
-        generated = generate_command(target.id, target.definition)
+        generated = generate_command(target.id, target.definition, stable=runtime.stable_instance)
         try:
             adapter.remove(target.id, generated)
         except TargetArtifactError as exc:
@@ -941,7 +951,7 @@ def create_app(
     def remove_target(target_id: str) -> Response:
         require_configuration()
         target = target_or_404(target_id)
-        generated = generate_command(target.id, target.definition)
+        generated = generate_command(target.id, target.definition, stable=runtime.stable_instance)
         try:
             adapter.remove(target.id, generated)
         except TargetArtifactError as exc:

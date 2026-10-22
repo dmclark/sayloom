@@ -1331,3 +1331,76 @@ textarea::placeholder { color: var(--muted); font-style: italic; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; }
 }
+
+.original-panel-footer:has(.trial-controls:not([hidden])) {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 6px 16px;
+}
+.trial-controls { flex: 1 1 440px; min-width: 0; letter-spacing: normal; }
+#trial-inclusion { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 0.75rem; }
+.toolbar-actions:has(#trial-inclusion:not([hidden])) { flex-wrap: wrap; }
+.trial-toolbar .button { min-height: 30px; padding: 5px 10px; font-size: 0.66rem; }
+#trial-state { overflow-wrap: anywhere; }
+#trial-message { margin: 4px 0 0; line-height: 1.4; }
+.trial-controls-dialog p { font-size: 0.85rem; line-height: 1.6; }
+.trial-controls-dialog .trial-actions { margin-top: 20px; }
+.trial-controls-dialog .dialog-close { flex-shrink: 0; }
+.phrase-trial {
+  margin: 16px 0;
+  padding: 18px 22px;
+  border: 1px solid var(--line);
+  background: var(--paper-bright);
+}
+.trial-toolbar, .trial-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.phrase-trial p { max-width: 75ch; line-height: 1.5; }
+.trial-columns { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 24px; }
+.trial-columns > div { min-width: 0; }
+.trial-editor { position: relative; margin: 10px 0; background: var(--paper-bright); }
+#trial-passage, #trial-highlights {
+  width: 100%; padding: 14px; border: 1px solid var(--line); border-radius: 2px;
+  font: 21px/1.7 Charter, Georgia, serif; letter-spacing: normal;
+  white-space: pre-wrap; overflow-wrap: break-word;
+}
+#trial-passage { display: block; position: relative; min-height: 240px; resize: vertical; background: transparent; color: var(--ink); }
+#trial-highlights { position: absolute; inset: 0; pointer-events: none; color: transparent; overflow: hidden; }
+#trial-highlights mark { color: transparent; }
+.trial-suggestion { padding: 14px; margin-bottom: 10px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.trial-suggestion .button { margin: 4px 6px 4px 0; white-space: normal; }
+.trial-phrase-editor input, .trial-feedback textarea, .trial-feedback select {
+  display: block; width: 100%; padding: 10px; margin: 6px 0;
+  border: 1px solid var(--line); background: var(--paper-bright); color: var(--ink);
+}
+.trial-feedback { margin-top: 18px; max-width: 75ch; }
+.trial-feedback h3 { margin: 0; font-size: 0.85rem; font-weight: 600; }
+.trial-feedback-ratings { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; }
+.trial-feedback-ratings label { min-width: 0; }
+.trial-feedback label { display: block; margin: 12px 0; }
+.phrase-trial button { min-height: 44px; }
+#trial-working > .trial-actions .button { padding-inline: 10px; font-size: 0.75rem; }
+.workspace.has-phrase-trial { display: block; height: auto; }
+.workspace.has-phrase-trial > .original-panel {
+  display: grid;
+  height: clamp(280px, 40vh, 480px);
+}
+.workspace.has-phrase-trial > .workspace-resizer,
+.workspace.has-phrase-trial .panel-maximize,
+body:has(#trial-panel:not([hidden])) .layout-controls { display: none; }
+.workspace.has-phrase-trial > .phrase-trial { margin: 14px 0 0; }
+@media (min-width: 761px) {
+  /* The additional trial sheet must not be clipped by the viewport-locked workspace. */
+  body:has(#phrase-trial:not([hidden])) {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  body:has(#phrase-trial:not([hidden])) main { display: block; }
+  body:has(#phrase-trial:not([hidden])) .workspace:not(.has-phrase-trial) {
+    height: clamp(560px, calc(100vh - 148px), 920px);
+  }
+}
+@media (max-width: 760px) {
+  .phrase-trial { padding: 14px; }
+  .trial-columns { grid-template-columns: 1fr; gap: 16px; }
+  #trial-passage, #trial-highlights { font-size: 19px; }
+}

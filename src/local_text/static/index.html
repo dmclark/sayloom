@@ -6,6 +6,7 @@
     <meta name="color-scheme" content="light">
     <title>__PAGE_TITLE__</title>
     <link rel="stylesheet" href="/static/app.css?v=__STATIC_VERSION__">
+    <script src="/static/trial.js?v=__STATIC_VERSION__" defer></script>
     <script src="/static/app.js?v=__STATIC_VERSION__" defer></script>
   </head>
   <body>
@@ -55,6 +56,9 @@
             <span aria-hidden="true">↻</span> Regenerate
           </button>
           <button id="clear-text" class="button" type="button">Clear</button>
+          <label id="trial-inclusion" hidden><input id="trial-include" type="checkbox"> Include in trial</label>
+          <button id="trial-controls-open" class="button button-quiet" type="button"
+            aria-haspopup="dialog" aria-controls="trial-controls-dialog" hidden>Trial controls &amp; privacy</button>
         </div>
       </section>
 
@@ -121,6 +125,13 @@
             </div>
             <footer class="panel-footer original-panel-footer">
               <span><strong id="original-count">0</strong> characters</span>
+              <section id="phrase-trial" class="trial-controls" aria-label="Phrase alternatives trial controls" hidden>
+                <div class="trial-toolbar">
+                  <button id="trial-begin" class="button" type="button" disabled>Begin included passage</button>
+                  <span id="trial-state" role="status"></span>
+                </div>
+                <p id="trial-message" role="status" aria-live="polite" hidden></p>
+              </section>
             </footer>
           </article>
 
@@ -231,6 +242,49 @@
               <span id="model-label">Gemini</span>
             </footer>
           </article>
+          <section id="trial-panel" class="phrase-trial" aria-label="Phrase alternatives workspace" hidden>
+            <header class="panel-title">
+              <span class="panel-number">02</span>
+              <h2>Phrase alternatives</h2>
+            </header>
+            <p id="trial-waiting">Finish dictating in Original, then Begin included passage. Start or resume the trial week first if it is not active.</p>
+            <div id="trial-working" hidden>
+              <div class="trial-columns">
+                <div>
+                  <div class="trial-editor">
+                    <div id="trial-highlights" aria-hidden="true"></div>
+                    <textarea id="trial-passage" aria-label="Trial passage" autocomplete="off" spellcheck="true"></textarea>
+                  </div>
+                </div>
+                <div id="trial-choices" aria-label="Phrase alternatives"></div>
+              </div>
+              <div class="trial-actions">
+                <button id="trial-undo" class="button" type="button">Undo last applied step</button>
+                <button id="trial-switch" class="button" type="button">Switch to alternatives</button>
+                <button id="trial-exit" class="button" type="button">Exit to normal correction · delete this record</button>
+              </div>
+              <section class="trial-feedback" aria-labelledby="trial-feedback-title">
+                <h3 id="trial-feedback-title">Optional feedback · never required to copy</h3>
+                <div class="trial-feedback-ratings">
+                  <label>Spoken wording
+                    <select id="trial-spoken">
+                      <option value="unconfirmed">Unconfirmed</option>
+                      <option value="confirmed">I confirm this matches my spoken words</option>
+                      <option value="unsure">Unsure · remove saved content</option>
+                      <option value="revised">Intentionally revised · remove saved content</option>
+                    </select>
+                  </label>
+                  <label>Whole-task effort
+                    <select id="trial-effort"><option value="">Not rated</option><option value="less">Less</option><option value="same">Same</option><option value="more">More</option></select>
+                  </label>
+                </div>
+                <label>Useful, distracting/harmful, missing alternatives, missed/new errors, fidelity, interruptions
+                  <textarea id="trial-note" maxlength="4000"></textarea>
+                </label>
+                <button id="trial-feedback-save" class="button" type="button">Save optional feedback</button>
+              </section>
+            </div>
+          </section>
         </section>
 
         <section id="settings-manager" class="settings-manager" aria-labelledby="settings-title" hidden>
@@ -493,6 +547,30 @@
           <button id="dismiss-missed-repair" class="button button-quiet" type="button">Not now</button>
         </div>
       </form>
+    </dialog>
+
+    <dialog id="trial-controls-dialog" class="error-details-dialog trial-controls-dialog" aria-labelledby="trial-controls-title">
+      <div class="error-sheet">
+        <header class="error-sheet-header">
+          <div>
+            <h2 id="trial-controls-title">Trial controls &amp; privacy</h2>
+            <p>Phrase alternatives · one-week trial</p>
+          </div>
+          <button id="trial-controls-close" class="dialog-close" type="button" aria-label="Close trial controls">×</button>
+        </header>
+        <p>Include before assignment. Both groups begin with untouched final Voiceitt text, without ordinary correction. Excluded passages use normal Sayloom and are not recorded.</p>
+        <p>Suggestions are hypotheses, not verified speech. Unmarked wording is not verified. Check the whole passage; unchanged wording is used without per-item acceptance.</p>
+        <p>Included current passages may go to OpenAI. Inputs, shown suggestions, applied correction steps and final text stay locally outside Git until deletion is requested. Withdrawal deletes local passage records, not prior submissions. store:false is not zero provider retention; abuse monitoring may retain content up to 30 days, with exceptions. Account-specific controls are unverified.</p>
+        <p>One request per passage, 30 seconds, no retries. Editing and copying never wait. The calendar week begins only with Start trial; pauses do not extend it. US$5 shared ceiling. No training, publication, learning, history, audio, or Personal Corrections.</p>
+        <div class="trial-actions">
+          <button class="button" data-trial-control="start" type="button">Start trial</button>
+          <button class="button" data-trial-control="pause" type="button">Pause</button>
+          <button class="button" data-trial-control="resume" type="button">Resume</button>
+          <button class="button" data-trial-control="stop" type="button">Stop</button>
+          <button class="button" data-trial-control="extend" type="button">Explicitly extend one week</button>
+        </div>
+        <p id="trial-controls-error" role="alert"></p>
+      </div>
     </dialog>
 
     <dialog id="error-details-dialog" class="error-details-dialog" aria-labelledby="error-details-title">

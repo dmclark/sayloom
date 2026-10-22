@@ -45,10 +45,10 @@ class GeneratedCommand:
     sha256: str
 
 
-def command_filename(target_id: str) -> str:
+def command_filename(target_id: str, *, stable: bool = False) -> str:
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,35}", target_id):
         raise ValueError("invalid target identifier")
-    return f"sayloom-target-{target_id}.sh"
+    return f"sayloom-{'stable-' if stable else ''}target-{target_id}.sh"
 
 
 def _fetch_and_clipboard_library() -> str:
@@ -87,15 +87,20 @@ LC_ALL=C /usr/bin/grep -q '[^[:space:]]' "$outgoing_file" \\
 """
 
 
-def generate_command(target_id: str, definition: TargetDefinition) -> GeneratedCommand:
-    filename = command_filename(target_id)
+def generate_command(
+    target_id: str,
+    definition: TargetDefinition,
+    *,
+    stable: bool = False,
+) -> GeneratedCommand:
+    filename = command_filename(target_id, stable=stable)
     title = definition.display_name.replace("\n", " ")
     app_name = definition.application_name.replace("\\", "\\\\").replace('"', '\\"')
     bundle_id = shlex.quote(definition.application_bundle_id)
     header = f"""#!/bin/sh
 
 # @raycast.schemaVersion 1
-# @raycast.title Send to {title}
+# @raycast.title {"Stable: " if stable else ""}Send to {title}
 # @raycast.mode compact
 # @raycast.packageName Sayloom Targets
 # @raycast.icon {definition.icon}
@@ -136,7 +141,10 @@ end run
 APPLESCRIPT
 """
     success_message = shlex.quote(f"Sent to {title} without submitting")
-    content = header + _fetch_and_clipboard_library() + delivery
+    library = _fetch_and_clipboard_library()
+    if stable:
+        library = library.replace("127.0.0.1:7523", "127.0.0.1:7532")
+    content = header + library + delivery
     content += f"printf '%s\\n' {success_message}\n"
     return GeneratedCommand(content=content, sha256=hashlib.sha256(content.encode()).hexdigest())
 

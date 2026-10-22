@@ -67,6 +67,24 @@ def test_generation_is_deterministic_outgoing_only_and_never_submits() -> None:
     subprocess.run(["/bin/sh", "-n"], input=iterm.content, text=True, check=True)
 
 
+def test_stable_commands_coexist_with_development_targets(initialized_settings, tmp_path):
+    directory = tmp_path / "raycast"
+    development = generate_command("amp", definition())
+    TargetAdapter(directory).install("amp", development)
+    settings = replace(initialized_settings, stable_instance=True, raycast_directory=directory)
+    with TestClient(create_app(settings)) as client:
+        result = client.post("/api/targets/amp/install")
+        result.raise_for_status()
+        stable = (directory / "sayloom-stable-target-amp.sh").read_text()
+        assert "# @raycast.title Stable: Send to Amp" in stable
+        assert "http://127.0.0.1:7532" in stable and ":7523" not in stable
+        assert (directory / "sayloom-target-amp.sh").read_text() == development.content
+        assert ":7523" in development.content
+        client.post("/api/targets/amp/disable").raise_for_status()
+        assert not (directory / "sayloom-stable-target-amp.sh").exists()
+        assert (directory / "sayloom-target-amp.sh").read_text() == development.content
+
+
 def test_adapter_installs_exact_preview_idempotently_and_refuses_collisions(
     tmp_path: Path,
 ) -> None:

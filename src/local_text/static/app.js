@@ -885,6 +885,15 @@
   }
 
   function selectedOutgoingState() {
+    if (window.phraseTrial?.capturing()) {
+      const text = window.phraseTrial.outgoing();
+      return {
+        cleanup_enabled: false, original_text: elements.original.value,
+        prepared_text: text ?? "", outgoing_text: text ?? elements.original.value,
+        outgoing_kind: (text ?? elements.original.value) ? (text === null ? "original" : "prepared") : "empty",
+        status: "disabled", correction_mode: "conservative",
+      };
+    }
     const originalText = elements.original.value;
     const preparedText = elements.prepared.value;
     const usePrepared = !originalOutgoingOverride && preparedIsCurrent();
@@ -916,6 +925,11 @@
     elements.preparedOrigin.textContent = preparedIsCurrent()
       ? confirmedPreparedRevision === draftRevision ? "User-confirmed" : "Generated"
       : "No current Prepared";
+    if (window.phraseTrial?.capturing()) {
+      elements.outgoingKind.textContent = "Using trial passage — no automatic correction";
+      elements.correctPrepared.hidden = true;
+    }
+    window.phraseTrial?.refresh();
   }
 
   function setPublicationState(nextState, label) {
@@ -1058,6 +1072,7 @@
     if (!selectedOutgoingState().outgoing_text) return;
     try {
       await navigator.clipboard.writeText(selectedOutgoingState().outgoing_text);
+      window.phraseTrial?.copy();
       showCopyFeedback("Copied", "Outgoing copied.");
     } catch (error) {
       showCopyFeedback(
@@ -1227,6 +1242,7 @@
     requestedCorrectionMode = null,
     invocation = "manual",
   ) {
+    if (window.phraseTrial?.capturing()) return;
     if (invocation === "automatic" && manualPreparationProtected()) return;
     if (preparedCorrectionRevision !== null) cancelPreparedCorrection();
     confirmedPreparedRevision = null;
@@ -1398,6 +1414,13 @@
   function scheduleCleanup() {
     window.clearTimeout(cleanupTimer);
     cleanupTimer = null;
+    if (window.phraseTrial?.capturing()) {
+      abortActiveRequest();
+      elements.prepared.value = "";
+      setStatus("disabled");
+      schedulePublication();
+      return;
+    }
     if (manualPreparationProtected()) return;
     setExplicitSmartState("hidden");
     setCleanupError(null);
@@ -1427,6 +1450,7 @@
   function handleOriginalInput(event) {
     const originalChanged = elements.original.value !== currentOriginalText;
     if (originalChanged) {
+      window.phraseTrial?.reset();
       draftRevision += 1;
       if (confirmedPreparedRevision !== null || preparedCorrectionRevision !== null) {
         confirmedPreparedRevision = null;
@@ -1624,6 +1648,7 @@
   );
   elements.missedRepairContext.addEventListener("input", updateMissedRepairApprovalState);
   elements.clear.addEventListener("click", () => {
+    window.phraseTrial?.reset();
     window.clearTimeout(cleanupTimer);
     window.clearTimeout(publicationTimer);
     abortActiveRequest();
@@ -2192,6 +2217,20 @@
       elements.modeSaveState.textContent = `${titleCaseState(defaultPreparationMode)} is the saved default.`;
       renderCorrectionMode();
       renderCleanupConfiguration(config.cleanup_configuration);
+      await window.phraseTrial?.initialize(Boolean(config.trial_available), (transition) => {
+        if (transition?.normalText !== undefined) {
+          elements.original.value = transition.normalText;
+          currentOriginalText = transition.normalText;
+          draftRevision += 1;
+          confirmedPreparedRevision = null;
+          elements.prepared.value = "";
+          originalOutgoingOverride = false;
+        }
+        window.clearTimeout(cleanupTimer);
+        abortActiveRequest();
+        scheduleCleanup();
+        renderCountsAndSelection();
+      });
 
       elements.prepared.value = "";
       invalidateSmartRepairReview();

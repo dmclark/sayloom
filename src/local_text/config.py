@@ -34,10 +34,14 @@ class Settings:
     cleanup_route_attempt_seconds: tuple[float, ...] | None = None
     database_path: Path | None = None
     raycast_directory: Path | None = None
+    trial_directory: Path | None = None
+    stable_instance: bool = False
     provider_traffic_diagnostics_file: Path | None = field(default=None, repr=False)
 
     @property
     def display_name(self) -> str:
+        if self.stable_instance:
+            return "Sayloom Stable"
         return "Sayloom Development" if self.profile is Profile.DEVELOPMENT else "Sayloom"
 
     @property
@@ -122,6 +126,10 @@ def load_settings() -> Settings:
         raycast_directory=(
             Path(value) if (value := os.getenv("LOCAL_TEXT_RAYCAST_DIRECTORY")) else None
         ),
+        trial_directory=(
+            Path(value) if (value := os.getenv("LOCAL_TEXT_TRIAL_DIRECTORY")) else None
+        ),
+        stable_instance=os.getenv("LOCAL_TEXT_STABLE_INSTANCE") == "1",
         provider_traffic_diagnostics_file=(
             Path(value)
             if profile is Profile.DEVELOPMENT

@@ -35,11 +35,12 @@ class TargetObservation:
 
 
 class TargetAdapter:
-    def __init__(self, directory: Path) -> None:
+    def __init__(self, directory: Path, *, stable: bool = False) -> None:
         self.directory = directory.expanduser()
+        self.stable = stable
 
     def _path(self, target_id: str) -> Path:
-        return self.directory / command_filename(target_id)
+        return self.directory / command_filename(target_id, stable=self.stable)
 
     @staticmethod
     def _is_owned(path: Path, target_id: str) -> bool:
