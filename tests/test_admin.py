@@ -9,7 +9,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -2121,3 +2121,418 @@ def test_normal_runtime_does_not_migrate_legacy_state_files(tmp_path: Path) -> N
     assert "unknown state 'legacy'" in result.stderr
     assert manifest_path.is_file()
     assert not (destination_root / "legacy").exists()
+
+
+def load_stable_module():
+    specification = importlib.util.spec_from_file_location(
+        "sayloom_stable_installer", REPOSITORY_ROOT / "scripts/install-stable.py"
+    )
+    module = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture
+def stable_update(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.syspath_prepend(str(REPOSITORY_ROOT / "scripts"))
+    module = load_stable_module()
+    home = tmp_path / "home"
+    source = tmp_path / "source"
+    source.mkdir()
+    contents = {
+        ".gitignore": ".venv/\n.amp/\n__pycache__/\n",
+        "pyproject.toml": "# synthetic dependencies\n",
+        "uv.lock": "# synthetic lock\n",
+        "src/local_text/__init__.py": "",
+        "src/local_text/cleanup.py": "# synthetic provider-free module\n",
+        "src/local_text/database.py": (REPOSITORY_ROOT / "src/local_text/database.py").read_text(),
+        "src/local_text/app.py": "baseline\n",
+        "scripts/run-stable.py": "# unchanged launcher\n",
+        "scripts/development_state.py": "# unchanged configuration parser\n",
+        "migrations/versions/initial.py": "# unchanged schema\n",
+        "raycast/obsolete.sh": "# deleted by candidate\n",
+    }
+    for name, value in contents.items():
+        path = source / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(value)
+    for args in (
+        ["init", "--quiet", "--initial-branch=feat/synthetic-stable"],
+        ["add", "."],
+        [
+            "-c",
+            "user.name=Synthetic",
+            "-c",
+            "user.email=synthetic@example.invalid",
+            "commit",
+            "--quiet",
+            "-m",
+            "synthetic baseline",
+        ],
+    ):
+        subprocess.run(["git", *args], cwd=source, check=True)
+    monkeypatch.setattr(Path, "home", lambda: home)
+    monkeypatch.setattr(module, "DESTINATION", home / "local-apps/sayloom-stable")
+    monkeypatch.setattr(module, "STATE", home / "state")
+    monkeypatch.setattr(module, "CONFIGURATION", home / "configuration")
+    module.DESTINATION.parent.mkdir(parents=True)
+    module.capture_snapshot(source, module.DESTINATION, module.source_snapshot(source))
+    interpreter = module.DESTINATION / ".venv/bin/python"
+    interpreter.parent.mkdir(parents=True)
+    interpreter.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+    interpreter.chmod(0o700)
+    # No application state, credentials or real launchd jobs are accessed.
+    preserved = {}
+    for name in (
+        "state/local-text.sqlite3",
+        "configuration/environment",
+        "trial/passage-synthetic.json",
+        "commands/stable-send.sh",
+    ):
+        path = home / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.suffix == ".sqlite3":
+            import sqlite3
+
+            with sqlite3.connect(path) as database:
+                database.execute("CREATE TABLE alembic_version (version_num TEXT)")
+                database.execute(
+                    "INSERT INTO alembic_version VALUES ('0006_confirmed_correction_batches')"
+                )
+        else:
+            path.write_text("synthetic sentinel\n")
+        preserved[path] = path.read_bytes()
+    module.stable_agent().parent.mkdir(parents=True)
+    import plistlib
+
+    module.stable_agent().write_bytes(plistlib.dumps(module.stable_definition()))
+    preserved[module.stable_agent()] = module.stable_agent().read_bytes()
+    running = {"source": "baseline\n", "loaded": True, "failure": None}
+
+    def service(action):
+        if action == "bootout":
+            running.update(loaded=False, source=None)
+            if running["failure"] == "shutdown":
+                raise SystemExit("synthetic shutdown failure")
+        else:
+            value = (module.DESTINATION / "src/local_text/app.py").read_text()
+            if running["failure"] == "bootstrap" and value != "baseline\n":
+                raise subprocess.CalledProcessError(1, ["synthetic-launchctl", "bootstrap"])
+            running.update(loaded=True, source=value)
+
+    def health(**_options):
+        if not running["loaded"] or (
+            running["failure"] == "health" and running["source"] != "baseline\n"
+        ):
+            raise SystemExit("synthetic health failure")
+
+    def owner():
+        if running["failure"] == "owner" or not running["loaded"]:
+            raise SystemExit("synthetic foreign owner")
+
+    monkeypatch.setattr(module, "service", service)
+    monkeypatch.setattr(module, "loaded_service", lambda: ["owned"] if running["loaded"] else None)
+    monkeypatch.setattr(module, "verify_health", health)
+    monkeypatch.setattr(module, "verify_owner", owner)
+    (source / "src/local_text/app.py").write_text("dirty overlay\n")
+    (source / "src/local_text/new.py").write_text("new untracked implementation\n")
+    (source / "raycast/obsolete.sh").unlink()
+    (source / ".amp").mkdir()
+    (source / ".amp/ignored.txt").write_text("ignored synthetic evidence\n")
+    return module, source, running, preserved
+
+
+def test_update_stable_captures_dirty_overlay_without_changing_data(stable_update, capsys):
+    module, source, running, preserved = stable_update
+    previous = module.verify_snapshot(module.DESTINATION)
+    candidate = module.source_snapshot(source)
+    module.update(source, confirmed=True)
+    assert module.verify_snapshot(module.DESTINATION) == candidate
+    assert running["loaded"] and running["source"] == "dirty overlay\n"
+    assert (
+        module.DESTINATION / "src/local_text/new.py"
+    ).read_text() == "new untracked implementation\n"
+    assert not (module.DESTINATION / "raycast/obsolete.sh").exists()
+    assert not (module.DESTINATION / ".amp").exists()
+    backups = list(module.DESTINATION.parent.glob(".sayloom-stable-rollback-*"))
+    assert len(backups) == 1 and module.verify_snapshot(backups[0]) == previous
+    assert (backups[0] / ".venv/bin/python").is_file()
+    assert all(path.read_bytes() == value for path, value in preserved.items())
+    output = capsys.readouterr().out
+    assert "feat/synthetic-stable" in output and "src/local_text/new.py" in output
+    assert candidate["snapshot_sha256"] in output
+
+
+@pytest.mark.parametrize(
+    "listening,registration",
+    [(False, "absent"), (True, "absent"), (False, "removing"), (False, "stuck")],
+)
+def test_stable_shutdown_distinguishes_closed_connections_from_live_listener(
+    monkeypatch, listening, registration
+):
+    monkeypatch.syspath_prepend(str(REPOSITORY_ROOT / "scripts"))
+    module = load_stable_module()
+    with socket.socket() as listener:
+        # Match asyncio/uvicorn's reusable Unix listener on an isolated ephemeral port.
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+        listener.listen()
+        if not listening:
+            with socket.create_connection(("127.0.0.1", port), timeout=1) as client:
+                with listener.accept()[0] as accepted:
+                    accepted.shutdown(socket.SHUT_WR)
+                    assert client.recv(1) == b""
+                listener.close()
+            # The server's closed connection still occupies its address in TIME_WAIT.
+            with socket.socket() as plain_probe:
+                with pytest.raises(OSError):
+                    plain_probe.bind(("127.0.0.1", port))
+
+        class IsolatedProbe(socket.socket):
+            def bind(self, address):
+                assert address == ("127.0.0.1", 7532)
+                return super().bind(("127.0.0.1", port))
+
+        monkeypatch.setattr(
+            module,
+            "socket",
+            SimpleNamespace(
+                socket=IsolatedProbe,
+                SOL_SOCKET=socket.SOL_SOCKET,
+                SO_REUSEADDR=socket.SO_REUSEADDR,
+            ),
+        )
+        launchd = {"registered": registration != "absent", "started": False}
+
+        def run(*args):
+            if args[1] == "bootstrap":
+                if launchd["registered"]:
+                    raise subprocess.CalledProcessError(5, args)
+                launchd["started"] = True
+
+        def sleep(_seconds):
+            if registration == "removing":
+                launchd["registered"] = False
+
+        monkeypatch.setattr(module, "run", run)
+        monkeypatch.setattr(
+            module, "loaded_service", lambda: ["owned"] if launchd["registered"] else None
+        )
+        monkeypatch.setattr(module.time, "sleep", sleep)
+        if listening or registration == "stuck":
+            with pytest.raises(SystemExit, match="shutdown"):
+                module.service("bootout")
+            assert not launchd["started"]
+        else:
+            module.service("bootout")
+            module.service("bootstrap")
+            assert launchd["started"]
+
+
+@pytest.mark.parametrize(
+    "status,diagnostic,absent",
+    [
+        (
+            113,
+            'Could not find service "local.local-text.stable" '
+            f"in domain for user gui: {os.getuid()}",
+            True,
+        ),
+        (1, "Operation not permitted", False),
+        (113, f"Could not find domain for user gui: {os.getuid()}", False),
+    ],
+)
+def test_stable_service_query_does_not_confuse_errors_with_absence(
+    monkeypatch, status, diagnostic, absent
+):
+    monkeypatch.syspath_prepend(str(REPOSITORY_ROOT / "scripts"))
+    module = load_stable_module()
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda args, **_kwargs: subprocess.CompletedProcess(
+            args, status, stdout="", stderr=diagnostic
+        ),
+    )
+    if absent:
+        assert module.loaded_service() is None
+    else:
+        with pytest.raises(SystemExit, match="Cannot inspect Stable service"):
+            module.loaded_service()
+
+
+@pytest.mark.parametrize(
+    "mode", ["dry-run", "noninteractive", "decline", "dependency", "schema", "owner", "tampered"]
+)
+def test_update_stable_refuses_without_mutation(stable_update, monkeypatch, mode):
+    module, source, running, preserved = stable_update
+    before = module.verify_snapshot(module.DESTINATION)
+    if mode == "dependency":
+        (source / "uv.lock").write_text("different dependency set\n")
+    elif mode == "schema":
+        (source / "migrations/versions/new.py").write_text("new migration\n")
+    elif mode == "owner":
+        running["failure"] = "owner"
+    elif mode == "tampered":
+        (module.DESTINATION / "src/local_text/app.py").write_text("unidentified installed change\n")
+    monkeypatch.setattr(module.sys.stdin, "isatty", lambda: mode == "decline")
+    monkeypatch.setattr("builtins.input", lambda _prompt: "no")
+    if mode in {"dry-run", "decline"}:
+        module.update(source, dry_run=mode == "dry-run")
+    else:
+        with pytest.raises(SystemExit):
+            module.update(source, confirmed=mode != "noninteractive")
+    if mode != "tampered":
+        assert module.verify_snapshot(module.DESTINATION) == before
+    assert running["loaded"] and running["source"] == "baseline\n"
+    assert all(path.read_bytes() == value for path, value in preserved.items())
+    assert not list(module.DESTINATION.parent.glob(".sayloom-stable-*"))
+
+
+@pytest.mark.parametrize(
+    "failure,phase,reason",
+    [
+        ("shutdown", "stopping Stable", "synthetic shutdown failure"),
+        ("replacement", "replacing Stable source", "synthetic replacement failure"),
+        ("bootstrap", "starting updated Stable", "synthetic-launchctl"),
+        ("health", "checking updated Stable health", "synthetic health failure"),
+    ],
+)
+def test_update_stable_failure_restores_previous_runnable_service(
+    stable_update, monkeypatch, failure, phase, reason
+):
+    module, source, running, preserved = stable_update
+    previous = module.verify_snapshot(module.DESTINATION)
+    running["failure"] = failure
+    if failure == "replacement":
+        rename = Path.rename
+
+        def fail_replacement(path, target):
+            if path.name.startswith(".sayloom-stable-stage-") and target == module.DESTINATION:
+                raise OSError("synthetic replacement failure")
+            return rename(path, target)
+
+        monkeypatch.setattr(Path, "rename", fail_replacement)
+    with pytest.raises(SystemExit, match="prior runnable snapshot/service restored") as error:
+        module.update(source, confirmed=True)
+    assert phase in str(error.value) and reason in str(error.value)
+    assert module.verify_snapshot(module.DESTINATION) == previous
+    assert running["loaded"] and running["source"] == "baseline\n"
+    assert (module.DESTINATION / ".venv/bin/python").is_file()
+    assert all(path.read_bytes() == value for path, value in preserved.items())
+    assert not list(module.DESTINATION.parent.glob(".sayloom-stable-stage-*"))
+
+
+@pytest.mark.parametrize("failure", ["database", "import"])
+def test_update_stable_checks_staged_compatibility_before_shutdown(stable_update, failure):
+    import sqlite3
+
+    module, source, running, preserved = stable_update
+    previous = module.verify_snapshot(module.DESTINATION)
+    if failure == "database":
+        path = module.STATE / "local-text.sqlite3"
+        with sqlite3.connect(path) as connection:
+            connection.execute("UPDATE alembic_version SET version_num = 'synthetic-old-schema'")
+        preserved[path] = path.read_bytes()
+    else:
+        (source / "src/local_text/cleanup.py").write_text("import synthetic_missing_dependency\n")
+    with pytest.raises(SystemExit, match="No sync or migrations ran"):
+        module.update(source, confirmed=True)
+    assert module.verify_snapshot(module.DESTINATION) == previous
+    assert running["loaded"] and running["source"] == "baseline\n"
+    assert all(path.read_bytes() == value for path, value in preserved.items())
+    assert not list(module.DESTINATION.parent.glob(".sayloom-stable-stage-*"))
+
+
+def test_update_stable_cli_is_separate_from_development_restart(tmp_path, monkeypatch):
+    module = load_dev_module("sayloom_stable_dispatch")
+    root = tmp_path / "states"
+    write_foreign_state(root, name="selected", repository=REPOSITORY_ROOT, port=7523)
+    restarted = []
+    monkeypatch.setattr(
+        module, "restart", lambda state: restarted.append((state.label, state.port))
+    )
+    module.command(module.parser().parse_args(["--state-root", str(root), "restart"]))
+    assert len(restarted) == 1
+    assert ".development." in restarted[0][0] and restarted[0][1] == 7523
+    # An absent Stable installation is diagnosed, not a missing development state.
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "uninstalled-home")
+    with pytest.raises(SystemExit, match="Stable source manifest missing"):
+        module.command(
+            module.parser().parse_args(
+                ["--state-root", str(tmp_path / "empty"), "update-stable", "--dry-run"]
+            )
+        )
+    help_result = run_dev(tmp_path / "unused", "update-stable", "--help")
+    assert help_result.returncode == 0
+    assert "--dry-run" in help_result.stdout and "--yes" in help_result.stdout
+    assert "installed venv" in help_result.stdout
+
+
+@pytest.mark.parametrize(
+    "case", ["owned", "foreign-pid", "foreign-argv", "loaded-arguments", "plist"]
+)
+def test_update_stable_checks_loaded_definition_and_actual_port_owner(
+    stable_update, monkeypatch, case
+):
+    installed, _source, _running, _preserved = stable_update
+    module = load_stable_module()
+    for name in ("DESTINATION", "STATE", "CONFIGURATION"):
+        monkeypatch.setattr(module, name, getattr(installed, name))
+    arguments = module.stable_definition()["ProgramArguments"]
+    printed = "\n".join(
+        [
+            f"path = {module.stable_agent()}",
+            f"program = {arguments[0]}",
+            f"working directory = {module.DESTINATION}",
+            "arguments = {",
+            *arguments,
+            "}",
+            "pid = 42",
+        ]
+    )
+    if case == "loaded-arguments":
+        printed = printed.replace(arguments[1], "/synthetic/foreign.py")
+    if case == "plist":
+        module.stable_agent().write_bytes(b"not the installer definition")
+    command = f"{module.DESTINATION}/.venv/bin/python {module.DESTINATION}/.venv/bin/uvicorn "
+    command += "local_text.app:app --host 127.0.0.1 --port 7532 "
+    command += f"--app-dir {module.DESTINATION}/src --no-access-log"
+    if case == "foreign-argv":
+        command = command.replace("--port 7532", "--port 7523")
+    monkeypatch.setattr(module.subprocess, "check_output", lambda *_args, **_kwargs: command)
+
+    def process(args, **_kwargs):
+        output = printed if args[0] == "launchctl" else "43" if case == "foreign-pid" else "42"
+        return subprocess.CompletedProcess(args, 0, stdout=output)
+
+    monkeypatch.setattr(module.subprocess, "run", process)
+    if case == "owned":
+        module.verify_owner()
+    else:
+        with pytest.raises((SystemExit, ValueError)):
+            module.verify_owner()
+
+
+@pytest.mark.parametrize(
+    "profile,state", [("release", "current"), ("development", "current"), ("release", "mismatch")]
+)
+def test_update_stable_health_requires_ready_release(stable_update, monkeypatch, profile, state):
+    import io
+
+    module = load_stable_module()
+    payload = json.dumps(
+        {
+            "status": "ok",
+            "profile": profile,
+            "development_state": None,
+            "database": {"state": state},
+        }
+    ).encode()
+    monkeypatch.setattr(module.request, "urlopen", lambda *_args, **_kwargs: io.BytesIO(payload))
+    if profile == "release" and state == "current":
+        module.verify_health()
+    else:
+        with pytest.raises(SystemExit, match="7532 did not become healthy"):
+            module.verify_health()

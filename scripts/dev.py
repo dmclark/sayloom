@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import runpy
 import shutil
 import signal
 import sqlite3
@@ -1067,6 +1068,15 @@ def command(arguments: argparse.Namespace) -> int:
     root = arguments.state_root.expanduser().resolve()
     operation = arguments.command or "status"
 
+    if operation == "update-stable":
+        installer = runpy.run_path(str(Path(__file__).with_name("install-stable.py")))
+        installer["update"](
+            repository_root(),
+            confirmed=arguments.yes,
+            dry_run=arguments.dry_run,
+        )
+        return 0
+
     if operation == "migrate-state-root":
         migrate_state_root(arguments.source_root, root)
         return 0
@@ -1147,6 +1157,8 @@ def parser() -> argparse.ArgumentParser:
   scripts/dev.py preflight       check configuration before costly restart verification
   scripts/dev.py init            create its state, then migrate and seed
   scripts/dev.py restart         verify, back up, initialize, and restart
+  scripts/dev.py update-stable --dry-run
+                                review a separate Stable replacement without mutation
   scripts/dev.py activate        move this checkout to Raycast port 7523
   scripts/dev.py logs            show the last 100 lines from each service stream
   scripts/dev.py logs -f         continue showing output appended to either stream
@@ -1204,6 +1216,22 @@ list --prune permanently deletes eligible worktrees and associated state databas
         "restart", help="preflight, verify, back up, initialize, and restart"
     )
     restart_parser.add_argument("--state", help=argparse.SUPPRESS)
+
+    stable_parser = subparsers.add_parser(
+        "update-stable",
+        help="confirm and replace the separate Stable source snapshot",
+        description="Replace Stable with this checkout, including uncommitted implementation. "
+        "Requires confirmation, verifies ownership, preserves rollback code, and restarts only "
+        "the release service on 7532. Never syncs dependencies, migrates data, or changes "
+        "settings, trial records or Raycast commands. dev.py is a stdlib Python orchestrator; "
+        "development application operations use uv. update-stable reuses the installed venv.",
+    )
+    stable_parser.add_argument("--yes", action="store_true", help="confirm Stable code replacement")
+    stable_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="show source changes and check readiness without mutation",
+    )
 
     activate_parser = subparsers.add_parser(
         "activate", help=f"move this checkout to Raycast port {DEVELOPMENT_PORT}"

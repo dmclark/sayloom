@@ -143,6 +143,40 @@ for prototype acceptance. It remains independent of the retired Cleanup
 benchmark toolchain; archived Cleanup evidence does not validate Smart
 correction or authorize a private run.
 
+## Update the separate Stable snapshot
+
+From the checkout whose code you want to install:
+
+```sh
+python3 scripts/dev.py update-stable --dry-run
+python3 scripts/dev.py update-stable
+# Noninteractive, explicitly confirmed replacement:
+python3 scripts/dev.py update-stable --yes
+```
+
+`update-stable` shows the source branch, content identities and changed paths,
+including uncommitted implementation. It verifies the installed manifest, the
+Stable LaunchAgent and its actual listener on 7532 before replacing code. An
+interactive confirmation (or `--yes`) is required; `--dry-run` changes nothing.
+Staging reuses a copy of the installed Python environment. Dependency manifests,
+migrations, database schema code and the Stable launcher must remain compatible:
+if they differ, arrange a separate reviewed update. This command never runs
+dependency sync, migrations or seeds.
+
+The prior runnable tree is retained in the printed sibling rollback directory.
+If replacement, restart or the release health check fails, the command restores
+the prior code and service; if OS/service recovery fails too, it reports the
+preserved source location for manual recovery. Settings, database, trial records
+and installed Raycast commands are not replaced. Source snapshots are retained
+outside Git; review disk usage before repeated updates. Ordinary `restart`
+remains development-only and does not update Stable.
+
+`dev.py` itself uses only Python's standard library; its development application
+operations invoke `uv` to manage the application environment. Running it with
+`python3` is equivalent to its executable shebang, not a replacement for `uv`.
+The standalone `scripts/trial-monitor.py` also uses only the standard library
+and needs no `uv`; it is not integrated into the Stable update command.
+
 ## Cleanup providers
 
 Cleanup is enabled by default for every Original update, regardless of whether it came from typing, ordinary paste, or compatible dictation. Replacing a fully selected Original clears the previous Prepared result for the new session; incremental input keeps the last result visible while cleanup is waiting or running. During either kind of reprocessing, outgoing state immediately fails open to the current Original text. Reloading the page clears both editors and the process-local outgoing state without changing durable prompt or cleanup settings. Dictation tools that signal a write with an untrusted synthetic paste followed by a trusted input event receive compatible caret and focus handling, but that event sequence is not a required input API.
