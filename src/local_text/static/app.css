@@ -1376,6 +1376,7 @@ textarea::placeholder { color: var(--muted); font-style: italic; }
 .trial-feedback-ratings { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; }
 .trial-feedback-ratings label { min-width: 0; }
 .trial-feedback label { display: block; margin: 12px 0; }
+#trial-feedback-status { flex: 1 1 220px; margin: 0; font-weight: 600; }
 .phrase-trial button { min-height: 44px; }
 #trial-working > .trial-actions .button { padding-inline: 10px; font-size: 0.75rem; }
 .workspace.has-phrase-trial { display: block; height: auto; }

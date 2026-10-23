@@ -7,9 +7,14 @@
   let requested = false, edited = false, assigning = false, pendingEdit = null, undo = [], savedText = "";
   let changed = () => {};
   let queue = Promise.resolve();
+  let cleanup = null, recordFailed = false;
   const message = (text) => {
     $("trial-message").textContent = text;
     $("trial-message").hidden = !text;
+  };
+  const feedbackMessage = (text) => {
+    $("trial-feedback-status").textContent = text;
+    $("trial-feedback-status").hidden = !text;
   };
   async function api(path = "", body, method = "POST") {
     const response = await fetch(`/api/trial${path}`, {
@@ -29,7 +34,7 @@
     const id = passage.id;
     // Steps commit on explicit apply, blur, copy or leaving the passage; not keystrokes.
     queue = queue.then(() => api(`/passages/${id}/events`, { action, ...extra }))
-      .catch((error) => message(error.message));
+      .catch((error) => { recordFailed = true; message(error.message); });
     return queue;
   }
   function flush(action = "edit", selection = {}) {
@@ -57,6 +62,20 @@
     $("trial-working").hidden = !passage;
     $("trial-undo").disabled = !undo.length;
     $("trial-switch").hidden = !passage || requested;
+    $("trial-passage").readOnly = Boolean(cleanup);
+    document.querySelectorAll("#trial-choices button, #trial-choices input, #trial-feedback select, #trial-feedback textarea, #trial-feedback button").forEach((control) => {
+      control.disabled = Boolean(cleanup);
+    });
+    if (cleanup) $("trial-undo").disabled = $("trial-switch").disabled = true;
+    else $("trial-switch").disabled = false;
+    $("trial-clean").disabled = !passage || cleanup?.status === "cleaning";
+    $("trial-clean").textContent = cleanup ? "Run Conservative cleanup again" : "Finish repairs & clean";
+    $("trial-cleaned-review").hidden = !cleanup;
+    $("trial-cleaned").value = cleanup?.text || "";
+    $("trial-cleanup-state").textContent = cleanup?.status === "prepared"
+      ? "Review this outgoing text, then use your existing Send to target command. Nothing is sent automatically."
+      : cleanup?.status === "cleaning" ? "Conservative cleanup in progress. Target delivery is unavailable."
+        : "Cleanup unavailable. Retry cleanup; no outgoing text is available. Your repairs are preserved above.";
     // Normal controls cannot silently trigger correction or change trial outgoing text.
     if (capturing()) for (const id of ["draft-preparation-mode", "run-cleanup", "select-original", "select-prepared"]) {
       $(id).disabled = true;
@@ -207,8 +226,10 @@
         throw new Error("Original changed before assignment completed; begin again.");
       }
       edited = false; requested = false; undo = []; savedText = text;
+      cleanup = null; recordFailed = false;
       $("trial-passage").value = text;
       $("trial-spoken").value = "unconfirmed"; $("trial-effort").value = ""; $("trial-note").value = "";
+      feedbackMessage("");
       choices(); renderState(); changed();
       message("Manual editing and copying are available now.");
       if (passage.assignment === "alternatives") generate();
@@ -255,7 +276,7 @@
       await queue;
       if (id) await api(`/passages/${id}`, undefined, "DELETE");
       const normalText = $("trial-passage").value;
-      passage = null; excluded = true; changed({ normalText }); renderState();
+      passage = null; cleanup = null; excluded = true; changed({ normalText }); renderState();
       message("This passage's saved content was deleted. Normal correction restored. Future inclusion is unchanged.");
     } catch (error) { message(error.message); }
   };
@@ -296,15 +317,70 @@
     $("trial-passage").value = previous.text; flush("reverse"); choices(); changed(); renderState();
     message("Last applied step reversed. Check the whole passage before copying.");
   };
-  $("trial-feedback-save").onclick = async () => {
+  async function saveFeedback() {
+    if (!passage?.id) return false;
+    feedbackMessage("");
     flush();
+    const current = passage;
     const spoken = $("trial-spoken").value;
     const result = await record("feedback", { spoken, effort: $("trial-effort").value, note: $("trial-note").value });
-    if (!result) return;
+    if (passage !== current) return false;
+    if (!result) {
+      feedbackMessage("Feedback could not be saved. Try saving again.");
+      return false;
+    }
     if (["unsure", "revised"].includes(spoken)) {
       // Keep the editable draft but never save another event for this excluded record.
-      passage.id = null; message("Saved content excluded and deleted. Your draft remains available to copy.");
-    } else message("Optional feedback saved.");
+      passage.id = null; feedbackMessage("Saved content excluded and deleted. Your draft remains available to copy.");
+    } else feedbackMessage("Optional feedback saved.");
+    return true;
+  }
+  $("trial-feedback").oninput = () => feedbackMessage("");
+  $("trial-feedback-save").onclick = saveFeedback;
+  $("trial-clean").onclick = async () => {
+    if (!passage || cleanup?.status === "cleaning") return;
+    // Freeze the comparison before cleanup: neither feedback nor repair text can
+    // subsequently be influenced by seeing the cleaned result.
+    const attempt = { status: "cleaning", text: "", saved: cleanup?.saved || false };
+    const current = passage;
+    const text = $("trial-passage").value;
+    cleanup = attempt;
+    edited = true; // Discard any pending alternatives response.
+    renderState();
+    await changed(); // Clear the published payload before requesting cleanup.
+    try {
+      if (cleanup !== attempt || passage !== current) return;
+      if (!attempt.saved) {
+        await queue;
+        if (cleanup !== attempt || passage !== current) return;
+        recordFailed = false;
+        // A previous flush may have failed after advancing its local text cache.
+        // Always persist this frozen snapshot before allowing cleanup or a retry.
+        record("edit", { final_text: text });
+        if (passage.id && !await saveFeedback()) throw new Error("Trial feedback could not be saved.");
+        await queue;
+        if (recordFailed) throw new Error("Trial repairs could not be saved.");
+        attempt.saved = true;
+      }
+      if (cleanup !== attempt || passage !== current) return;
+      const response = await fetch("/api/cleanup", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ original_text: text, enabled: true, correction_mode: "conservative" }),
+        signal: AbortSignal.timeout(30000),
+      });
+      const result = await response.json();
+      if (!response.ok || !["prepared", "unchanged"].includes(result.status)
+        || typeof result.prepared_text !== "string" || !result.prepared_text.trim()) {
+        throw new Error("Conservative cleanup did not produce usable text.");
+      }
+      if (cleanup !== attempt || passage !== current) return;
+      attempt.text = result.prepared_text;
+      attempt.status = "prepared";
+    } catch (_error) {
+      if (cleanup !== attempt || passage !== current) return;
+      attempt.status = "error";
+    }
+    renderState(); changed();
   };
   window.phraseTrial = {
     async initialize(available, callback) {
@@ -319,12 +395,15 @@
       } catch (error) { message(error.message); }
     },
     capturing,
-    outgoing() { return passage ? $("trial-passage").value : null; },
+    outgoing() { return cleanup ? cleanup.text : passage ? $("trial-passage").value : null; },
+    cleanupStatus() { return cleanup?.status; },
     refresh: renderState,
-    copy() { flush("copy"); },
+    copy() { if (!cleanup) flush("copy"); },
     reset() {
       if (!enabled) return;
-      flush(); passage = null; excluded = false; undo = []; edited = false; requested = false;
+      if (!cleanup) flush();
+      passage = null; cleanup = null; excluded = false; undo = []; edited = false; requested = false;
+      feedbackMessage("");
       renderState();
     },
   };

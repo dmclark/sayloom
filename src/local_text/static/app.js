@@ -888,10 +888,10 @@
     if (window.phraseTrial?.capturing()) {
       const text = window.phraseTrial.outgoing();
       return {
-        cleanup_enabled: false, original_text: elements.original.value,
+        cleanup_enabled: Boolean(window.phraseTrial.cleanupStatus()), original_text: elements.original.value,
         prepared_text: text ?? "", outgoing_text: text ?? elements.original.value,
         outgoing_kind: (text ?? elements.original.value) ? (text === null ? "original" : "prepared") : "empty",
-        status: "disabled", correction_mode: "conservative",
+        status: window.phraseTrial.cleanupStatus() || "disabled", correction_mode: "conservative",
       };
     }
     const originalText = elements.original.value;
@@ -926,7 +926,11 @@
       ? confirmedPreparedRevision === draftRevision ? "User-confirmed" : "Generated"
       : "No current Prepared";
     if (window.phraseTrial?.capturing()) {
-      elements.outgoingKind.textContent = "Using trial passage — no automatic correction";
+      elements.outgoingKind.textContent = window.phraseTrial.cleanupStatus()
+        ? window.phraseTrial.cleanupStatus() === "prepared"
+          ? "Using cleaned trial text — Conservative"
+          : "No outgoing text — trial cleanup pending or unavailable"
+        : "Using trial passage — no automatic correction";
       elements.correctPrepared.hidden = true;
     }
     window.phraseTrial?.refresh();
@@ -1418,8 +1422,7 @@
       abortActiveRequest();
       elements.prepared.value = "";
       setStatus("disabled");
-      schedulePublication();
-      return;
+      return publishNow();
     }
     if (manualPreparationProtected()) return;
     setExplicitSmartState("hidden");
@@ -2228,8 +2231,7 @@
         }
         window.clearTimeout(cleanupTimer);
         abortActiveRequest();
-        scheduleCleanup();
-        renderCountsAndSelection();
+        return scheduleCleanup();
       });
 
       elements.prepared.value = "";

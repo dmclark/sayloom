@@ -263,7 +263,7 @@
                 <button id="trial-switch" class="button" type="button">Switch to alternatives</button>
                 <button id="trial-exit" class="button" type="button">Exit to normal correction · delete this record</button>
               </div>
-              <section class="trial-feedback" aria-labelledby="trial-feedback-title">
+              <section id="trial-feedback" class="trial-feedback" aria-labelledby="trial-feedback-title">
                 <h3 id="trial-feedback-title">Optional feedback · never required to copy</h3>
                 <div class="trial-feedback-ratings">
                   <label>Spoken wording
@@ -281,7 +281,21 @@
                 <label>Useful, distracting/harmful, missing alternatives, missed/new errors, fidelity, interruptions
                   <textarea id="trial-note" maxlength="4000"></textarea>
                 </label>
-                <button id="trial-feedback-save" class="button" type="button">Save optional feedback</button>
+                <div class="trial-actions">
+                  <button id="trial-feedback-save" class="button" type="button">Save optional feedback</button>
+                  <p id="trial-feedback-status" role="status" aria-live="polite" hidden></p>
+                </div>
+              </section>
+              <section class="trial-feedback" aria-labelledby="trial-clean-title">
+                <h3 id="trial-clean-title">After the trial · Conservative cleanup</h3>
+                <p>Finish repairs and optional feedback first. Cleanup keeps that trial result separate and locks it for comparison.</p>
+                <button id="trial-clean" class="button" type="button">Finish repairs &amp; clean</button>
+                <div id="trial-cleaned-review" hidden>
+                  <p id="trial-cleanup-state" role="status" aria-live="polite"></p>
+                  <label>Cleaned outgoing text
+                    <textarea id="trial-cleaned" rows="6" readonly></textarea>
+                  </label>
+                </div>
               </section>
             </div>
           </section>
