@@ -1,12 +1,22 @@
 # Personal Corrections implementation specification
 
-- **Status:** Complete-loop design confirmed; bounded delivery only, acceptance unverified
+- **Status:** Deferred capability; complete-loop design retained, bounded delivery only, acceptance unverified
 - **Scope:** Private, single-user Personal Corrections flywheel
 - **Execution authority:** [Personal corrections execution guide](personal-corrections-execution-guide.md)
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
 - **Domain vocabulary:** [`GLOSSARY.md`](../GLOSSARY.md)
 - **Complete-loop design confirmed:** 2026-10-11
+
+**Sequence amendment, 2026-11-02:** The next overall delivery is ongoing
+suggestions, prospective activity history and accessible review under the
+[product implementation plan](product-implementation-plan.md). This specification
+retains Personal Corrections requirements for later separately authorized work;
+its older active-child graph and build prompts are not instructions to resume.
+Ordinary actions save no Personal Correction, even though the separate new
+history policy will retain activity prospectively. Explicit saving, contextual
+reuse, state isolation and unresolved Personal Corrections backup policy remain
+unchanged. This notice changes no schema/API or acceptance result.
 
 ## Purpose
 

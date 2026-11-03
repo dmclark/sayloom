@@ -26,6 +26,21 @@ the authority for correction evaluation: one canonical wording may have addition
 acceptable variants, and neither a model nor an evaluator may substitute its judgment.
 _Avoid_: Ground-truth transcript, inferred intent
 
+**Spoken wording**:
+The words and phrases actually spoken, distinct from inferred meaning or later preferred wording.
+Final recognition text, a suggestion or a user edit alone is not independent speech verification.
+_Avoid_: Fluent paraphrase, inferred intent, automatically verified transcript
+
+**Suggestion**:
+A passage-supported alternative for suspected recognition wording, offered as a hypothesis for the
+user to apply or reject rather than an automatic replacement or verified spoken wording.
+_Avoid_: Confirmed repair, replacement rule, verified speech
+
+**Activity history**:
+A private record distinguishing passage input, generated results, suggestions, user actions and
+final wording with relevant settings and timing; it is neither speech verification nor reuse authorization.
+_Avoid_: Correction memory, Personal Correction, training corpus
+
 **Cleanup**:
 The account-independent, proven correction baseline. A Cleanup version freezes determinate
 eligibility and abstention rules for presentation fixes, spelling, and contextually obvious,

@@ -6,7 +6,7 @@
 - **Audience:** Product, design, engineering, research, and delivery contributors
 - **Authority:** This document is the sole authority for Sayloom's product
   vision, positioning, roadmap direction, audience, and scope.
-- **Confirmed:** 2026-10-01
+- **Confirmed:** 2026-10-01; owner direction amended 2026-11-02
 
 ## Authority and supersession
 
@@ -27,20 +27,23 @@ web
 
 ## Product Purpose
 
-Sayloom helps people with non-standard speech turn imperfect Voiceitt-generated
-text—including words Voiceitt misunderstood—into the text they intended, then
-prepare that text for copying or delivery to another application.
+Sayloom supports its owner's ongoing single-user workflow: review imperfect
+Voiceitt-generated text, consider passage-supported suggestions for spoken
+words, manually correct wording, and copy or deliver the selected text.
 
-The primary outcome is intended-text recovery with less manual correction.
-This includes contextual repair of wrong words and multiword phrases, even
-when the recognized words are correctly spelled. Punctuation, spelling, and
-presentation improvements alone do not demonstrate that outcome. Current
-source-preserving cleanup is a starting point, not the definition of success.
+The selected delivery aims to recover spoken words and phrases when supported
+by the available text, with less manual correction and review burden. Correctly
+spelled words can be recognition errors. Suggestions are hypotheses, not verified
+speech. Do not assert an unsupported interpretation as correct: offer bounded
+hypotheses or abstain. Deliberate rewriting to express a different meaning or
+preferred outgoing wording is separate. Presentation improvements alone do not
+demonstrate recovery.
 
-Sayloom receives text, never voice recordings. It cannot verify what a person
-said against audio. It instead uses the supplied text, surrounding context,
-user-controlled preferences, and user-specific knowledge to infer likely
-recognition errors. The user remains the authority on intended meaning.
+Sayloom currently receives final Voiceitt text only, not audio, first-pass
+recognition, confidence or N-best alternatives. It cannot establish which
+Voiceitt pass introduced an error or verify speech. An API switch or access to
+earlier recognition is not part of this delivery. The user remains authoritative;
+model proposals, user actions and verified speech must not be conflated.
 
 Sayloom is the product. Voiceitt Bridge is its predecessor. Sayloom is an
 independent, unaffiliated companion to Voiceitt; it is not part of the Voiceitt
@@ -55,13 +58,12 @@ speech.
 
 ## Users
 
-The primary audience is Voiceitt users with non-standard speech, beginning with
-one local macOS deployment and growing toward a public hosted service.
+The governing scope is this owner's single-user local macOS workflow. Hosting,
+other users, accounts and cross-device synchronization are deferred indefinitely,
+not prerequisites or an active public-service roadmap.
 
-Sayloom is Voiceitt-first, not Voiceitt-exclusive. Its processing boundary
-accepts text, so typed or pasted input from another source can use the same
-workflow. Product claims and optimization remain focused on Voiceitt users
-until broader support is demonstrated.
+The processing boundary accepts text, including typed or pasted input. This
+does not establish usefulness for other people or authorize broader claims.
 
 ## Core text model
 
@@ -74,7 +76,7 @@ Sayloom uses three distinct values:
 - **Outgoing:** The exact Original or Prepared value currently selected for
   copying or delivery.
 
-The primary correction loop is:
+The existing generation/confirmation correction loop is:
 
 1. Voiceitt places text in Original.
 2. Sayloom generates Prepared text.
@@ -88,6 +90,10 @@ user in control of intended meaning. Direct confirmation avoids entering the
 same intended wording again for copying or delivery; it does not alter Original.
 
 ## User-confirmed Prepared
+
+The next delivery adds ordinary suggestions and history as specified below.
+The existing Prepared-confirmation contract remains intact; suggestions do not
+silently replace it or authorize Personal Correction saving.
 
 The bounded delivery is recorded in [the Prepared-confirmation change](https://github.com/dmclark/sayloom/pull/167).
 That delivery is not complete-loop or runtime acceptance and does not restore
@@ -145,6 +151,10 @@ saving below are target requirements, not claims about that bounded delivery.
   is separate from confirmation.
 
 ## Correction and polishing modes
+
+Cleanup and Smart below retain their existing correction contracts. Their
+broader capability requirements do not make completion of automatic correction
+or personalization a prerequisite for the selected suggestions/history delivery.
 
 The product supports two correction stages. A user may select Cleanup alone or
 Smart followed by Cleanup. A remembered default and per-text override are
@@ -225,7 +235,8 @@ an **Observed → Intended** mapping. Observed is the identified before wording
 from the selected review path, which may already be Prepared. Saving authorizes
 that correction for use in later sessions until the user edits, disables, or
 deletes it. Ordinary editing, processing, copying, delivery, dismissal, or
-inaction saves nothing.
+inaction saves no Personal Correction. Automatic activity history below is
+separate and grants no contextual reuse or research authorization.
 Editing a saved mapping ends its prior authorization; the edited Observed →
 Intended mapping must be reviewed and explicitly saved before live reuse.
 
@@ -277,6 +288,47 @@ delivery gates, participant-package implementation, administration, and
 configuration are unavailable. Historical documentation and Git history remain
 for provenance and grant no authority to resume collection or evaluation.
 
+## Ongoing suggestions and automatic private activity history
+
+This is confirmed product direction, not a claim of implemented or activated
+behavior. Suggestions are an ordinary optional workflow tool, not randomized
+trial assignment or a time-limited experiment. Editing and copying never wait
+for suggestions, and suggestions apply only through explicit user action.
+Failures, no suggestions and unmarked wording must not imply verified speech.
+Retain spending safeguards, bounded requests and no automatic retries; exact
+provider/configuration and application timing remain separately unresolved.
+
+Start history prospectively. Automatically retain Sayloom input passages,
+generated results, suggestions, applied/reversed corrections, final wording,
+and relevant settings/timing, keeping their provenance distinguishable rather
+than overwriting earlier values. History records what happened, not verified
+spoken wording or permission to reuse text in later requests.
+
+History stays private outside Git without automatic cloud sync and remains
+until explicit deletion. Visible pause/private-passage controls exclude the
+passage from retained history; they are not an offline/provider-privacy promise.
+Uncertain or intentionally revised passages retain their labels rather than
+being silently removed. Credentials and unrelated machine/application data
+are excluded.
+
+Include private managed backup and tested restore. Deletion must cover managed
+backup copies and must not be undone by restoring one. User-created exports
+and provider-side retention are outside that guarantee. Exact storage locations,
+recording-failure behavior, pause semantics, deletion/restore mechanics and
+provider/spending configuration require the bounded implementation contract
+before activation; this document does not select them.
+
+Keep existing trial records and conversational-review records intact and
+separately accessible; do not import, combine or reclassify them automatically.
+Retain the conversational review tool as a standalone local surface and add
+accessible review of new Sayloom history. Unified UI redesign is not required.
+Development-conversation capture remains a separate opt-in aid and is not
+expanded by application history. History does not automatically inform later
+suggestions, create Personal Corrections, enable training or authorize evaluation.
+
+The retention and reuse boundary is recorded in
+[ADR-0003](docs/adr/0003-prospective-activity-history-and-reuse-boundary.md).
+
 ## Review and CART display
 
 When Original is visible, the review experience identifies every word addition,
@@ -313,9 +365,9 @@ and account isolation remain future decisions for a real hosting boundary.
 
 ## Operating Context
 
-The hosted service is the intended primary public offering. The local
-application remains available as a privacy-focused option. Both forms implement
-the same product purpose but may use different delivery and provider adapters.
+The local single-user application is the selected product scope. Hosting and
+other users are deferred indefinitely. The hosted requirements below are
+retained only for that deferred scope, not an instruction to build or launch it.
 
 ### Local application
 
@@ -339,7 +391,7 @@ the same product purpose but may use different delivery and provider adapters.
   managed SQLite backups containing Personal Corrections are handled. Neither
   live-database deletion flow removes user-created exports.
 
-### Initial hosted service
+### Deferred hosted service
 
 - Provides correction, review, personalization, and copying of Prepared text.
 - May launch without automated delivery into target applications.
@@ -366,19 +418,27 @@ offering.
 
 Sayloom succeeds when it:
 
-- produces text that more often matches what the user intended;
+- offers passage-supported spoken-word recovery without presenting hypotheses
+  as verified speech or confusing recovery with deliberate rewriting;
 - reduces the manual edits and time needed to prepare usable text;
 - makes meaning-bearing changes and uncertainty reviewable without disrupting
   CART display;
 - prevents confident but harmful corrections from becoming invisible; and
-- keeps personalization private, controllable, and isolated to one user.
+- keeps activity history private, inspectable, recoverable and explicitly
+  deletable within its managed scope, with separate control of personalization.
 
-Accuracy and efficiency are joint outcomes. Speed without intended-meaning
-accuracy does not solve the problem.
+Recovery usefulness and total review/correction effort are joint outcomes.
+Response availability, historical records or successful source preservation
+alone establish neither usefulness nor owner acceptance.
 
 ## Capabilities and Constraints
 
 ### Current implementation boundary
+
+The published phrase-alternatives trial branch is experimental source, not a
+main delivery, completed trial or proof of benefit. Ongoing suggestions,
+prospective automatic history and managed history backup/restore remain planned
+work. Existing trial permissions and budgets do not activate that work.
 
 The current checkout is a useful local-first stage, not the complete product
 described above. It provides an editable Original, a generated result named
@@ -439,7 +499,9 @@ The following remain open and must not be presented as committed behavior:
 - Exact Cleanup lexical eligibility, abstention, and graduation thresholds.
 - The technical method for detecting and presenting uncertainty.
 - The hosted target-integration mechanism.
-- Optional private text history; initial hosted text remains ephemeral.
+- Exact history storage, recording-failure behavior, pause semantics and
+  restore-safe deletion mechanics; prospective history itself is selected
+  product direction, not deferred optional scope.
 - Timing and design of hosted bring-your-own-key support.
 - Personalization methods and retention controls beyond the confirmed first
   Personal Corrections contract.

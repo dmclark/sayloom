@@ -1,10 +1,11 @@
 # Sayloom product implementation plan
 
-- **Status:** Approved internal sequence; complete-loop and usefulness assessment designs agreed, assessment execution outstanding, dependable-preparation and complete-loop acceptance unverified
+- **Status:** Owner-selected ongoing suggestions/history delivery; implementation and acceptance outstanding
 - **Audience:** Product, design, engineering, research, and delivery contributors
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
-- **Execution authority:** [Personal Corrections execution guide](personal-corrections-execution-guide.md)
+- **History decision:** [ADR-0003](adr/0003-prospective-activity-history-and-reuse-boundary.md)
+- **Deferred Personal Corrections sequence:** [execution guide](personal-corrections-execution-guide.md)
 
 ## Purpose
 
@@ -29,19 +30,91 @@ Historical documents and Git history remain for provenance only.
 
 ## Current implementation sequence
 
+The owner selected ongoing suggestions, prospective automatic private activity
+history and accessible review for the single-user workflow. Hosting and other
+users are deferred indefinitely. This changes delivery priority, not acceptance
+of any implementation or authority to activate recording or providers.
+
+1. **Preserve source before adaptation.** The November 3, 2026 source-only
+   preservation gate passed, including isolated recovery. It did not back up
+   private operating records or clear holdings for deletion. Changes after
+   that snapshot need a refreshed capture.
+2. **Reconcile authorities.** Review scoped product, decision, sequence and
+   issue updates before implementation. Drafting does not publish them.
+3. **Set the bounded implementation contract.** Specify passage identity,
+   event ordering, stale/late responses, crash/retry recovery, recording failure,
+   pause/private passages, deletion and managed-backup restore. Obtain approval
+   for exact private destinations and provider/cost configuration. Do not invent
+   silent fallbacks when history cannot be recorded.
+4. **Adapt retained source deliberately.** The published #187 branch is a source
+   candidate, not a wholesale merge instruction. Remove trial randomization,
+   expiry and content deletion on uncertain/revised feedback; keep explicit
+   suggestion application, spending safeguards and no automatic retries. Add
+   prospective history and its review; retain standalone conversational-review
+   access. Audit continuity WIP for necessary protections only and reconcile
+   migrations with main rather than copying competing histories.
+5. **Verify, then separately authorize integration and activation.** Begin with
+   synthetic isolated evidence. Private-data use, provider spending, migrations,
+   controlled restart, integration and owner acceptance remain separately gated.
+
+### Bounded delivery acceptance
+
+- Editing and copying never wait. Suggestions apply only by explicit action;
+  pending/late results cannot overwrite edits or resurrect deleted passages.
+- Input, generated results, suggestions, applied/reversed edits, final wording,
+  configuration and timing remain distinguishable across reload/restart.
+  Preserve uncertain/revised labels; no mandatory fidelity confirmation.
+- Visible pause/private controls exclude a passage from retained history and
+  do not promise offline processing or provider-side deletion.
+- Test failures, no suggestions, protected wording and repeated occurrences.
+  No randomized assignment or trial expiry remains in the ongoing workflow.
+- Managed backup restore preserves records and cannot undo an explicit deletion
+  within managed scope. User exports and provider retention remain outside it.
+- Keep historical trial and conversational records separate; no automatic
+  import, history-informed suggestions, Personal Correction creation or training.
+- Verify affected tests and desktop browser states, both review surfaces and
+  applicable broader integration requirements. Mobile remains deferred. Do not
+  claim the skipped final #187 browser/runtime checks passed. Owner usefulness
+  acceptance is separate from passing implementation checks.
+
+### Provider/application reconciliation and independent gates
+
+[#172](https://github.com/dmclark/sayloom/issues/172#issuecomment-6256315317)
+owns provider/privacy/routing and application timing reconciliation. OpenAI
+Direct with a 30-second request cap is the latest recorded investigation
+direction, not an accepted application configuration or whole-visible deadline.
+Earlier OpenRouter single-model and model-pair plans are history, not current
+instructions to implement fallback. No automatic cloud retry or model fallback
+is selected; old budgets and stopped-run allowances grant no new spending.
+
+The accepted [cloud recovery](https://github.com/dmclark/sayloom/issues/160),
+[local backup](https://github.com/dmclark/sayloom/issues/161) and
+[combined preparation](https://github.com/dmclark/sayloom/issues/162) contracts
+remain unpassed. Their applicability to optional, non-blocking suggestions must
+be explicitly reconciled under #172 before activation. This sequence neither
+waives them nor silently replaces the older five-second application contract.
+No new timing allocation or provider qualification is established here.
+
+## Deferred Personal Corrections sequence
+
+Mixed mappings, exact-alias/contextual reuse and unrelated residual continuity
+work are preserved and deferred. The retained capability sections below do not
+override the selected suggestions/history delivery or authorize operations.
+
 The [dependable single-user workflow map](https://github.com/dmclark/sayloom/issues/159)
-sets a planning prerequisite before proceeding to the Personal Corrections
-capability. The [combined dependable-preparation acceptance gate](https://github.com/dmclark/sayloom/issues/162#issuecomment-6112233798)
+indexes overall sequencing. The [combined dependable-preparation acceptance gate](https://github.com/dmclark/sayloom/issues/162#issuecomment-6112233798)
 is agreed as an evidence contract; actual acceptance remains unverified. The
 gate distinguishes useful intended-wording correction before copying or
 delivery from continuity and availability alone. Original remains an explicit
 fallback. The local basic Cleanup backup is an incomplete supporting capability,
 not a replacement for the broader Cleanup contract or contextual Smart repair.
 
-The [initial OpenRouter integration and qualification decision](https://github.com/dmclark/sayloom/issues/172) specifies one configured, replaceable model and one explicitly approved serving-provider route, with automatic provider/model fallback disabled. OpenRouter supersedes the interim Nebius-direct and earlier Gemini/OpenAI planning directions. No application configuration is qualified. Normal use requires configuration-specific privacy, preservation, responsiveness, and local-backup evidence under that decision; the existing combined dependable-preparation gate remains independently outstanding. The approved qualification spending ceiling is $2, but execution requires a separately approved frozen run plan and applicable permissions. This specification authorizes no implementation or operations.
+Historical OpenRouter specifications and their conditional budgets remain
+provenance under #172, not the selected integration instruction or fresh
+execution authority. Provider/application reconciliation is defined above.
 
-The map does not reorder the four phases below, which remain governed by
-ADR-0002 and the Personal Corrections execution guide. Agreement on an evidence
+When Personal Corrections is separately resumed, its internal dependency order
+below remains governed by ADR-0002 and its execution guide. Agreement on an evidence
 contract does not establish that acceptance has passed, authorize execution, or
 complete the Personal Corrections loop. This clarification does not update the
 implementation-state claims below.
@@ -68,7 +141,7 @@ is resolved, and its reviewed document reconciliation is published.
 This design agreement authorizes no assessment execution, implementation, or
 operations and changes no phase order, deletion scope, or deferred backup policy.
 
-Implementation proceeds in this order:
+Within that deferred capability, implementation proceeds in this order:
 
 1. **State-root migration:** explicitly migrate registered development-state
    data to `${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/`. Normal
@@ -264,7 +337,7 @@ benchmark material and superseded alternatives remain in read-only Mandrel.
 - Smart correction never changes Conservative mode's lexical boundary.
 - A user can edit Original and regenerate after rejecting an inferred wording.
 
-## Capability area: Identity and tenant isolation
+## Deferred capability area: Identity and tenant isolation
 
 ### Outcome
 
@@ -287,7 +360,7 @@ a real multi-user, device-sync, or hosting boundary exists.
 - A separately approved hosted design defines cross-user acceptance evidence.
 - Normal startup still checks schema state without migrating or seeding.
 
-## Capability area: Controllable personalization
+## Deferred capability area: Controllable personalization
 
 ### Outcome
 
@@ -328,7 +401,7 @@ disableable, and deletable for one local user.
 - Owner-scoping tests prove no non-`local` row can be returned or mutated.
 - Disabling or deleting information prevents its later use.
 
-## Capability area: Hosted offering
+## Deferred capability area: Hosted offering
 
 ### Outcome
 
@@ -406,7 +479,7 @@ decided:
 
 - correction or polishing modes beyond Cleanup and Smart correction;
 - hosted target delivery;
-- private Original or Prepared history;
+- automatic history reuse, historical-record import or backfill;
 - hosted bring-your-own-key support; and
 - voice or audio ingestion, storage, or verification.
 

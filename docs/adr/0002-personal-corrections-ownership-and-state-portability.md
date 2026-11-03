@@ -6,6 +6,20 @@
 - **Product authority:** [`PRODUCT.md`](../../PRODUCT.md)
 - **Implementation specification:** [Personal Corrections implementation specification](../personal-corrections-implementation-spec.md)
 
+## Sequencing amendment — 2026-11-02
+
+Personal Corrections is preserved and deferred while ongoing suggestions,
+prospective automatic activity history and accessible review are the selected
+next delivery under the [product implementation plan](../product-implementation-plan.md).
+The four phases below retain the dependency order within Personal Corrections;
+they no longer mean that it is the next overall product delivery.
+
+Ownership, explicit reviewed saving, state isolation and inheritance, and the
+existing unresolved Personal Corrections backup-deletion policy are unchanged.
+[ADR-0003](0003-prospective-activity-history-and-reuse-boundary.md) governs the
+separate new activity-history policy; it grants no automatic correction reuse
+or private-record import. This amendment establishes no delivery or acceptance.
+
 ## Context
 
 Sayloom needs live, user-controlled personalization for one local user before
@@ -103,7 +117,8 @@ arming and lease logic, participant-package tooling, and dedicated tests. That
 retirement is complete. Historical documents and Git history remain intact and
 grant no authority to resume collection or evaluation.
 
-Implementation proceeds in this order:
+When this deferred capability is separately resumed, its internal dependencies
+remain in this order:
 
 1. migrate the development-state root explicitly;
 2. retire Evidence Collection runtime and tooling;

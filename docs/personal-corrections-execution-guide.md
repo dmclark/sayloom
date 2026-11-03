@@ -1,32 +1,39 @@
 # Personal Corrections execution guide
 
-- **Status:** Current execution guide
-- **Active phase:** 3 — Personal Corrections
+- **Status:** Current contract for deferred Personal Corrections; not the next product delivery
+- **Active phase:** None in this capability; phase 3 is deferred
 - **Initial user:** One implicit private local user
-- **Last confirmed:** 2026-10-11 — complete-loop design; acceptance unverified
+- **Last confirmed:** 2026-11-02 — sequence deferred; complete-loop design retained, acceptance unverified
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
 - **Domain vocabulary:** [`GLOSSARY.md`](../GLOSSARY.md)
 
 ## Purpose
 
-This guide is the single place to answer:
+Within the deferred Personal Corrections capability, this guide answers:
 
 1. What correction work is active now?
 2. What must be delivered next?
 3. What proves that delivery is complete?
 4. Which prompt should start the next focused piece of work?
 
-The active goal is to deliver live Personal Corrections for one local user in
-the confirmed order: state-root migration, Evidence Collection retirement,
-Personal Corrections, then new-state inheritance. Hosted accounts, multi-user
-operation, device sync, research, pilots, and broad efficacy claims do not
-block this goal.
+The selected next product delivery is ongoing suggestions, prospective automatic
+activity history and accessible review under the
+[product implementation plan](product-implementation-plan.md). Personal
+Corrections, mixed mappings and exact-alias/contextual reuse are preserved and
+deferred, not cancelled or complete. Audit residual continuity WIP only for
+necessary protections in that selected delivery, not wholesale integration.
 
-`PRODUCT.md` remains product authority. This guide controls current execution
-order. Formal evaluation is deferred. Renewing it requires a new approved
-evaluation purpose and contract; an older research document or open issue does
-not authorize resumption.
+If Personal Corrections is separately resumed, its dependency order remains
+state-root migration, Evidence Collection retirement, Personal Corrections,
+then new-state inheritance. Hosted work, research and broad efficacy claims
+remain deferred. Existing explicit save, ownership and backup boundaries do not
+change when the separate application history policy changes.
+
+`PRODUCT.md` remains product authority. This guide controls dependency order
+only within its deferred capability. Formal evaluation is deferred. Renewing it
+requires a new approved evaluation purpose and contract; an older research
+document or open issue does not authorize resumption.
 
 ## Live implementation surface
 
@@ -252,15 +259,16 @@ explicitly qualifies them.
 
 ## Delivery map
 
-Only one phase is active at a time. Advance the marker after the phase's exit
-gate is met and its evidence is recorded in this guide or its linked issue.
+No Personal Corrections phase is currently active. The table preserves internal
+dependencies, not an instruction to resume implementation. If separately
+resumed, advance a marker only after its exit gate and recorded evidence.
 
 | Phase | Status | Deliverable | Exit gate |
 | ---: | --- | --- | --- |
 | 1 | Complete | Development-state root migration | An explicit, verified migration moves registered state data to `${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/`; normal startup never migrates. |
 | 2a | Complete | Evidence Collection Workspace/runtime retirement | UI, APIs, session behavior, arming, leases, receipts, delivery gates, runtime exposure, and dedicated runtime tests are removed while ordinary preparation, Copy, and delivery remain. |
 | 2b | Complete | Participant-package retirement | Issue #143 removed package creation, validation, administration, configuration, and dedicated package tests while preserving historical docs and Git. |
-| 3 | **Active** | Personal Corrections | Explicit Original → Intended review and approval, durable `local` ownership, cross-session Smart reuse, management, current-state deletion, registered-state purge, and private export work end to end. Complete durable-deletion acceptance additionally requires a confirmed managed-backup policy. |
+| 3 | Deferred | Personal Corrections | Explicit Original → Intended review and approval, durable `local` ownership, cross-session Smart reuse, management, current-state deletion, registered-state purge, and private export work end to end. Complete durable-deletion acceptance additionally requires a confirmed managed-backup policy. |
 | 4 | Blocked by phase 3 | New-state inheritance | A new state inherits and verifies a transactional snapshot from the explicitly activated eligible source; failures prevent activation, no-source creation reports empty, and existing states remain untouched. |
 
 ### Existing partial implementation evidence
@@ -463,7 +471,7 @@ issue.
 | Durable context contains sensitive text | Preview it, bound it, permit editing/removal, keep it local, and cascade deletion. |
 | Usage events are mistaken for efficacy | Name only the observed event; never infer correctness or causation. |
 | Saved corrections are repurposed for evaluation | Require a new approved evaluation purpose and contract; ordinary product authorization is insufficient. |
-| Existing roadmaps distract from the active goal | Treat this guide as current execution authority and mark other tracks deferred. |
+| Older sequence instructions distract from the selected delivery | Use the product implementation plan for overall priority and this guide only for deferred Personal Corrections dependencies. |
 | Implementation silently widens scope | Stop at the current phase's exit gate; open a focused decision for any new behavior. |
 
 ## Copy-ready prompts
