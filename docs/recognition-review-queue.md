@@ -18,23 +18,26 @@ are not assumed compatible. Missing identities or ordering metadata fail closed.
 
 Before historical extraction, obtain approval for:
 
-- The exact thread allowlist and New York calendar-date window.
+- The New York calendar-date window and scanning the export directory, or an
+  explicit thread restriction via `--thread`.
 - The exact private export directory and queue path.
 - Full-thread export access: Amp's export command is not date-bounded. It
   downloads the entire transcript even though this tool selects text by date.
   Do not run it under an authorization limited to fetching only in-window text.
   An owner-supplied approved export is an alternative.
 
-The owner approved the defaults below and full exports of those five threads in
-[the implementation thread](https://ampcode.com/threads/T-01a14ad3-c0d8-73c5-b92f-92258aa5e6eb).
-That approval does not cover other threads, windows, or destinations. The live
+The original five-thread selection was a starting sample, not a permanent
+allowlist. The owner clarified that selection should be determined by the date
+range and approved automatic full-thread downloads, with exports and the queue
+shared in the main worktree. Full exports may include text outside the selected
+dates; only in-window user/assistant text enters candidate processing. The live
 capture file's permission does not authorize this queue. Do not inspect existing
 private repair records to populate it. Keep exports, queue, and reviews outside
 Git and Sayloom databases. Orb files do not sync to other machines.
 
 ## Usage
 
-With the approved exports already present, run from the repository root:
+With the Amp CLI installed and signed in, run from the repository root:
 
 ```sh
 uv run python scripts/recognition_review.py
@@ -45,26 +48,36 @@ required. Defaults are fixed, not a rolling “yesterday” window:
 
 | Option | Default |
 | --- | --- |
-| `--exports` | `<checkout>/.amp/in/artifacts/recognition-review/exports/` |
-| `--output` | `<checkout>/.amp/in/artifacts/recognition-review/queue.jsonl` |
+| `--exports` | `<primary-worktree>/.amp/in/artifacts/recognition-review/exports/` |
+| `--output` | `<primary-worktree>/.amp/in/artifacts/recognition-review/queue.jsonl` |
 | `--start` | `2026-10-16` (inclusive, New York) |
 | `--end` | `2026-10-17` (exclusive, New York) |
-| `--thread` | The five IDs below |
+| `--thread` | No restriction; select local exports by message dates |
+| `--local-only` | Off; discover threads and download missing or newer exports |
 
-Default paths are anchored to the script's checkout, regardless of the working
-directory; neither is `~/.amp` or `/.amp`. Explicit relative paths resolve against
-the working directory. `--help` displays defaults. The approved whitelist is:
+Both default paths are shared across worktrees in Git's primary worktree (the
+main checkout), regardless of the script's worktree or working directory. This
+is a dedicated export cache, not Amp's own local thread storage. No private data
+is moved from earlier destinations automatically. Explicit relative paths resolve
+against the working directory.
+`--help` displays defaults. For example, to select October 12 through October 16:
 
-- `T-2f893922-15a9-4f75-a7f0-83d8e400f5ff` — Research roadmap reconciliation.
-- `T-01a13bea-ddb2-752f-a80d-f0cb7961635a` — Reusable synthetic text preparation fixtures.
-- `T-01a14713-03f3-7275-8fc2-376b3467ab62` — Compare three provider configurations.
-- `T-fa662f0d-a7da-4aa3-9193-cd1f60899d2e` — Architecture review report.
-- `T-01a14139-62fa-708c-bd1b-54fdb2a7531d` — Run approved OpenRouter comparison.
+```sh
+uv run python scripts/recognition_review.py --start 2026-10-12 --end 2026-10-17
+```
 
-These were selected by total message count among threads updated in the preceding
-24 hours. A recent thread update does not establish recent messages, and this
-selection is not automatically recomputed on later runs. A zero-candidate result
-does not establish that recognition errors did not occur.
+The command searches your own Amp threads using a conservative update-time lower
+bound, expanding the result limit until the returned set is smaller than the
+requested limit. There is no update-time upper bound: a thread updated after
+`--end` can still contain messages inside the requested window. Candidates whose
+reported update precedes the window are excluded. Missing exports are downloaded;
+cached exports are refreshed when their `updatedAt` is older than the remote
+metadata (or absent). Unchanged exports are reused. Search/export failures abort
+rather than silently falling back to incomplete local coverage.
+
+Exact message selection uses `createdAt`, not file modification times or thread
+update times. A zero-candidate result does not establish that recognition errors
+did not occur. Remote discovery depends on Amp's search index.
 
 Each option can be overridden after obtaining applicable approval. Substitute
 approved paths and IDs below; placeholders are not destination approval. Use
@@ -77,22 +90,34 @@ mkdir -p <approved-export-directory>
 amp threads export <approved-thread-id> > <approved-export-directory>/<approved-thread-id>.json
 
 uv run python scripts/recognition_review.py \
+  --local-only \
   --exports <approved-export-directory> \
   --thread <approved-thread-id> \
   --start 2026-10-16 --end 2026-10-17 \
   --output <approved-private-queue.jsonl>
 ```
 
-Repeat `--thread` for every allowed thread; supplying it replaces the default
-whitelist rather than adding to it. There is no directory scan: only
-`<thread-id>.json` for allowlisted threads is opened. The payload thread ID must
-match its allowlisted filename. No export or network request is performed by the
-assembler. Missing exports produce an error, not an automatic download. Its only
-subprocesses are local Git checks ensuring
-checkout-local queue destinations are ignored and untracked. Queue creation uses
-mode 0600, and existing queues with group/other access are rejected. Parent
-directories must also remain owner-controlled. The tool does not change existing
-directory permissions.
+After acquisition, the assembler scans immediate files named `<thread-id>.json`
+in the export directory, ignoring unrelated names and subdirectories. Repeat
+`--thread` to bypass broad discovery and restrict downloads and reads to named
+threads; online runs refresh those explicit exports on every run to include later
+replies. Add `--local-only` to disable all Amp calls and read only existing files.
+In that mode, missing directories or explicitly named exports produce an error;
+an empty directory succeeds with no matches. Local-only coverage is limited to
+the available exports and their freshness.
+
+The payload thread ID must match its filename. Exports with missing message
+`createdAt` timestamps are skipped in full, with a warning naming each file and
+an incomplete-coverage count. No dates are inferred and no partial evidence from
+those exports is appended; existing queue records remain unchanged. Other
+malformed matching exports still fail the batch before any queue append. Export
+downloads use mode-0600 temporary files and atomic replacement, preserving the
+prior cache file on command failure, invalid JSON, or mismatched identity. Git
+checks reject tracked or nonignored checkout destinations for both exports and
+the queue, including destinations in another worktree. Queue creation uses mode
+0600, and existing queues with group/other access are rejected. Parent directories
+must remain owner-controlled; the tool does not change existing directory
+permissions.
 
 ## Dates and candidate chains
 
@@ -159,8 +184,10 @@ evaluation reuse, or sending private text to any inference service.
 
 The CLI streams status lines immediately, including when stdout is piped:
 
+- Remote discovery, candidate count, export-cache path, and download/reuse status.
 - The inclusive/exclusive New York date window.
 - `Reading [i/N] <thread>.json` and the selected in-window text-message count.
+- The number of threads selected by message dates out of all examined exports.
 - Queue-lock status and the number of existing queue records loaded.
 - `Processing [i/N] <thread>.json`, matched candidate exchanges, and new evidence
   records pending save. A candidate can contain several evidence records.
@@ -177,7 +204,10 @@ tracked documentation.
 ## Synthetic verification
 
 `uv run pytest tests/test_recognition_review.py` exercises the CLI with network
-access and non-Git child processes prohibited. Fixtures cover contextual phrase
+access prohibited; child processes are limited to Git and a fixture-local fake
+Amp executable. Fixtures cover discovery beyond the initial result limit,
+missing/stale export downloads, cache reuse, failed-download preservation, shared
+primary-worktree paths, whole-export timestamp skips with warnings, and contextual phrase
 recovery (including unsuccessful interpretations), preservation of accurate
 unusual wording, date boundaries and DST, later replies, overlapping reruns,
 review preservation, stable provenance, and rejection of unsupported metadata.

@@ -35,30 +35,42 @@ def export(directory: Path, thread: str, messages: list[dict]) -> None:
     (directory / f"{thread}.json").write_text(json.dumps({"id": thread, "messages": messages}))
 
 
-def run_cli(directory: Path, *arguments: str, script: Path = SCRIPT) -> subprocess.CompletedProcess:
-    # Exercise the real CLI with network and non-Git child processes prohibited.
-    # This catches accidental provider calls or delegation to external processors.
+def run_cli(
+    directory: Path, *arguments: str, script: Path = SCRIPT, local_only: bool = True
+) -> subprocess.CompletedProcess:
+    # Exercise the CLI without real network access. Only Git and a fixture-local
+    # fake Amp executable may run; never invoke the installed Amp in these tests.
     runner = """
-import pathlib, runpy, sys
+import pathlib, runpy, shutil, sys
 def guard(event, args):
     if event.startswith('socket.'):
         raise AssertionError('Network access is forbidden')
     if event == 'subprocess.Popen' and pathlib.Path(args[0]).name != 'git':
-        raise AssertionError('External text processing is forbidden')
+        if (args[0] != 'amp'
+            or not pathlib.Path(shutil.which('amp')).is_relative_to(pathlib.Path.cwd())):
+            raise AssertionError('External text processing is forbidden')
 sys.addaudithook(guard)
 sys.argv = sys.argv[1:]
 runpy.run_path(sys.argv[0], run_name='__main__')
 """
     return subprocess.run(
-        [sys.executable, "-c", runner, str(script), *arguments],
+        [
+            sys.executable,
+            "-c",
+            runner,
+            str(script),
+            *(["--local-only"] if local_only else []),
+            *arguments,
+        ],
         cwd=directory,
         capture_output=True,
         text=True,
     )
 
 
-def test_approved_defaults_work_from_another_directory_and_flags_replace_allowlist(tmp_path):
-    for thread in APPROVED_THREADS:
+def test_date_range_selects_all_available_threads_and_flags_restrict_selection(tmp_path):
+    threads = [*APPROVED_THREADS, "T-00000000-0000-0000-0000-000000000001"]
+    for thread in threads:
         export(
             tmp_path,
             thread,
@@ -67,14 +79,30 @@ def test_approved_defaults_work_from_another_directory_and_flags_replace_allowli
                 message(2, "assistant", "2026-10-16T12:01:00Z", "Did you mean the queue?"),
             ],
         )
+        # Old file timestamps must not exclude messages inside the date window.
+        os.utime(tmp_path / f"{thread}.json", (0, 0))
+    for thread, at in (
+        ("T-00000000-0000-0000-0000-000000000002", "2026-10-16T03:59:59Z"),
+        ("T-00000000-0000-0000-0000-000000000003", "2026-10-17T04:00:00Z"),
+    ):
+        export(
+            tmp_path,
+            thread,
+            [
+                message(1, "user", at, "Open the cue for review."),
+                message(2, "assistant", at, "Did you mean the queue?"),
+            ],
+        )
+    (tmp_path / "unrelated.json").write_text("NOT A JSON EXPORT")
     output = tmp_path / "queue.jsonl"
     result = run_cli(tmp_path, "--exports", str(tmp_path), "--output", str(output))
     assert result.returncode == 0, result.stderr
-    assert "Appended 10 unconfirmed" in result.stdout
+    assert "Appended 12 unconfirmed" in result.stdout
     records = [json.loads(line) for line in output.read_text().splitlines()]
-    assert {record["thread_id"] for record in records} == set(APPROVED_THREADS)
+    assert {record["thread_id"] for record in records} == set(threads)
 
-    # A named allowlist replaces defaults, rather than broadening it by addition.
+    # Explicit IDs restrict selection; other files must not be parsed.
+    (tmp_path / f"{threads[-1]}.json").write_text("NOT A JSON EXPORT")
     selected = tmp_path / "selected.jsonl"
     result = run_cli(
         tmp_path,
@@ -87,6 +115,131 @@ def test_approved_defaults_work_from_another_directory_and_flags_replace_allowli
     )
     assert result.returncode == 0, result.stderr
     assert "Appended 2 unconfirmed" in result.stdout
+    assert {
+        record["thread_id"] for record in map(json.loads, selected.read_text().splitlines())
+    } == {APPROVED_THREADS[2]}
+
+
+@pytest.mark.parametrize("exists", [False, True])
+def test_local_only_missing_directory_fails_but_empty_directory_has_no_matches(tmp_path, exists):
+    exports = tmp_path / "exports"
+    if exists:
+        exports.mkdir()
+    output = tmp_path / "queue.jsonl"
+    result = run_cli(tmp_path, "--exports", str(exports), "--output", str(output))
+    if exists:
+        assert result.returncode == 0, result.stderr
+        assert output.read_bytes() == b""
+    else:
+        assert result.returncode == 1
+        assert not output.exists()
+
+
+@pytest.fixture
+def fake_amp(tmp_path, monkeypatch):
+    executable = tmp_path / "bin" / "amp"
+    executable.parent.mkdir()
+    executable.write_text(
+        f"#!{sys.executable}\n"
+        + """
+import json, pathlib, sys
+data = json.loads((pathlib.Path(__file__).parent.parent / 'amp-data.json').read_text())
+if sys.argv[1:3] == ['threads', 'search']:
+    limit = int(sys.argv[sys.argv.index('--limit') + 1])
+    print(json.dumps(data['threads'][:limit]))
+elif sys.argv[1:3] == ['threads', 'export']:
+    if data.get('fail'):
+        print('Private partial payload', flush=True)
+        print('Private error detail', file=sys.stderr)
+        sys.exit(3)
+    payload = data['exports'][sys.argv[3]]
+    print(payload if isinstance(payload, str) else json.dumps(payload))
+else:
+    sys.exit(4)
+"""
+    )
+    executable.chmod(0o700)
+    monkeypatch.setenv("PATH", f"{executable.parent}{os.pathsep}{os.environ['PATH']}")
+    return tmp_path / "amp-data.json"
+
+
+def test_downloads_missing_and_newer_exports_then_reuses_cache_and_deduplicates(tmp_path, fake_amp):
+    exports = tmp_path / "exports"
+    exports.mkdir()
+    current, missing = APPROVED_THREADS[:2]
+    updated = "2026-10-18T12:00:00Z"  # Updated after --end, with older in-window text.
+    source = [
+        message(1, "user", "2026-10-16T12:00:00Z", "Open the cue for review."),
+        message(2, "assistant", "2026-10-16T12:01:00Z", "Did you mean the queue?"),
+        message(3, "user", "2026-10-17T04:00:00Z", "No, I meant the first queue."),
+    ]
+    # Force discovery past its first page without downloading out-of-window updates.
+    rows = [
+        {"id": f"T-00000000-0000-0000-0000-{i:012d}", "updatedAt": "2026-10-16T03:59:59Z"}
+        for i in range(99)
+    ] + [{"id": thread, "updatedAt": updated} for thread in (current, missing)]
+    data = {
+        "threads": rows,
+        "exports": {
+            thread: {"id": thread, "updatedAt": updated, "messages": source}
+            for thread in (current, missing)
+        },
+    }
+    fake_amp.write_text(json.dumps(data))
+    cached = exports / f"{current}.json"
+    cached.write_text(
+        json.dumps({"id": current, "updatedAt": "2026-10-16T12:00:00Z", "messages": source[:1]})
+    )
+    output = tmp_path / "queue.jsonl"
+    args = ("--exports", str(exports), "--output", str(output))
+    result = run_cli(tmp_path, *args, local_only=False)
+    assert result.returncode == 0, result.stderr
+    records = list(map(json.loads, output.read_text().splitlines()))
+    assert {(record["thread_id"], record["source"]["id"]) for record in records} == {
+        (thread, f"M-synthetic-{number}") for thread in (current, missing) for number in (1, 2)
+    }
+    for thread in (current, missing):
+        path = exports / f"{thread}.json"
+        assert json.loads(path.read_text()) == data["exports"][thread]
+        assert path.stat().st_mode & 0o777 == 0o600
+    assert len(list(exports.iterdir())) == 2
+    original = output.read_bytes()
+    data["fail"] = True  # A second download would now fail, rather than hiding a cache miss.
+    fake_amp.write_text(json.dumps(data))
+    repeat = run_cli(tmp_path, *args, local_only=False)
+    assert repeat.returncode == 0, repeat.stderr
+    assert output.read_bytes() == original
+    assert "Appended 0 unconfirmed" in repeat.stdout
+
+
+@pytest.mark.parametrize("failure", ["command", "json", "identity"])
+def test_failed_download_preserves_existing_export_and_queue(tmp_path, fake_amp, failure):
+    thread = APPROVED_THREADS[0]
+    exports = tmp_path / "exports"
+    exports.mkdir()
+    export(exports, thread, [])
+    cached = exports / f"{thread}.json"
+    original = cached.read_bytes()
+    payload = "Private invalid JSON" if failure == "json" else {"id": "wrong", "messages": []}
+    fake_amp.write_text(json.dumps({"fail": failure == "command", "exports": {thread: payload}}))
+    output = tmp_path / "queue.jsonl"
+    output.write_bytes(b"")
+    output.chmod(0o600)
+    result = run_cli(
+        tmp_path,
+        "--exports",
+        str(exports),
+        "--output",
+        str(output),
+        "--thread",
+        thread,
+        local_only=False,
+    )
+    assert result.returncode == 1
+    assert "Private" not in result.stdout + result.stderr
+    assert cached.read_bytes() == original
+    assert output.read_bytes() == b""
+    assert list(exports.iterdir()) == [cached]
 
 
 @pytest.mark.parametrize(
@@ -266,7 +419,31 @@ def test_later_agreement_does_not_bridge_an_unapproved_gap(tmp_path):
     assert output.read_bytes() == original
 
 
-@pytest.mark.parametrize("missing", ["protocolMessageID", "createdAt", "messageId"])
+def test_missing_timestamp_skips_whole_export_with_warning_and_keeps_other_threads(tmp_path):
+    skipped, valid = APPROVED_THREADS[:2]
+    sources = [
+        message(1, "user", "2026-10-16T12:00:00Z", "Open the cue for review."),
+        message(2, "assistant", "2026-10-16T12:01:00Z", "Did you mean the queue?"),
+        message(3, "user", "2026-10-16T12:02:00Z", "Private text must not enter warnings."),
+    ]
+    del sources[-1]["createdAt"]
+    export(tmp_path, skipped, sources)
+    export(tmp_path, valid, sources[:2])
+    output = tmp_path / "queue.jsonl"
+    result = run_cli(tmp_path, "--exports", str(tmp_path), "--output", str(output))
+    assert result.returncode == 0, result.stderr
+    assert f"Warning: skipping {skipped}.json" in result.stderr
+    assert "missing message createdAt" in result.stderr
+    assert "incomplete" in result.stdout
+    assert all(source["content"][0]["text"] not in result.stderr for source in sources)
+    records = list(map(json.loads, output.read_text().splitlines()))
+    assert [(record["thread_id"], record["source"]["id"]) for record in records] == [
+        (valid, "M-synthetic-1"),
+        (valid, "M-synthetic-2"),
+    ]
+
+
+@pytest.mark.parametrize("missing", ["protocolMessageID", "messageId"])
 def test_missing_identity_or_date_metadata_fails_without_creating_queue(tmp_path, missing):
     source = message(1, "user", "2026-10-16T12:00:00-04:00", "Private text must not enter errors.")
     del source[missing]
@@ -287,14 +464,37 @@ def test_missing_identity_or_date_metadata_fails_without_creating_queue(tmp_path
     assert not output.exists()
 
 
-def test_no_arguments_use_checkout_paths_even_when_started_from_scripts(tmp_path):
-    scripts = tmp_path / "scripts"
-    scripts.mkdir()
+def test_worktrees_share_primary_exports_and_queue_from_any_directory(tmp_path):
+    primary = tmp_path / "primary"
+    scripts = primary / "scripts"
+    scripts.mkdir(parents=True)
     script = scripts / SCRIPT.name
     shutil.copyfile(SCRIPT, script)
-    (tmp_path / ".gitignore").write_text(".amp/\n")
-    subprocess.run(["git", "init", "--quiet", str(tmp_path)], check=True)
-    exports = tmp_path / ".amp/in/artifacts/recognition-review/exports"
+    (primary / ".gitignore").write_text(".amp/in/\n")
+    subprocess.run(["git", "init", "--quiet", str(primary)], check=True)
+    subprocess.run(["git", "add", "."], cwd=primary, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Synthetic",
+            "-c",
+            "user.email=synthetic@example.invalid",
+            "commit",
+            "--quiet",
+            "-m",
+            "test: initialize synthetic repository",
+        ],
+        cwd=primary,
+        check=True,
+    )
+    linked = tmp_path / "linked"
+    subprocess.run(
+        ["git", "worktree", "add", "--quiet", "-b", "test-linked", str(linked)],
+        cwd=primary,
+        check=True,
+    )
+    exports = primary / ".amp/in/artifacts/recognition-review/exports"
     exports.mkdir(parents=True)
     for thread in APPROVED_THREADS:
         export(
@@ -305,16 +505,17 @@ def test_no_arguments_use_checkout_paths_even_when_started_from_scripts(tmp_path
                 message(2, "assistant", "2026-10-16T12:00:01-04:00", "Did you mean queue?"),
             ],
         )
-    result = run_cli(scripts, script=script)
+    result = run_cli(linked / "scripts", script=linked / "scripts" / SCRIPT.name)
     assert result.returncode == 0, result.stderr
     assert "Appended 10 unconfirmed" in result.stdout
     output = exports.parent / "queue.jsonl"
     original = output.read_bytes()
-    repeat = run_cli(tmp_path, script=script)
+    repeat = run_cli(primary, script=script)
     assert repeat.returncode == 0, repeat.stderr
     assert "Appended 0 unconfirmed" in repeat.stdout
     assert output.read_bytes() == original
     assert not (scripts / ".amp").exists()
+    assert not (linked / ".amp").exists()
 
 
 @pytest.mark.parametrize("early_cue", [True, False])
@@ -369,7 +570,7 @@ def test_cli_streams_file_progress_before_read_finishes_then_reports_counts(tmp_
     source_path = tmp_path / f"{thread}.json"
     source_path.symlink_to("/dev/stdin")
     output = tmp_path / "queue.jsonl"
-    args = ("--exports", str(tmp_path), "--output", str(output), "--thread", thread)
+    args = ("--local-only", "--exports", str(tmp_path), "--output", str(output), "--thread", thread)
     process = subprocess.Popen(
         [sys.executable, str(SCRIPT), *args],
         cwd=tmp_path,
