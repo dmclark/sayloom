@@ -6,19 +6,13 @@ import json
 import os
 import re
 import subprocess
-from datetime import UTC, date, datetime, time
+import sys
+import tempfile
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 REPOSITORY = Path(__file__).resolve().parents[1]
-DEFAULT_DIRECTORY = REPOSITORY / ".amp/in/artifacts/recognition-review"
-DEFAULT_THREADS = (
-    "T-2f893922-15a9-4f75-a7f0-83d8e400f5ff",
-    "T-01a13bea-ddb2-752f-a80d-f0cb7961635a",
-    "T-01a14713-03f3-7275-8fc2-376b3467ab62",
-    "T-fa662f0d-a7da-4aa3-9193-cd1f60899d2e",
-    "T-01a14139-62fa-708c-bd1b-54fdb2a7531d",
-)
 THREAD_ID = re.compile(r"T-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\Z")
 CUE = re.compile(
     r"\b(?:did you mean|do you mean|i (?:meant|said)|what i meant|"
@@ -51,30 +45,118 @@ def window(start: str, end: str) -> tuple[datetime, datetime]:
 
 
 def private_output(path: Path) -> Path:
-    """Reject tracked or nonignored checkout destinations before retaining text."""
+    """Reject tracked or nonignored Git destinations before retaining private text."""
     if path.is_symlink():
-        raise ValueError("Queue must not be a symlink")
+        raise ValueError("Private destination must not be a symlink")
     path = path.resolve()
-    if path.is_relative_to(REPOSITORY):
-        relative = str(path.relative_to(REPOSITORY))
+    parent = path.parent
+    while not parent.exists():
+        parent = parent.parent
+    owner = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"], cwd=parent, capture_output=True, text=True
+    )
+    if owner.returncode == 0:
+        repository = Path(owner.stdout.strip())
+        relative = str(path.relative_to(repository))
         tracked = subprocess.run(
             ["git", "ls-files", "--error-unmatch", "--", relative],
-            cwd=REPOSITORY,
+            cwd=repository,
             capture_output=True,
         )
         ignored = subprocess.run(
             ["git", "check-ignore", "-q", "--", relative],
-            cwd=REPOSITORY,
+            cwd=repository,
         )
         if tracked.returncode == 0 or ignored.returncode != 0:
-            raise ValueError("Queue inside the checkout must be ignored and untracked")
+            raise ValueError("Private destinations inside a checkout must be ignored and untracked")
     return path
 
 
-def messages(export: Path, thread: str, start: datetime, end: datetime) -> list[dict]:
+def default_directory() -> Path:
+    worktrees = subprocess.run(
+        ["git", "worktree", "list", "--porcelain", "-z"],
+        cwd=REPOSITORY,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    # Git lists the primary worktree first, independent of the current branch.
+    primary = Path(worktrees.stdout.split("\0", 1)[0].removeprefix("worktree "))
+    return primary / ".amp/in/artifacts/recognition-review"
+
+
+def acquire_exports(exports: Path, threads: list[str] | None, lower: datetime) -> None:
+    """Discover remote candidates and atomically cache full exports in private files."""
+    candidates = {}
+    if threads is None:
+        # Search is based on thread updates, not message dates. Use a conservative
+        # lower bound and no upper bound so later activity cannot hide older text.
+        query = f"author:me after:{(lower - timedelta(days=1)).date().isoformat()}"
+        limit = 100
+        while True:
+            print(f"Discovering Amp threads (limit {limit})", flush=True)
+            result = subprocess.run(
+                ["amp", "threads", "search", query, "--limit", str(limit), "--json"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            rows = json.loads(result.stdout)
+            if not isinstance(rows, list):
+                raise ValueError("Unsupported Amp search response")
+            for row in rows:
+                thread = row["id"]
+                if not THREAD_ID.fullmatch(thread):
+                    raise ValueError("Invalid remote thread identity")
+                updated = timestamp(row["updatedAt"])
+                if updated >= lower:
+                    candidates[thread] = updated
+            if len(rows) < limit:
+                break
+            limit *= 2
+    else:
+        if not threads or any(not THREAD_ID.fullmatch(thread) for thread in threads):
+            raise ValueError("Supply valid Amp thread IDs")
+        # Explicit IDs bypass date-based discovery; refresh them to include later replies.
+        candidates = dict.fromkeys(threads)
+    exports.mkdir(mode=0o700, parents=True, exist_ok=True)
+    print(f"Remote candidates: {len(candidates)}; export cache: {exports.resolve()}", flush=True)
+    for index, (thread, updated) in enumerate(candidates.items(), 1):
+        destination = private_output(exports / f"{thread}.json")
+        if destination.exists() and updated is not None:
+            cached = json.loads(destination.read_text())
+            if cached.get("id") != thread:
+                raise ValueError("Cached export identity does not match its filename")
+            if cached.get("updatedAt") and timestamp(cached["updatedAt"]) >= updated:
+                print(f"Using cached [{index}/{len(candidates)}] {thread}.json", flush=True)
+                continue
+        print(f"Downloading [{index}/{len(candidates)}] {thread}.json (full thread)", flush=True)
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(mode="w+", dir=exports, delete=False) as stream:
+                temporary = Path(stream.name)
+                subprocess.run(
+                    ["amp", "threads", "export", thread],
+                    stdout=stream,
+                    stderr=subprocess.PIPE,
+                    check=True,
+                )
+                stream.seek(0)
+                payload = json.load(stream)
+                if payload.get("id") != thread or not isinstance(payload.get("messages"), list):
+                    raise ValueError("Unsupported Amp export response")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, destination)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+
+
+def messages(export: Path, thread: str, start: datetime, end: datetime) -> list[dict] | None:
     payload = json.loads(export.read_text())
     if payload.get("id") != thread:
-        raise ValueError("Export thread identity does not match the allowlist")
+        raise ValueError("Export thread identity does not match its filename")
     result = []
     seen = set()
     previous_id = None
@@ -95,7 +177,7 @@ def messages(export: Path, thread: str, start: datetime, end: datetime) -> list[
         # out-of-window text, tool payloads, thinking blocks, or attachments.
         at = message.get("createdAt")
         if at is None:
-            raise ValueError("Export message is missing createdAt; cannot enforce scope")
+            return None  # Discard the entire export, including any earlier selected text.
         if not start <= timestamp(at) < end:
             continue
         text = "\n".join(block["text"] for block in blocks if block.get("type") == "text")
@@ -117,19 +199,40 @@ def messages(export: Path, thread: str, start: datetime, end: datetime) -> list[
     return result
 
 
-def assemble(exports: Path, threads: list[str], start: str, end: str, output: Path) -> int:
+def assemble(exports: Path, threads: list[str] | None, start: str, end: str, output: Path) -> int:
     """Append new source evidence; never modify existing evidence or review records."""
-    if not threads or any(not THREAD_ID.fullmatch(thread) for thread in threads):
-        raise ValueError("Supply an explicit allowlist of valid Amp thread IDs")
     lower, upper = window(start, end)
+    if threads is None:
+        threads = sorted(
+            path.stem
+            for path in exports.iterdir()
+            if path.suffix == ".json" and THREAD_ID.fullmatch(path.stem) and path.is_file()
+        )
+    if any(not THREAD_ID.fullmatch(thread) for thread in threads):
+        raise ValueError("Supply valid Amp thread IDs")
     threads = list(dict.fromkeys(threads))
     print(f"Window: {start} (inclusive) to {end} (exclusive), America/New_York", flush=True)
-    # Read only named exports, never enumerate an export directory or fetch threads.
+    # Parse local exports once; only in-window text enters candidate processing.
     selected = {}
+    skipped = 0
     for index, thread in enumerate(threads, 1):
         print(f"Reading [{index}/{len(threads)}] {thread}.json", flush=True)
-        selected[thread] = messages(exports / f"{thread}.json", thread, lower, upper)
-        print(f"  Selected {len(selected[thread])} in-window text messages", flush=True)
+        current = messages(exports / f"{thread}.json", thread, lower, upper)
+        if current is None:
+            skipped += 1
+            print(
+                f"Warning: skipping {thread}.json: missing message createdAt; "
+                "cannot enforce the date window.",
+                file=sys.stderr,
+                flush=True,
+            )
+            continue
+        print(f"  Selected {len(current)} in-window text messages", flush=True)
+        if current:
+            selected[thread] = current
+    print(f"Selected {len(selected)}/{len(threads)} threads in the date window", flush=True)
+    if skipped:
+        print(f"Coverage incomplete: skipped {skipped} exports with missing timestamps", flush=True)
     output = private_output(output)
     output.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     descriptor = os.open(output, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
@@ -176,7 +279,7 @@ def assemble(exports: Path, threads: list[str], start: str, end: str, output: Pa
             retained[key] = candidate
 
         for index, (thread, current) in enumerate(selected.items(), 1):
-            print(f"Processing [{index}/{len(threads)}] {thread}.json", flush=True)
+            print(f"Processing [{index}/{len(selected)}] {thread}.json", flush=True)
             before = len(additions)
             # Retained evidence was already authorized. It can anchor later replies,
             # but we do not reopen earlier exports or read out-of-window text.
@@ -254,45 +357,51 @@ def assemble(exports: Path, threads: list[str], start: str, end: str, output: Pa
 
 
 def main() -> None:
+    directory = default_directory()
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        epilog="No arguments uses the approved five threads and fixed October 16 local day. "
-        "Default paths are checkout-relative, not relative to the current directory. "
-        "Exports must already exist; this command does not download threads.",
+        epilog="Discover Amp threads and download missing or newer full exports, then select "
+        "text messages in the date window. Use --local-only to disable downloads. "
+        "The default window is the fixed October 16 local day. "
+        "Exports and the review queue are shared in the primary worktree.",
     )
     parser.add_argument(
         "--exports",
-        default=DEFAULT_DIRECTORY / "exports",
+        default=directory / "exports",
         type=Path,
-        help="Approved JSON export directory",
+        help="Shared private JSON export cache",
+    )
+    parser.add_argument(
+        "--local-only", action="store_true", help="Read existing exports without contacting Amp"
     )
     parser.add_argument(
         "--thread",
         action="append",
-        default=argparse.SUPPRESS,
-        help="Repeat for each allowed ID; replaces the approved five-thread whitelist "
-        "listed in docs/recognition-review-queue.md",
+        help="Restrict selection to this thread ID; repeat for multiple threads",
     )
     parser.add_argument("--start", default="2026-10-16", help="Inclusive New York calendar date")
     parser.add_argument("--end", default="2026-10-17", help="Exclusive New York calendar date")
     parser.add_argument(
         "--output",
-        default=DEFAULT_DIRECTORY / "queue.jsonl",
+        default=directory / "queue.jsonl",
         type=Path,
         help="Approved private JSONL queue and state",
     )
     args = parser.parse_args()
-    threads = getattr(args, "thread", list(DEFAULT_THREADS))
     try:
-        count = assemble(args.exports, threads, args.start, args.end, args.output)
+        lower, _ = window(args.start, args.end)
+        private_output(args.output)
+        if not args.local_only:
+            acquire_exports(args.exports, args.thread, lower)
+        count = assemble(args.exports, args.thread, args.start, args.end, args.output)
     except FileNotFoundError:
         parser.exit(
             1,
-            "An approved export or directory is missing. Supply existing Amp JSON "
-            "exports via --exports; this command never downloads threads.\n",
+            "Amp CLI, export directory, or selected export is missing. Check your Amp "
+            "installation and --exports path; --local-only requires existing exports.\n",
         )
-    except (ValueError, KeyError, TypeError, OSError) as error:
+    except (ValueError, KeyError, TypeError, OSError, subprocess.CalledProcessError) as error:
         # Do not print exception details: malformed input errors may contain private text.
         parser.exit(1, f"Review assembly failed ({type(error).__name__}); no success claimed.\n")
     print(f"Appended {count} unconfirmed evidence records; existing records unchanged.", flush=True)
