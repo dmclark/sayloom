@@ -1,13 +1,21 @@
 # Cleanup and Smart evaluation map
 
-- **Status:** Canonical evaluation map
+> **Deferred research reference, not current delivery or evaluation authority.**
+> The [product implementation plan](product-implementation-plan.md) owns the
+> current delivery sequence; the [documentation map](README.md) records lifecycle
+> status. The research body below preserves prior planning, including prospective
+> Evidence Collection that has since been retired. It grants no current collection,
+> provider, evaluation, or pilot authority. Renewed research requires a new approved
+> evaluation purpose and contract.
+
+- **Status:** Deferred research reference
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Prototype specification:**
   [`automatic-correction-prototype-spec.md`](automatic-correction-prototype-spec.md)
-- **Evidence contract:**
+- **Retired historical evidence contract:**
   [`intended-meaning-evidence-collection-contract.md`](intended-meaning-evidence-collection-contract.md)
 - **Issue tracker:** [`dmclark/sayloom`](https://github.com/dmclark/sayloom/issues)
-- **Last reconciled:** 2026-09-26
+- **Research body last reconciled:** 2026-09-26
 
 This map separates the proven Cleanup baseline from the evolving Smart frontier,
 then orders their evidence work. Implementation evidence does not prove that a

@@ -6,9 +6,11 @@
 > is retained as historical planning and implementation evidence. Its outcomes,
 > priorities, work board, and ready-to-paste prompts are not active commitments
 > and do not authorize work. Verified descriptions of shipped behavior remain
-> evidence of the implementation at the revisions they name. Use the canonical
-> [evaluation and Smart MVP map](../evaluation-mvp-map.md) for current milestones and
-> the independent cleanup and Smart evidence tracks; do not revive this roadmap.
+> evidence of the implementation at the revisions they name. Use the
+> [product implementation plan](../product-implementation-plan.md) for the current
+> delivery sequence and the [documentation map](../README.md) for lifecycle status.
+> The [evaluation map](../evaluation-mvp-map.md) is deferred research; do not revive
+> this roadmap.
 
 - **Status:** Superseded roadmap; historical evidence only
 - **Audience:** Sayloom product, delivery, investigation, maintenance, and cross-project reviewers

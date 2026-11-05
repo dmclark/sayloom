@@ -39,8 +39,14 @@ of any implementation or authority to activate recording or providers.
    preservation gate passed, including isolated recovery. It did not back up
    private operating records or clear holdings for deletion. Changes after
    that snapshot need a refreshed capture.
-2. **Reconcile authorities.** Review scoped product, decision, sequence and
-   issue updates before implementation. Drafting does not publish them.
+2. **Authority reconciliation delivered.** Eight canonical documents were
+   reconciled and published in
+   [11de3bb](https://github.com/dmclark/sayloom/commit/11de3bb0abbdb1fcef6e76595a13c159a045e92b).
+   Seven issue-body updates and creation of
+   [#188](https://github.com/dmclark/sayloom/issues/188) were published and
+   read-back verified; Project fields were deliberately unchanged. This completes
+   scoped document/issue reconciliation, not approval of #188's bounded technical
+   contract, implementation or activation.
 3. **Set the bounded implementation contract.** Specify passage identity,
    event ordering, stale/late responses, crash/retry recovery, recording failure,
    pause/private passages, deletion and managed-backup restore. Obtain approval
