@@ -13,8 +13,10 @@ result **Prepared**. Smart correction, review of meaning-bearing changes,
 user-scoped personalization, and hosted operation are not implemented in this
 checkout.
 
-The [evaluation and Smart MVP map](docs/evaluation-mvp-map.md) records the current milestone order
-and keeps the cleanup and Smart benchmark tracks independent.
+The [product implementation plan](docs/product-implementation-plan.md) records
+the current delivery sequence. The [documentation map](docs/README.md) identifies
+current authorities and deferred research references, including the
+[evaluation map](docs/evaluation-mvp-map.md).
 
 The Python package and machine-level identifiers are deliberately neutral and
 independent of the display brand.
