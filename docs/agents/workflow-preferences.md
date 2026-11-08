@@ -22,7 +22,7 @@ or explicit instructions in the current request.
   path from local configuration or the user before writing local temporary files.
 - Before local code changes, follow `local-worktree-workflow.md`. Its Supacode
   and `runner-1` gates apply only to local work, not to orbs.
-- Track actionable work in GitHub Issues for the private `dmclark/sayloom`
+- Track actionable work in GitHub Issues for the public `dmclark/sayloom`
   repository and use the private user-owned **Sayloom** Project for workflow
   state. Repository documents and ADRs own durable current knowledge and
   decisions.

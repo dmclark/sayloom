@@ -1,7 +1,7 @@
 # Repository Guidance
 
-This repository is private and local-first. Commit project context deliberately;
-keep runtime and secret material outside Git.
+This repository is public and local-first. Commit project context deliberately;
+keep private runtime and secret material outside Git.
 
 - Keep operating data, API keys, dictated or cleaned text, databases, and logs outside Git.
 - Never add credentials, private machine paths, or copied legacy implementation.
