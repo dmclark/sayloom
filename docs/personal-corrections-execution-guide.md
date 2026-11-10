@@ -1,28 +1,31 @@
 # Personal Corrections execution guide
 
-- **Status:** Current contract for deferred Personal Corrections; not the next product delivery
-- **Active phase:** None in this capability; phase 3 is deferred
+- **Status:** Required contributor to selected inspection-first delivery; technical and acceptance reconciliation pending
+- **Active phase:** None; no implementation phase active
 - **Initial user:** One implicit private local user
-- **Last confirmed:** 2026-11-02 — sequence deferred; complete-loop design retained, acceptance unverified
+- **Last confirmed:** 2026-11-10 — inspection-first contribution selected; broader complete-loop design retained, acceptance unverified
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
 - **Domain vocabulary:** [`GLOSSARY.md`](../GLOSSARY.md)
 
 ## Purpose
 
-Within the deferred Personal Corrections capability, this guide answers:
+For the selected Personal Corrections contribution and retained broader capability,
+this guide answers:
 
 1. What correction work is active now?
 2. What must be delivered next?
 3. What proves that delivery is complete?
 4. Which prompt should start the next focused piece of work?
 
-The selected next product delivery is ongoing suggestions, prospective automatic
-activity history and accessible review under the
-[product implementation plan](product-implementation-plan.md). Personal
-Corrections, mixed mappings and exact-alias/contextual reuse are preserved and
-deferred, not cancelled or complete. Audit residual continuity WIP only for
-necessary protections in that selected delivery, not wholesale integration.
+The selected next delivery is inspection-first assistance with useful contextual
+influence from explicitly saved Personal Corrections, alongside prospective
+private activity history and accessible review under the
+[product implementation plan](product-implementation-plan.md). The bounded
+technical contribution and acceptance applicability require reconciliation before
+build selection; the historical umbrella and child graph are not automatically
+resumed. Audit residual continuity WIP only for necessary protections, not
+wholesale integration.
 
 If Personal Corrections is separately resumed, its dependency order remains
 state-root migration, Evidence Collection retirement, Personal Corrections,
@@ -31,7 +34,7 @@ remain deferred. Existing explicit save, ownership and backup boundaries do not
 change when the separate application history policy changes.
 
 `PRODUCT.md` remains product authority. This guide controls dependency order
-only within its deferred capability. Formal evaluation is deferred. Renewing it
+within its retained capability; it activates no phase. Formal evaluation is deferred. Renewing it
 requires a new approved evaluation purpose and contract; an older research
 document or open issue does not authorize resumption.
 
@@ -62,6 +65,11 @@ Evidence Collection, participant packages, collection, or evaluation. Consult
 the [documentation map](README.md) for each document's lifecycle; retain
 historical references rather than deleting or implementing them unless a new
 approved current contract explicitly changes that boundary.
+
+**Scope notice — 2026-11-10:** The following Smart flywheel describes retained
+capability requirements and partial implementation, not an inspection-first
+technical design. The selected contribution must support contextual findings
+with optional alternatives; it need not first generate repaired Prepared.
 
 ## Current position
 
@@ -112,6 +120,12 @@ no build tickets, authorizes no operations, and retains Personal Corrections
 before new-state inheritance. Evidence Collection must not be reintroduced.
 
 ## Current contract
+
+The saving, ownership and management controls below also govern inspection-first
+reuse. Smart-specific review paths remain retained contracts, not a designed
+inspection-first save interaction. A finding alone supplies no Intended wording
+and cannot create a mapping. That save-entry interaction remains unresolved;
+ordinary inspection, application or dismissal saves nothing.
 
 ### Ownership and activation
 
@@ -191,18 +205,22 @@ Review permits independent editing/removal; storage enforces the limit.
 
 ### Runtime reuse
 
-- Personal corrections initially inform Smart only. Cleanup remains
-  account-independent.
+- Enabled, explicitly reviewed/saved Personal Corrections may inform
+  inspection-first findings and optional suggestions as well as Smart correction.
+  Useful influence across sessions is required; Cleanup remains independent.
 - Request-time retrieval uses exact normalized trigger matching against
   Original, including approved anchored addition/removal phrases. Fuzzy and
   semantic matching remain deferred.
-- Smart receives only those selected mappings and their approved applicability
-  context. It does not receive historical observed or intended sentences.
+- Assistance receives only selected mappings and approved applicability context,
+  never historical observed/intended sentences or occurrence history.
 - A mapping is user-owned evidence, not an unconditional replacement command.
-  Smart judges applicability using the current draft, selected Writing domain,
+  Assistance judges applicability using the current draft, selected Writing domain,
   and approved restriction. Literal, contradictory, inappropriate, or unresolved
   ambiguous uses require abstention; correctly recognized intended wording
   remains unchanged. The red-cat/Raycast example is discussion evidence only.
+- A trigger match alone justifies neither a replacement nor a mapping-derived
+  warning. Context may support a finding without a replacement; independent
+  qualified checker findings remain possible.
 - Different meanings or restrictions remain separate. Equivalent mappings may
   be deduplicated; another mapping is never overwritten or broadened silently.
 - Every resulting lexical change remains reviewable through the existing Smart
@@ -268,7 +286,7 @@ resumed, advance a marker only after its exit gate and recorded evidence.
 | 1 | Complete | Development-state root migration | An explicit, verified migration moves registered state data to `${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/`; normal startup never migrates. |
 | 2a | Complete | Evidence Collection Workspace/runtime retirement | UI, APIs, session behavior, arming, leases, receipts, delivery gates, runtime exposure, and dedicated runtime tests are removed while ordinary preparation, Copy, and delivery remain. |
 | 2b | Complete | Participant-package retirement | Issue #143 removed package creation, validation, administration, configuration, and dedicated package tests while preserving historical docs and Git. |
-| 3 | Deferred | Personal Corrections | Explicit Original → Intended review and approval, durable `local` ownership, cross-session Smart reuse, management, current-state deletion, registered-state purge, and private export work end to end. Complete durable-deletion acceptance additionally requires a confirmed managed-backup policy. |
+| 3 | Selected contribution; no active implementation | Personal Corrections | Reconcile the bounded inspection-first contribution and acceptance before build selection. Retain explicit review/save, durable `local` ownership, contextual cross-session reuse, management, current-state deletion, registered-state purge and private export requirements; the broader Smart flywheel is not automatically resumed. Complete durable-deletion acceptance additionally requires a confirmed managed-backup policy. |
 | 4 | Blocked by phase 3 | New-state inheritance | A new state inherits and verifies a transactional snapshot from the explicitly activated eligible source; failures prevent activation, no-source creation reports empty, and existing states remain untouched. |
 
 ### Existing partial implementation evidence
@@ -317,13 +335,25 @@ before any separately authorized implementation or tracker reconciliation.
 
 ## First usefulness gate
 
+**Inspection-first acceptance applicability — reconciliation pending:** The
+retained nine-step Smart-loop checklist and agreed assessment below are not an
+approved executable assessment of issue highlighting. Their Smart outputs,
+generation counts and prerequisites retain their original scope; no measures,
+scenarios, repetitions or five-second ceiling are silently changed or waived.
+
+A bounded adaptation must settle useful detections and misses, false alarms and
+inspection effort, incremental saved-mapping benefit, repeated repairs, combined
+editing/saving/management/recovery costs, controls, responsiveness and explicit
+owner approval of the exact candidate and relevant working state. These remain
+unresolved operationalization, not frozen new thresholds or scenarios.
+
 The following is a capability checklist, not an executed or sufficient
 complete-loop acceptance result. The owner agreed the assessment design below
 in [the usefulness design session](https://ampcode.com/threads/T-01a12ca2-46cb-736b-87ab-ffa97de2c104).
-[The usefulness acceptance decision](https://github.com/dmclark/sayloom/issues/164)
-remains open pending reviewed, separately authorized document publication and
-tracker reconciliation. Design agreement does not establish usefulness
-acceptance or authorize execution.
+[The closed usefulness design decision's resolution](https://github.com/dmclark/sayloom/issues/164#issuecomment-6113842273)
+records the published assessment-design provenance, not usefulness acceptance
+or permission to execute. #163 and #164 remain closed decisions in their original
+scope; inspection-first acceptance adaptation is outstanding.
 
 1. Smart puts an inferred repair directly into Prepared, or the user supplies
    intended wording for a missed repair.
@@ -350,7 +380,8 @@ one replacement-only demonstration does not establish complete-loop acceptance.
 
 This is the single home of the agreed assessment design. It is bounded
 single-user engineering evidence, not a pilot, statistical efficacy claim, or
-resumed formal evaluation.
+resumed formal evaluation. It retains its Smart repair/regeneration scope;
+inspection-first applicability remains pending under the notice above.
 
 **Execution prerequisites — not established:** both a working complete loop and
 an owner-accepted [dependable-preparation evidence gate](https://github.com/dmclark/sayloom/issues/162#issuecomment-6112233798)
@@ -471,7 +502,7 @@ issue.
 | Durable context contains sensitive text | Preview it, bound it, permit editing/removal, keep it local, and cascade deletion. |
 | Usage events are mistaken for efficacy | Name only the observed event; never infer correctness or causation. |
 | Saved corrections are repurposed for evaluation | Require a new approved evaluation purpose and contract; ordinary product authorization is insufficient. |
-| Older sequence instructions distract from the selected delivery | Use the product implementation plan for overall priority and this guide only for deferred Personal Corrections dependencies. |
+| Older sequence instructions distract from the selected delivery | Use the product implementation plan for overall priority; reconcile this guide's selected inspection-first contribution before build selection and retain broader dependencies without activating the historical graph. |
 | Implementation silently widens scope | Stop at the current phase's exit gate; open a focused decision for any new behavior. |
 
 ## Copy-ready prompts

@@ -1,14 +1,14 @@
 # Personal Corrections implementation specification
 
-- **Status:** Deferred capability; complete-loop design retained, bounded delivery only, acceptance unverified
-- **Scope:** Private, single-user Personal Corrections flywheel
+- **Status:** Selected inspection-first contribution; technical/acceptance reconciliation pending, no implementation activated
+- **Scope:** Private, single-user Personal Corrections; retained Smart-specific technical references
 - **Execution authority:** [Personal corrections execution guide](personal-corrections-execution-guide.md)
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
 - **Domain vocabulary:** [`GLOSSARY.md`](../GLOSSARY.md)
 - **Complete-loop design confirmed:** 2026-10-11
 
-**Sequence amendment, 2026-11-02:** The next overall delivery is ongoing
+**Historical sequence amendment, 2026-11-02:** The next overall delivery was selected as ongoing
 suggestions, prospective activity history and accessible review under the
 [product implementation plan](product-implementation-plan.md). This specification
 retains Personal Corrections requirements for later separately authorized work;
@@ -18,13 +18,24 @@ history policy will retain activity prospectively. Explicit saving, contextual
 reuse, state isolation and unresolved Personal Corrections backup policy remain
 unchanged. This notice changes no schema/API or acceptance result.
 
+**Surface and sequence amendment, 2026-11-10:**
+[PRODUCT.md](../PRODUCT.md#personal-corrections-and-research-boundary) now requires
+useful saved-correction influence in inspection-first assistance, alongside
+private history and accessible review. This supersedes the blanket next-delivery
+deferral and Smart-only assistance surface above, not consent or privacy controls.
+The [execution guide](personal-corrections-execution-guide.md#first-usefulness-gate)
+records outstanding technical and acceptance reconciliation. The retained
+Smart-specific schema/API/event and ticket sections are bounded references, not
+a ready-to-build issue-detection specification or a requirement to produce a
+replacement first. No implementation phase is activated.
+
 ## Purpose
 
-This specification defines the Personal Corrections phase of the ordered work
-in the execution guide. It defines the smallest durable model, review and
-approval lifecycle, Smart-only retrieval boundary, occurrence history,
-state-local deletion, private export, migration, and acceptance evidence needed
-for the first usefulness gate.
+This specification retains the Personal Corrections model, review/save lifecycle,
+Smart retrieval, history, deletion, export, migration and acceptance references.
+Inspection-first findings and optional suggestions extend the permitted reuse
+surface; their technical contribution and acceptance adaptation remain unresolved.
+The retained Smart contract does not define issue detection.
 
 This document does not authorize implementation, migration, private-data
 access, provider traffic, GitHub mutation, or operation of the stable
@@ -34,11 +45,11 @@ Corrections still precede new-state inheritance.
 
 ## Complete-loop design and evidence boundary
 
-The owner confirmed this design in [the complete-loop design session](https://ampcode.com/threads/T-01a12c59-2533-768a-810a-3458f41436b1).
-Closure of [the design decision](https://github.com/dmclark/sayloom/issues/163)
-requires separately authorized, reviewed document delivery and a resolution
-record. GitHub owns its live status; document delivery alone does not close it
-or establish runtime acceptance.
+The owner confirmed the retained Smart-loop design in [the complete-loop design session](https://ampcode.com/threads/T-01a12c59-2533-768a-810a-3458f41436b1).
+The [closed design decision's resolution](https://github.com/dmclark/sayloom/issues/163#issuecomment-6113213278)
+is provenance for that scope, not approval of flag-only assistance or runtime
+acceptance. PRODUCT.md explicitly extends contextual mapping use to inspection-first
+assistance; this package does not design the technical adaptation.
 
 The contract is **repair → review → explicitly save → contextual reuse**:
 
@@ -101,8 +112,9 @@ deferred. The owner-agreed
 [single-user usefulness assessment](personal-corrections-execution-guide.md#agreed-single-user-usefulness-assessment)
 defines usefulness acceptance separately from implementation correctness.
 Its design is agreed; execution and acceptance remain outstanding. The
-[usefulness decision](https://github.com/dmclark/sayloom/issues/164) remains open
-pending reviewed, separately authorized publication and tracker reconciliation.
+[closed usefulness design resolution](https://github.com/dmclark/sayloom/issues/164#issuecomment-6113842273)
+records assessment-design provenance. Inspection-first acceptance adaptation is
+unresolved; the retained Smart assessment is not approved for issue highlighting.
 
 ## Confirmed outcome and non-goals
 
@@ -116,7 +128,8 @@ The user can:
 3. save a Personal Correction for live use in later sessions;
 4. inspect, edit, disable, or delete a Personal correction;
 5. have matching enabled replacement or anchored addition/removal mappings
-   supplied only to a later Smart request;
+   contextually inform later inspection-first findings and optional suggestions
+   as well as Smart correction, without affecting Cleanup;
 6. inspect content-minimized recurrence events; and
 7. export the current private state in a versioned machine-readable format.
 
@@ -505,6 +518,12 @@ retrieval and constructs the internal request described below.
 
 ## Deterministic Smart retrieval
 
+**Retained Smart-specific reference:** The following algorithm does not specify
+inspection-first detection or mapping influence. Exact normalized candidate
+retrieval and applicability controls remain required, but a match alone justifies
+neither a replacement nor a mapping-derived warning. No new retrieval algorithm,
+endpoint, field or event shape is selected here.
+
 Retrieval runs only when all of these are true:
 
 - mode is Smart;
@@ -746,11 +765,13 @@ not mutated.
    never enter Personal corrections tables, exports, errors, or routine logs.
 4. Both optional sentence fields are previewed, editable/removable, bounded to
    500 code points, and enforced at API and storage boundaries.
-5. Historical sentences and occurrence history never enter a provider request.
-6. Only matching enabled approved triggers from an enabled profile inform Smart.
-   Personal corrections never inform Cleanup.
-7. Profile evidence is advice, not an automatic replacement command. Every
-   resulting lexical change remains under the Smart review contract.
+5. Historical sentences and occurrence history never enter processing requests,
+   including inspection-first requests; no new historical-context channel is created.
+6. Only matching enabled approved mappings from an enabled profile may inform
+   inspection-first assistance or Smart. Personal Corrections never inform Cleanup.
+7. Profile evidence is advice, not a replacement command or automatic warning.
+   Contextual findings may have no alternative; lexical Smart changes remain
+   under the Smart review contract. Ordinary inspection or application saves nothing.
 8. Disablement is reversible retention. Deletion is hard removal within its
    declared current-state or confirmed registered-state live-database scope.
    Managed-backup handling is unresolved, so complete durable deletion must not
@@ -766,6 +787,20 @@ not mutated.
     and never followed by automatic synchronization.
 
 ## Acceptance checks
+
+**Inspection-first acceptance applicability — reconciliation pending:** The
+Smart-specific checks and linked assessment retain their original outputs,
+generation measures, scenarios, repetitions, prerequisites and five-second ceiling.
+They are not an approved executable assessment of issue highlighting. The
+[closed #164 resolution](https://github.com/dmclark/sayloom/issues/164#issuecomment-6113842273)
+is design provenance, not acceptance passed. A bounded adaptation must settle
+detections/misses, false alarms/inspection effort, incremental mapping benefit,
+repeated repairs, combined editing/saving/management/recovery costs, controls,
+responsiveness and exact-candidate owner approval; no new thresholds are set here.
+
+Observed/supplied/intended-produced events do not represent issue detection,
+useful warnings, owner correctness or causation. Their adaptation is not designed
+here. Passing retained event checks cannot establish inspection-first usefulness.
 
 The following implementation correctness checks must pass with synthetic text;
 they do not establish complete-loop usefulness acceptance. That additionally

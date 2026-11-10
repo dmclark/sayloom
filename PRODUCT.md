@@ -6,7 +6,7 @@
 - **Audience:** Product, design, engineering, research, and delivery contributors
 - **Authority:** This document is the sole authority for Sayloom's product
   vision, positioning, roadmap direction, audience, and scope.
-- **Confirmed:** 2026-10-01; owner direction amended 2026-11-02
+- **Confirmed:** 2026-10-01; owner direction amended 2026-11-10
 
 ## Authority and supersession
 
@@ -91,9 +91,11 @@ same intended wording again for copying or delivery; it does not alter Original.
 
 ## User-confirmed Prepared
 
-The next delivery adds ordinary suggestions and history as specified below.
-The existing Prepared-confirmation contract remains intact; suggestions do not
-silently replace it or authorize Personal Correction saving.
+The next delivery adds inspection-first assistance with useful contextual
+influence from explicitly saved Personal Corrections, alongside the already
+selected prospective private history and accessible review. The existing
+Prepared-confirmation contract remains intact; inspection and suggestion
+application do not save Personal Corrections.
 
 The bounded delivery is recorded in [the Prepared-confirmation change](https://github.com/dmclark/sayloom/pull/167).
 That delivery is not complete-loop or runtime acceptance and does not restore
@@ -153,8 +155,10 @@ saving below are target requirements, not claims about that bounded delivery.
 ## Correction and polishing modes
 
 Cleanup and Smart below retain their existing correction contracts. Their
-broader capability requirements do not make completion of automatic correction
-or personalization a prerequisite for the selected suggestions/history delivery.
+broader automatic correction requirements are not prerequisites for
+inspection-first assistance. Useful influence from explicitly saved Personal
+Corrections is part of the selected delivery boundary; broader automatic Smart
+completion and mode redesign are not selected by this decision.
 
 The product supports two correction stages. A user may select Cleanup alone or
 Smart followed by Cleanup. A remembered default and per-text override are
@@ -252,16 +256,26 @@ and removals require a short, user-reviewed before → intended phrase pair with
 enough unchanged wording to anchor the repair. Without a meaningful anchor,
 the change can remain in Prepared but is not yet saveable for reuse. Review
 shows the individual change, editable mapping and applicability restriction,
-and any optional bounded historical sentences. Historical sentences never
-enter later Smart requests.
+and any optional bounded historical sentences. Historical sentences and
+occurrence history never enter later processing requests, including
+inspection-first assistance.
 
 Initial retrieval uses exact normalized trigger matching, not fuzzy or semantic
-matching. A match makes a mapping a candidate, not a replacement command. Smart
-uses the current draft, selected Writing domain, and approved applicability
-restriction to judge whether reuse fits. Correct intended wording stays
+matching. A match makes a mapping a candidate, not a replacement command or a
+reason by itself for a mapping-derived warning. Inspection-first assistance and
+Smart use the current draft, selected Writing domain, and approved applicability
+restriction to judge whether reuse fits. A mapping may support a contextual
+issue finding without a replacement; independent qualified checker findings
+remain possible. Correct intended wording stays
 unchanged; literal, contradictory, inappropriate, or unresolved ambiguous uses
 require abstention. Distinct meanings or restrictions remain separate; saving
 one must not overwrite another or silently broaden its scope.
+
+Saved mappings must usefully improve later assistance across sessions, including
+contextual issue spotting, not merely be stored, retrieved, or produce more
+highlights. A finding alone supplies no Intended wording and cannot create a
+mapping. The inspection-first save-entry interaction remains unresolved; existing
+explicit review and saving paths remain intact.
 
 One Personal Corrections area manages all repair types. Editing suspends the
 saved correction's reuse until explicit reviewed save; cancelling retains the
@@ -290,19 +304,29 @@ for provenance and grant no authority to resume collection or evaluation.
 
 ## Ongoing suggestions and automatic private activity history
 
-This is confirmed product direction, not a claim of implemented or activated
-behavior. Suggestions are an ordinary optional workflow tool, not randomized
-trial assignment or a time-limited experiment. Editing and copying never wait
-for suggestions, and suggestions apply only through explicit user action.
-Failures, no suggestions and unmarked wording must not imply verified speech.
+This is confirmed product direction, not implemented or accepted capability.
+Inspection-first assistance highlights possible spelling, grammar and word-choice
+issues for inspection. An **issue finding** explains why a passage may deserve
+attention and may have no replacement. A **suggestion** is an optional proposed
+alternative, not the finding itself. Findings are hypotheses, not confirmed errors
+or verified speech; unmarked wording is not a correctness guarantee. General
+grammar/style advice does not substitute for passage-supported spoken-word recovery.
+
+The owner may inspect, keep wording, manually edit, or explicitly apply an offered
+replacement. Findings never silently rewrite text or block editing, copying or
+delivery. This is an ordinary optional workflow, not randomized trial assignment
+or a time-limited experiment. Failures leave editing and copying independent.
 Retain spending safeguards, bounded requests and no automatic retries; exact
-provider/configuration and application timing remain separately unresolved.
+checker/provider configuration and application timing remain unresolved.
 
 Start history prospectively. Automatically retain Sayloom input passages,
-generated results, suggestions, applied/reversed corrections, final wording,
-and relevant settings/timing, keeping their provenance distinguishable rather
-than overwriting earlier values. History records what happened, not verified
-spoken wording or permission to reuse text in later requests.
+generated results, findings, suggestions, inspection/application/dismissal actions,
+applied/reversed corrections, final wording, and relevant settings/timing, keeping
+their provenance distinguishable rather than overwriting earlier values. History
+records what happened, not verified spoken wording or permission to reuse text in
+later requests. Exact event representation and recording mechanics remain
+unresolved implementation-contract work; this adds no source outside Sayloom or
+new inference-reuse permission.
 
 History stays private outside Git without automatic cloud sync and remains
 until explicit deletion. Visible pause/private-passage controls exclude the
@@ -331,6 +355,11 @@ The retention and reuse boundary is recorded in
 
 ## Review and CART display
 
+Reviewing findings on unchanged wording is distinct from reviewing lexical
+changes already made. Findings explain possible issues and optionally offer
+alternatives; no replacement is required for inspection. Editor, hover, focus
+and storage mechanics are not selected here.
+
 When Original is visible, the review experience identifies every word addition,
 removal, or replacement and emphasizes uncertainty. AI confidence is assistance,
 not proof; the user can edit Original and regenerate or explicitly confirm
@@ -352,9 +381,9 @@ durable personalization. Its authorization persists across sessions until the
 user edits, disables, or deletes it. A reviewed and explicitly saved edit starts
 new authorization for the edited mapping.
 
-Private correction profiles and Correction memory inform Smart only in the
-initial product contract. Core Cleanup remains independently usable and
-evaluable without an account or user-specific state. Any future profile-backed
+Private correction profiles and Correction memory may inform inspection-first
+assistance and Smart correction, but never core Cleanup. Core Cleanup remains
+independently usable and evaluable without an account or user-specific state. Any future profile-backed
 Cleanup extension requires its own versioned contract and evaluation and may
 not weaken the anonymous Cleanup baseline.
 
@@ -420,7 +449,10 @@ Sayloom succeeds when it:
 
 - offers passage-supported spoken-word recovery without presenting hypotheses
   as verified speech or confusing recovery with deliberate rewriting;
-- reduces the manual edits and time needed to prepare usable text;
+- usefully spots consequential wording issues, with or without alternatives,
+  including useful contextual influence from explicitly saved mappings;
+- reduces repeated repairs and total correction/review effort after inspection,
+  false alarms, editing, saving, management and recovery costs;
 - makes meaning-bearing changes and uncertainty reviewable without disrupting
   CART display;
 - prevents confident but harmful corrections from becoming invisible; and
@@ -428,6 +460,8 @@ Sayloom succeeds when it:
   deletable within its managed scope, with separate control of personalization.
 
 Recovery usefulness and total review/correction effort are joint outcomes.
+Issue spotting and saved-correction influence are targets, not implemented or
+accepted capabilities. Generic grammar/style improvement cannot replace recovery.
 Response availability, historical records or successful source preservation
 alone establish neither usefulness nor owner acceptance.
 
@@ -436,9 +470,11 @@ alone establish neither usefulness nor owner acceptance.
 ### Current implementation boundary
 
 The published phrase-alternatives trial branch is experimental source, not a
-main delivery, completed trial or proof of benefit. Ongoing suggestions,
-prospective automatic history and managed history backup/restore remain planned
-work. Existing trial permissions and budgets do not activate that work.
+main delivery, completed trial or proof of benefit. Inspection-first findings,
+optional suggestions, useful saved-correction influence, prospective automatic
+history and managed history backup/restore remain planned work. Technical and
+inspection-first acceptance reconciliation remain outstanding; no checker is
+selected. Existing trial permissions and budgets do not activate that work.
 
 The current checkout is a useful local-first stage, not the complete product
 described above. It provides an editable Original, a generated result named

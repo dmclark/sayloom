@@ -31,13 +31,18 @@ The words and phrases actually spoken, distinct from inferred meaning or later p
 Final recognition text, a suggestion or a user edit alone is not independent speech verification.
 _Avoid_: Fluent paraphrase, inferred intent, automatically verified transcript
 
+**Issue finding**:
+A highlighted passage that may deserve inspection, with an explanation and optionally a suggested
+alternative. It identifies a possibility, not a confirmed error or verified speech.
+_Avoid_: Confirmed repair, automatic correction, verified error
+
 **Suggestion**:
 A passage-supported alternative for suspected recognition wording, offered as a hypothesis for the
 user to apply or reject rather than an automatic replacement or verified spoken wording.
 _Avoid_: Confirmed repair, replacement rule, verified speech
 
 **Activity history**:
-A private record distinguishing passage input, generated results, suggestions, user actions and
+A private record distinguishing passage input, generated results, findings, suggestions, user actions and
 final wording with relevant settings and timing; it is neither speech verification nor reuse authorization.
 _Avoid_: Correction memory, Personal Correction, training corpus
 
@@ -85,7 +90,8 @@ Correctly spelled words can be recognition errors; unusual wording alone does no
 _Avoid_: Spelling-only correction, generic rewriting, verified transcript recovery
 
 **Personal Correction**:
-A user-reviewed before → intended mapping explicitly saved for later contextual Smart reuse.
+A user-reviewed before → intended mapping explicitly saved for later contextual reuse in
+inspection-first assistance or Smart correction.
 It may describe a replacement or an anchored addition/removal; it is evidence of the user's
 intended wording, not an unconditional replacement rule or research authorization.
 _Avoid_: Automatically learned correction, training example, confirmed model output
@@ -97,8 +103,8 @@ the trigger's presence alone does not establish that the correction fits.
 _Avoid_: Replacement command, empty alias, applicability restriction
 
 **Private correction profile**:
-Explicitly enabled, user-owned knowledge that may inform Smart correction. It does not affect core
-Cleanup.
+Explicitly enabled, user-owned knowledge that may inform inspection-first assistance or Smart
+correction. It does not affect core Cleanup.
 _Avoid_: Cleanup dependency, memory, training data
 
 **Correction memory**:

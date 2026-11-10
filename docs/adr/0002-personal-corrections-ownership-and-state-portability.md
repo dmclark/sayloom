@@ -20,6 +20,20 @@ existing unresolved Personal Corrections backup-deletion policy are unchanged.
 separate new activity-history policy; it grants no automatic correction reuse
 or private-record import. This amendment establishes no delivery or acceptance.
 
+## Inspection-first amendment — 2026-11-10
+
+The owner-selected delivery now requires useful contextual influence from
+explicitly reviewed/saved mappings in inspection-first assistance as well as the
+retained Smart path, under [PRODUCT.md](../../PRODUCT.md#personal-corrections-and-research-boundary).
+This supersedes the November 2 blanket next-delivery deferral and previous
+Smart-only surface limitation. Findings may have no replacement; a trigger match
+alone authorizes neither a replacement nor a mapping-derived warning.
+
+Selected direction is not implementation activation. Technical contribution and
+inspection-first acceptance adaptation remain unresolved. Saving consent,
+independent states, portability, live-database deletion, backup policy and
+Personal-Corrections-before-inheritance order remain unchanged.
+
 ## Context
 
 Sayloom needs live, user-controlled personalization for one local user before
@@ -44,7 +58,8 @@ migrate schema or files.
 
 ### Use Personal Corrections for live personalization
 
-Personal Corrections serve live Smart personalization. Formal evaluation is
+Personal Corrections serve live contextual personalization in inspection-first
+assistance and Smart correction, never core Cleanup. Formal evaluation is
 deferred. Renewed research or evaluation requires a new, explicitly approved
 purpose and contract; ordinary Personal Corrections use does not authorize it.
 

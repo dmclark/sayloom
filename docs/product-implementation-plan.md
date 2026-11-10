@@ -1,11 +1,11 @@
 # Sayloom product implementation plan
 
-- **Status:** Owner-selected ongoing suggestions/history delivery; implementation and acceptance outstanding
+- **Status:** Owner-selected inspection-first assistance with saved-correction influence; technical/acceptance reconciliation and implementation outstanding
 - **Audience:** Product, design, engineering, research, and delivery contributors
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
 - **History decision:** [ADR-0003](adr/0003-prospective-activity-history-and-reuse-boundary.md)
-- **Deferred Personal Corrections sequence:** [execution guide](personal-corrections-execution-guide.md)
+- **Personal Corrections contribution and retained sequence:** [execution guide](personal-corrections-execution-guide.md)
 
 ## Purpose
 
@@ -30,30 +30,37 @@ Historical documents and Git history remain for provenance only.
 
 ## Current implementation sequence
 
-The owner selected ongoing suggestions, prospective automatic private activity
-history and accessible review for the single-user workflow. Hosting and other
-users are deferred indefinitely. This changes delivery priority, not acceptance
-of any implementation or authority to activate recording or providers.
+On 2026-11-10 the owner selected inspection-first assistance with useful
+contextual influence from explicitly saved Personal Corrections, alongside
+prospective automatic private activity history and accessible review. Findings
+may have no alternative; the owner keeps, edits or explicitly applies wording.
+Hosting and other users remain deferred indefinitely. This selects product
+scope, not implementation acceptance or authority to activate recording or providers.
 
 1. **Preserve source before adaptation.** The November 3, 2026 source-only
    preservation gate passed, including isolated recovery. It did not back up
    private operating records or clear holdings for deletion. Changes after
    that snapshot need a refreshed capture.
-2. **Authority reconciliation delivered.** Eight canonical documents were
+2. **Earlier authority reconciliation delivered.** The November 2 direction's eight canonical documents were
    reconciled and published in
    [11de3bb](https://github.com/dmclark/sayloom/commit/11de3bb0abbdb1fcef6e76595a13c159a045e92b).
    Seven issue-body updates and creation of
    [#188](https://github.com/dmclark/sayloom/issues/188) were published and
    read-back verified; Project fields were deliberately unchanged. This completes
-   scoped document/issue reconciliation, not approval of #188's bounded technical
-   contract, implementation or activation.
-3. **Set the bounded implementation contract.** Specify passage identity,
+   earlier scoped document/issue reconciliation, not inspection-first
+   technical/acceptance reconciliation or approval of implementation or activation.
+3. **Reconcile scope and acceptance before implementation selection.** Define the
+   bounded saved-correction contribution and adapt the retained Smart-specific
+   assessment explicitly for inspection-first assistance. Do not silently change
+   its measures or waive applicable gates. Then set the bounded implementation
+   contract: specify passage identity,
    event ordering, stale/late responses, crash/retry recovery, recording failure,
    pause/private passages, deletion and managed-backup restore. Obtain approval
    for exact private destinations and provider/cost configuration. Do not invent
    silent fallbacks when history cannot be recorded.
 4. **Adapt retained source deliberately.** The published #187 branch is a source
-   candidate, not a wholesale merge instruction. Remove trial randomization,
+   candidate, not evidence of issue detection or personal reuse and not a
+   wholesale merge instruction. Remove trial randomization,
    expiry and content deletion on uncertain/revised feedback; keep explicit
    suggestion application, spending safeguards and no automatic retries. Add
    prospective history and its review; retain standalone conversational-review
@@ -65,14 +72,24 @@ of any implementation or authority to activate recording or providers.
 
 ### Bounded delivery acceptance
 
+- Findings explain possible issues even without alternatives. Inspection, keeping
+  wording, manual editing and explicit replacement application remain distinct;
+  no finding silently rewrites text or verifies speech.
 - Editing and copying never wait. Suggestions apply only by explicit action;
-  pending/late results cannot overwrite edits or resurrect deleted passages.
-- Input, generated results, suggestions, applied/reversed edits, final wording,
+  pending/late findings or alternatives cannot overwrite edits or resurrect deleted passages.
+- Explicitly reviewed/saved mappings usefully improve later contextual assistance
+  across sessions. Verify edit/disable/delete authorization boundaries; a trigger
+  match alone justifies neither a replacement nor a mapping-derived warning.
+- Input, generated results, findings, suggestions, inspection/application/dismissal
+  actions, applied/reversed edits, final wording,
   configuration and timing remain distinguishable across reload/restart.
   Preserve uncertain/revised labels; no mandatory fidelity confirmation.
 - Visible pause/private controls exclude a passage from retained history and
   do not promise offline processing or provider-side deletion.
-- Test failures, no suggestions, protected wording and repeated occurrences.
+- Test failures, no findings or suggestions, findings without alternatives, missed issues, false alarms,
+  protected wording, contextual abstention and repeated occurrences. Establish
+  incremental mapping benefit and fewer repeated repairs with worthwhile net
+  savings after inspection, editing, saving, management and recovery costs.
   No randomized assignment or trial expiry remains in the ongoing workflow.
 - Managed backup restore preserves records and cannot undo an explicit deletion
   within managed scope. User exports and provider retention remain outside it.
@@ -96,16 +113,22 @@ is selected; old budgets and stopped-run allowances grant no new spending.
 The accepted [cloud recovery](https://github.com/dmclark/sayloom/issues/160),
 [local backup](https://github.com/dmclark/sayloom/issues/161) and
 [combined preparation](https://github.com/dmclark/sayloom/issues/162) contracts
-remain unpassed. Their applicability to optional, non-blocking suggestions must
+remain unpassed. Their applicability to inspection-first assistance, including
+approved-mapping influence and any local checker, must
 be explicitly reconciled under #172 before activation. This sequence neither
 waives them nor silently replaces the older five-second application contract.
-No new timing allocation or provider qualification is established here.
+No local checker is selected or verified; local processing does not automatically
+pass or remove these gates. No new timing allocation or provider qualification
+is established here.
 
 ## Deferred Personal Corrections sequence
 
-Mixed mappings, exact-alias/contextual reuse and unrelated residual continuity
-work are preserved and deferred. The retained capability sections below do not
-override the selected suggestions/history delivery or authorize operations.
+Saved-correction influence required by the selected boundary is selected product
+scope, not activated implementation. Its bounded technical contribution and
+applicable acceptance requirements must be reconciled before build selection.
+The historical umbrella and child graph are not automatically resumed. Broader
+Personal Corrections requirements and unrelated residual continuity work remain
+retained references, not authority to activate operations.
 
 The [dependable single-user workflow map](https://github.com/dmclark/sayloom/issues/159)
 indexes overall sequencing. The [combined dependable-preparation acceptance gate](https://github.com/dmclark/sayloom/issues/162#issuecomment-6112233798)
@@ -147,7 +170,7 @@ is resolved, and its reviewed document reconciliation is published.
 This design agreement authorizes no assessment execution, implementation, or
 operations and changes no phase order, deletion scope, or deferred backup policy.
 
-Within that deferred capability, implementation proceeds in this order:
+Within the retained capability, the dependency order remains:
 
 1. **State-root migration:** explicitly migrate registered development-state
    data to `${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/`. Normal
@@ -157,7 +180,8 @@ Within that deferred capability, implementation proceeds in this order:
    configuration, administration, and dedicated tests. Historical documentation
    and Git history remain.
 3. **Personal Corrections:** implement explicit Original → Intended review and
-   approval, durable `owner_id = "local"`, cross-session live Smart use,
+   approval, durable `owner_id = "local"`, cross-session contextual use in
+   inspection-first assistance and the retained Smart path,
    management, state-scoped live-database deletion, registered-state purge, and
    export. A separate unresolved policy must decide how managed SQLite backups
    containing Personal Corrections are handled before complete durable deletion
@@ -255,6 +279,11 @@ changing conservative correction behavior.
 
 ## Capability area: Smart correction and review
 
+The following Smart-specific requirements and exit criteria apply to that
+capability, not a prerequisite to generate repaired Prepared before
+inspection-first assistance can exist. PRODUCT.md selects findings and useful
+saved-correction influence; broader automatic Smart completion remains deferred.
+
 ### Outcome
 
 Deliver the primary intended-text correction loop with reviewable lexical
@@ -287,8 +316,10 @@ The review interaction follows these rules:
   exact visible Original or Prepared selection.
 
 Task context is bounded to one request and is never retained in durable state
-or logs. Personal Corrections form one local-principal management area and
-inform Smart only. Separate review of a successful Smart repair requires no
+or logs. Personal Corrections form one local-principal management area and may
+inform inspection-first assistance as well as Smart, never core Cleanup, under
+[PRODUCT.md](../PRODUCT.md#personal-corrections-and-research-boundary).
+Separate review of a successful Smart repair requires no
 retyping. Prepared-edit proposals include only the user's edit, not unrelated
 generated changes. All paths preview initially unchecked mappings and durable
 fields; one explicit Save selected saves atomically. Judging a repair correct,
@@ -368,6 +399,11 @@ a real multi-user, device-sync, or hosting boundary exists.
 
 ## Deferred capability area: Controllable personalization
 
+The heading retains the broader capability scope. Useful saved-correction
+influence is selected for inspection-first delivery under
+[PRODUCT.md](../PRODUCT.md#personal-corrections-and-research-boundary); its bounded
+technical and acceptance reconciliation is pending, not implementation activation.
+
 ### Outcome
 
 Add live Personal Corrections that remain private, inspectable, editable,
@@ -385,12 +421,14 @@ disableable, and deletable for one local user.
 - Beginning an edit suspends reuse; cancellation retains old wording disabled.
   Explicit re-enable restores unchanged authorization; edited mappings require
   reviewed save. Management never silently regenerates current Prepared.
-- Supply only enabled knowledge owned by `local` during Smart preparation.
-- Initially retrieve exact normalized triggers, then let Smart judge current
+- Supply only enabled, approved knowledge owned by `local` for inspection-first
+  assistance or Smart preparation, never Cleanup.
+- Initially retrieve exact normalized triggers, then judge applicability in current
   context and Writing domain. Distinct meanings/restrictions remain separate;
   literal, contradictory, inappropriate, or unresolved ambiguous uses require
   abstention. Correct intended wording stays unchanged. Historical sentences
-  never enter Smart requests and Personal Corrections never affect Cleanup.
+  never enter processing requests. A trigger match alone does not justify a
+  mapping-derived warning or replacement; Personal Corrections never affect Cleanup.
 - Provide minimized observed/supplied/produced history for all reusable repair
   types and management-area private Download export with no server copy.
 - Scope UI deletion to the current state and provide a separate preview/confirm
