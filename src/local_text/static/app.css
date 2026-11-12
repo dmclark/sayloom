@@ -423,10 +423,6 @@ main { padding-top: 8px; }
 .workspace.is-original-maximized .workspace-resizer,
 .workspace.is-prepared-maximized .workspace-resizer { display: none; }
 
-.workspace.has-smart-repair-review {
-  grid-template-rows: minmax(0, 35fr) 18px minmax(0, 65fr);
-}
-
 .workspace.is-original-collapsed.has-smart-repair-review {
   grid-template-rows: auto 0 minmax(0, 1fr);
 }
@@ -796,7 +792,8 @@ main { padding-top: 8px; }
 .prepared-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 0.42fr);
-  grid-template-rows: auto minmax(0, 1fr);
+  /* Explicit rows keep the editor in place while the attempts row and repair queue come and go. */
+  grid-template-rows: minmax(30px, auto) auto minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
 }
@@ -804,6 +801,10 @@ main { padding-top: 8px; }
 .prepared-body > .editor-wrap { min-width: 0; }
 .prepared-body > .cleanup-result,
 .prepared-body > .cleanup-disclosure { grid-column: 1 / -1; }
+.prepared-body > .cleanup-result { grid-row: 1; }
+.prepared-body > .cleanup-disclosure { grid-row: 2; }
+.prepared-body > .editor-wrap,
+.prepared-body > .smart-repair-review { grid-row: 3; }
 
 .cleanup-result {
   display: flex;
@@ -925,7 +926,7 @@ textarea::placeholder { color: var(--muted); font-style: italic; }
   letter-spacing: 0.05em;
 }
 
-.panel-footer-actions { display: flex; align-items: center; gap: 6px; }
+.panel-footer-actions { display: flex; align-items: center; gap: 6px; min-height: 30px; }
 .panel-footer-actions .button { min-height: 30px; padding: 5px 10px; font-size: 0.66rem; }
 .panel-footer-actions .button:disabled { opacity: 0.72; }
 #model-label { color: var(--ink); }
@@ -1266,8 +1267,9 @@ textarea::placeholder { color: var(--muted); font-style: italic; }
   }
   .prepared-body {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(140px, 1fr) minmax(300px, auto);
+    grid-template-rows: auto auto minmax(140px, 1fr) minmax(300px, auto);
   }
+  .prepared-body > .smart-repair-review { grid-row: 4; }
   .smart-repair-review { max-height: 360px; border-top: 1px solid var(--line); border-left: 0; }
   .settings-section-heading { align-items: stretch; flex-direction: column; }
   .correction-settings label { min-width: 0; }

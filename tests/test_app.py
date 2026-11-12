@@ -2544,7 +2544,11 @@ async function settle() { await new Promise((resolve) => setImmediate(resolve));
     dialogOpen: elements["#error-details-dialog"].open,
     dialogKind: elements["#error-details-dialog"].dataset.kind,
   };
-  const invalidatedBeforeRetry = elements["#smart-repair-review"].hidden;
+  const invalidatedBeforeRetry = {
+    hidden: elements["#smart-repair-review"].hidden,
+    state: elements["#smart-repair-review"].dataset.state,
+    summary: elements["#smart-repair-summary"].textContent,
+  };
   malformed = false;
   const cleanupRequestsBeforeRetry = cleanupRequests;
   const copiedBeforeRetry = copied.length;
@@ -2559,6 +2563,7 @@ async function settle() { await new Promise((resolve) => setImmediate(resolve));
       copiedDelta: copied.length - copiedBeforeRetry,
       recoveryHidden: elements["#cleanup-recovery"].hidden,
       dialogOpen: elements["#error-details-dialog"].open,
+      reviewHidden: elements["#smart-repair-review"].hidden,
     },
   }));
 })().catch((error) => { process.stderr.write(error.stack); process.exit(1); });
@@ -2585,7 +2590,11 @@ async function settle() { await new Promise((resolve) => setImmediate(resolve));
             "selected": True,
         },
         "copied": ["send the report now"],
-        "invalidated": True,
+        "invalidated": {
+            "hidden": False,
+            "state": "unavailable",
+            "summary": "No repairs",
+        },
         "malformed": {
             "prepared": "send teh report",
             "status": "error",
@@ -2602,6 +2611,7 @@ async function settle() { await new Promise((resolve) => setImmediate(resolve));
             "copiedDelta": 0,
             "recoveryHidden": True,
             "dialogOpen": False,
+            "reviewHidden": True,
         },
     }
 

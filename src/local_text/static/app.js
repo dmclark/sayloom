@@ -189,6 +189,7 @@
     status = nextStatus;
     elements.outgoingKind.dataset.state = nextStatus;
     renderCountsAndSelection();
+    renderSmartRepairReview();
   }
 
   function effectiveCorrectionMode() {
@@ -321,18 +322,45 @@
     renderSmartRepairReview();
   }
 
+  function smartRepairReviewState() {
+    if (smartRepairResultCurrent) return ["current", null, null];
+    if (!elements.original.value) {
+      return ["empty", "No repairs yet", "Repairs appear after Smart prepares Original."];
+    }
+    if (["waiting", "cleaning"].includes(status)) {
+      return ["pending", "Checking…", "Smart is preparing the current Original. Earlier repairs were cleared."];
+    }
+    if (confirmedPreparedRevision === draftRevision) {
+      return ["confirmed", "No generated repairs", "Prepared is your confirmed wording, not a Smart result."];
+    }
+    if (["error", "timeout"].includes(status)) {
+      return ["unavailable", "No repairs", "Smart did not return a current result, so there is nothing to inspect."];
+    }
+    return ["stale", "No current repairs", "Earlier repairs no longer match Original and were cleared."];
+  }
+
   function renderSmartRepairReview() {
-    elements.smartRepairReview.hidden = !smartRepairResultCurrent;
-    elements.workspace.classList.toggle("has-smart-repair-review", smartRepairResultCurrent);
+    // Smart keeps the inspection area in place through every state so the editors do not move.
+    const visible = smartRepairResultCurrent || draftPreparationMode === "smart";
+    const [state, summary, note] = smartRepairReviewState();
+    elements.smartRepairReview.hidden = !visible;
+    elements.smartRepairReview.dataset.state = state;
+    elements.workspace.classList.toggle("has-smart-repair-review", visible);
     elements.smartRepairList.textContent = "";
     if (!smartRepairResultCurrent) {
       elements.smartRepairSelection.hidden = true;
+      elements.smartRepairSummary.textContent = summary;
+      elements.smartRepairNote.textContent = note;
+      elements.smartRepairNote.hidden = false;
       return;
     }
 
     elements.smartRepairSummary.textContent = smartRepairs.length === 0
       ? "No lexical repairs"
       : `${smartRepairs.length} repair${smartRepairs.length === 1 ? "" : "s"}`;
+    elements.smartRepairNote.textContent = smartRepairs.length === 0
+      ? "Smart made no lexical repairs to this draft."
+      : "Select a repair to inspect its corresponding wording and sentence context.";
     smartRepairs.forEach((repair) => {
       const item = document.createElement("li");
       const button = document.createElement("button");
@@ -706,6 +734,7 @@
     elements.smartModeDisclosure.hidden = draftPreparationMode !== "smart";
     elements.runCleanup.disabled = draftPreparationMode === "off";
     renderExplicitSmartAction();
+    renderSmartRepairReview();
   }
 
   function readWorkspacePreferences() {
