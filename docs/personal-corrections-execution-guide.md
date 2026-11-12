@@ -1,9 +1,9 @@
 # Personal Corrections execution guide
 
-- **Status:** Required contributor to selected inspection-first delivery; technical and acceptance reconciliation pending
+- **Status:** Inspection-first save entry and ordinary-use direction confirmed; technical/operational contract pending
 - **Active phase:** None; no implementation phase active
 - **Initial user:** One implicit private local user
-- **Last confirmed:** 2026-11-10 — inspection-first contribution selected; broader complete-loop design retained, acceptance unverified
+- **Last confirmed:** 2026-11-12 — save-entry direction approved; ordinary use replaces a separate inspection effectiveness assessment
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
 - **Domain vocabulary:** [`GLOSSARY.md`](../GLOSSARY.md)
@@ -22,8 +22,9 @@ The selected next delivery is inspection-first assistance with useful contextual
 influence from explicitly saved Personal Corrections, alongside prospective
 private activity history and accessible review under the
 [product implementation plan](product-implementation-plan.md). The bounded
-technical contribution and acceptance applicability require reconciliation before
-build selection; the historical umbrella and child graph are not automatically
+technical contract and operational applicability require reconciliation before
+build selection; ordinary use does not require a separate effectiveness assessment.
+The historical umbrella and child graph are not automatically
 resumed. Audit residual continuity WIP only for necessary protections, not
 wholesale integration.
 
@@ -122,10 +123,17 @@ before new-state inheritance. Evidence Collection must not be reintroduced.
 ## Current contract
 
 The saving, ownership and management controls below also govern inspection-first
-reuse. Smart-specific review paths remain retained contracts, not a designed
-inspection-first save interaction. A finding alone supplies no Intended wording
-and cannot create a mapping. That save-entry interaction remains unresolved;
-ordinary inspection, application or dismissal saves nothing.
+reuse. The owner-approved entry starts from selected current Original wording,
+freezes that Observed snapshot and opens separate Personal Correction review,
+even without a finding or current Prepared. The owner supplies Intended wording,
+or explicitly adopts and may edit an offered alternative. Review identifies the
+source and shows the individual operation, reusable phrase pair, applicability
+restriction and optional bounded sentences; selections start unchecked. Only a
+separate Save selected authorizes reuse. Saving need not apply wording; ordinary
+editing, inspection, application and dismissal save nothing. A finding alone
+supplies no Intended wording. Exact state transitions, stale/conflict handling
+and technical representation remain bounded contract work. Existing
+Prepared-confirmation review and retained Smart-specific paths remain intact.
 
 ### Ownership and activation
 
@@ -335,25 +343,42 @@ before any separately authorized implementation or tracker reconciliation.
 
 ## First usefulness gate
 
-**Inspection-first acceptance applicability — reconciliation pending:** The
-retained nine-step Smart-loop checklist and agreed assessment below are not an
-approved executable assessment of issue highlighting. Their Smart outputs,
-generation counts and prerequisites retain their original scope; no measures,
-scenarios, repetitions or five-second ceiling are silently changed or waived.
+### Ordinary-use boundary
 
-A bounded adaptation must settle useful detections and misses, false alarms and
-inspection effort, incremental saved-mapping benefit, repeated repairs, combined
-editing/saving/management/recovery costs, controls, responsiveness and explicit
-owner approval of the exact candidate and relevant working state. These remain
-unresolved operationalization, not frozen new thresholds or scenarios.
+**Owner decision, 2026-11-12:** The owner approved the save-entry direction above
+and will use inspection-first assistance normally and see how it goes. A separate
+effectiveness assessment is not required or planned. There is no required
+manual/assisted or mappings-off/on comparison, frozen effectiveness scenario set,
+repetition count, two-later-draft exercise, effort report, usefulness evidence
+package or effectiveness sign-off. Do not recreate that assessment under another
+name. Useful contextual reuse, fewer repeated repairs and less total effort
+remain goals; the owner has no mandatory measurement or reporting task.
 
-The following is a capability checklist, not an executed or sufficient
-complete-loop acceptance result. The owner agreed the assessment design below
-in [the usefulness design session](https://ampcode.com/threads/T-01a12ca2-46cb-736b-87ab-ffa97de2c104).
-[The closed usefulness design decision's resolution](https://github.com/dmclark/sayloom/issues/164#issuecomment-6113842273)
-records the published assessment-design provenance, not usefulness acceptance
-or permission to execute. #163 and #164 remain closed decisions in their original
-scope; inspection-first acceptance adaptation is outstanding.
+Decision source: [the owner approval and ordinary-use amendment](https://ampcode.com/threads/T-01a1c76b-f66b-7621-98d1-015918efde77),
+continuing [#192](https://github.com/dmclark/sayloom/issues/192).
+
+Correctness, safety, privacy and operational checks remain required. Verify
+explicit saving and authorization, contextual preservation/abstention, all anchored
+repair types, management, cross-session persistence, Cleanup isolation,
+Prepared/CART, stale/late-result and uninterrupted editing/copying protections,
+and the selected prospective-history backup/restore/deletion contract. These are
+engineering checks, not evidence of quantified effectiveness. Ordinary use grants
+no new private-data access, research reuse or capture expansion.
+
+[#172](https://github.com/dmclark/sayloom/issues/172) still owns provider/privacy,
+routing, application timing and operational applicability of #160–#162. No old
+gate is claimed passed and no replacement deadline is selected here. Reconcile
+those requirements explicitly, distinguishing necessary operational/safety checks
+from the separate effectiveness assessment the owner declined. Implementation,
+private-data use, spending and activation require their separate authorization.
+
+### Retained Smart capability checklist
+
+The following nine-step checklist and assessment retain their original Smart
+scope as provenance; they are not prerequisites for ordinary inspection-first
+use. #163 and #164 remain closed decisions, not completed runtime acceptance.
+Their historical outputs, scenarios, measures, repetitions, prerequisites and
+five-second ceiling remain recorded below, without execution authority.
 
 1. Smart puts an inferred repair directly into Prepared, or the user supplies
    intended wording for a missed repair.
@@ -378,10 +403,14 @@ one replacement-only demonstration does not establish complete-loop acceptance.
 
 ### Agreed single-user usefulness assessment
 
-This is the single home of the agreed assessment design. It is bounded
-single-user engineering evidence, not a pilot, statistical efficacy claim, or
-resumed formal evaluation. It retains its Smart repair/regeneration scope;
-inspection-first applicability remains pending under the notice above.
+**Historical Smart assessment — not required for the selected inspection-first
+delivery:** This is the single home of the original agreed assessment design,
+retained unchanged in scope for provenance under the
+[closed #164 resolution](https://github.com/dmclark/sayloom/issues/164#issuecomment-6113842273).
+It is not an instruction to run an assessment. The owner's later
+[ordinary-use decision](#ordinary-use-boundary) supersedes carrying it into
+inspection-first delivery. The original requirements below are preserved, not
+passed, waived retrospectively or authorized for execution.
 
 **Execution prerequisites — not established:** both a working complete loop and
 an owner-accepted [dependable-preparation evidence gate](https://github.com/dmclark/sayloom/issues/162#issuecomment-6112233798)
