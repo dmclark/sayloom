@@ -365,11 +365,11 @@ and the selected prospective-history backup/restore/deletion contract. These are
 engineering checks, not evidence of quantified effectiveness. Ordinary use grants
 no new private-data access, research reuse or capture expansion.
 
-[#172](https://github.com/dmclark/sayloom/issues/172) still owns provider/privacy,
-routing, application timing and operational applicability of #160–#162. No old
-gate is claimed passed and no replacement deadline is selected here. Reconcile
-those requirements explicitly, distinguishing necessary operational/safety checks
-from the separate effectiveness assessment the owner declined. Implementation,
+The owner accepts OpenAI Direct as the provider route for ordinary use and is not
+pursuing OpenRouter now; that [provider decision](product-implementation-plan.md#providerapplication-reconciliation-and-independent-gates)
+closes [#172](https://github.com/dmclark/sayloom/issues/172). No old gate is
+claimed passed and no replacement deadline is selected here. Do not reintroduce
+the separate effectiveness assessment the owner declined. Implementation,
 private-data use, spending and activation require their separate authorization.
 
 ### Retained Smart capability checklist

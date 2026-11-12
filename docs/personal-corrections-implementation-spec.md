@@ -821,9 +821,9 @@ identify the checks applicable to the selected slice without claiming broader
 completion. They do not prove owner-specific effectiveness. The
 [original Smart assessment](personal-corrections-execution-guide.md#agreed-single-user-usefulness-assessment)
 and closed #164 remain provenance, not a required inspection-first evidence
-package or a passed gate. #172 owns provider/privacy/timing and #160–#162
-operational applicability; no deadline or independent safety requirement is
-silently waived. The managed-backup check below still applies before any complete
+package or a passed gate. The [provider decision](product-implementation-plan.md#providerapplication-reconciliation-and-independent-gates)
+closing #172 selects OpenAI Direct for ordinary use; no deadline or independent
+safety requirement is silently waived. The managed-backup check below still applies before any complete
 durable-deletion claim. No execution, private-data access or activation is
 authorized by this reconciliation.
 
