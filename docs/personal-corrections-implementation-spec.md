@@ -1,6 +1,6 @@
 # Personal Corrections implementation specification
 
-- **Status:** Selected inspection-first contribution; technical/acceptance reconciliation pending, no implementation activated
+- **Status:** Inspection-first save entry and ordinary-use direction confirmed; technical/operational contract pending, no implementation activated
 - **Scope:** Private, single-user Personal Corrections; retained Smart-specific technical references
 - **Execution authority:** [Personal corrections execution guide](personal-corrections-execution-guide.md)
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
@@ -24,7 +24,8 @@ useful saved-correction influence in inspection-first assistance, alongside
 private history and accessible review. This supersedes the blanket next-delivery
 deferral and Smart-only assistance surface above, not consent or privacy controls.
 The [execution guide](personal-corrections-execution-guide.md#first-usefulness-gate)
-records outstanding technical and acceptance reconciliation. The retained
+records the later ordinary-use decision and remaining technical/operational
+reconciliation. The retained
 Smart-specific schema/API/event and ticket sections are bounded references, not
 a ready-to-build issue-detection specification or a requirement to produce a
 replacement first. No implementation phase is activated.
@@ -34,8 +35,22 @@ replacement first. No implementation phase is activated.
 This specification retains the Personal Corrections model, review/save lifecycle,
 Smart retrieval, history, deletion, export, migration and acceptance references.
 Inspection-first findings and optional suggestions extend the permitted reuse
-surface; their technical contribution and acceptance adaptation remain unresolved.
-The retained Smart contract does not define issue detection.
+surface. The owner approved an Original-bound supplied-Intended save entry and
+ordinary use instead of a separate effectiveness assessment. Exact technical
+mechanics and applicable operational requirements remain unresolved. The retained
+Smart contract does not define issue detection.
+
+**Owner amendment, 2026-11-12:** Initial inspection and explicit alternative
+application target current Original, without requiring generated Prepared.
+Separate review starts from selected current Original wording, freezes Observed
+and lets the owner supply Intended wording or explicitly adopt and edit an
+alternative. It is available without a finding or Prepared. Review shows the
+source, individual operation, reusable anchored phrase pair, applicability
+restriction and optional bounded sentences, with unchecked selections. Only
+Save selected authorizes durable reuse; saving need not apply wording and
+ordinary editing/application/dismissal saves nothing. Existing Prepared review
+and broader Smart paths remain intact. Exact state, schema/API/event and
+stale/conflict mechanics require a separately approved technical contract.
 
 This document does not authorize implementation, migration, private-data
 access, provider traffic, GitHub mutation, or operation of the stable
@@ -788,28 +803,29 @@ not mutated.
 
 ## Acceptance checks
 
-**Inspection-first acceptance applicability — reconciliation pending:** The
-Smart-specific checks and linked assessment retain their original outputs,
-generation measures, scenarios, repetitions, prerequisites and five-second ceiling.
-They are not an approved executable assessment of issue highlighting. The
-[closed #164 resolution](https://github.com/dmclark/sayloom/issues/164#issuecomment-6113842273)
-is design provenance, not acceptance passed. A bounded adaptation must settle
-detections/misses, false alarms/inspection effort, incremental mapping benefit,
-repeated repairs, combined editing/saving/management/recovery costs, controls,
-responsiveness and exact-candidate owner approval; no new thresholds are set here.
+The [ordinary-use boundary](personal-corrections-execution-guide.md#ordinary-use-boundary)
+governs the selected inspection-first delivery. The owner will use it normally
+and see how it goes; no separate effectiveness assessment, paired comparison,
+repetition schedule, effort report or usefulness sign-off is required. Useful
+saved-mapping influence and reduced repeated repairs/total effort remain product
+goals, not a mandatory measurement task.
 
 Observed/supplied/intended-produced events do not represent issue detection,
 useful warnings, owner correctness or causation. Their adaptation is not designed
 here. Passing retained event checks cannot establish inspection-first usefulness.
 
-The following implementation correctness checks must pass with synthetic text;
-they do not establish complete-loop usefulness acceptance. That additionally
-requires the owner-approved evidence package defined by the
-[agreed usefulness assessment](personal-corrections-execution-guide.md#agreed-single-user-usefulness-assessment).
-Neither passing these checks nor agreeing the assessment establishes its
-execution prerequisites or authorizes acceptance execution. The managed-backup
-check below applies to complete durable deletion, not a new prerequisite for
-the usefulness assessment design.
+Retain implementation correctness, preservation, authorization, privacy and
+operational checks with synthetic isolated data. The retained checks below
+include broader Smart-specific behavior; a bounded technical contract must
+identify the checks applicable to the selected slice without claiming broader
+completion. They do not prove owner-specific effectiveness. The
+[original Smart assessment](personal-corrections-execution-guide.md#agreed-single-user-usefulness-assessment)
+and closed #164 remain provenance, not a required inspection-first evidence
+package or a passed gate. #172 owns provider/privacy/timing and #160–#162
+operational applicability; no deadline or independent safety requirement is
+silently waived. The managed-backup check below still applies before any complete
+durable-deletion claim. No execution, private-data access or activation is
+authorized by this reconciliation.
 
 ### Persistence and migration
 

@@ -6,7 +6,7 @@
 - **Audience:** Product, design, engineering, research, and delivery contributors
 - **Authority:** This document is the sole authority for Sayloom's product
   vision, positioning, roadmap direction, audience, and scope.
-- **Confirmed:** 2026-10-01; owner direction amended 2026-11-10
+- **Confirmed:** 2026-10-01; owner direction amended 2026-11-12
 
 ## Authority and supersession
 
@@ -274,8 +274,13 @@ one must not overwrite another or silently broaden its scope.
 Saved mappings must usefully improve later assistance across sessions, including
 contextual issue spotting, not merely be stored, retrieved, or produce more
 highlights. A finding alone supplies no Intended wording and cannot create a
-mapping. The inspection-first save-entry interaction remains unresolved; existing
-explicit review and saving paths remain intact.
+mapping. The owner-approved inspection-first entry starts from selected current
+Original wording and opens separate Personal Correction review, even without a
+finding or current Prepared. The owner supplies Intended wording, or explicitly
+adopts and may edit an offered alternative, before separately reviewing and saving
+the mapping. Saving need not apply wording; editing or applying wording does not
+save. Existing explicit review and saving paths remain intact. Exact technical
+mechanics require a bounded implementation contract.
 
 One Personal Corrections area manages all repair types. Editing suspends the
 saved correction's reuse until explicit reviewed save; cancelling retains the
@@ -318,6 +323,19 @@ delivery. This is an ordinary optional workflow, not randomized trial assignment
 or a time-limited experiment. Failures leave editing and copying independent.
 Retain spending safeguards, bounded requests and no automatic retries; exact
 checker/provider configuration and application timing remain unresolved.
+
+**Owner amendment, 2026-11-12:** Initial inspection and explicit alternative
+application target current Original, without requiring generated Prepared or
+completion of automatic Smart. Inspection alone does not invalidate confirmed
+Prepared; changing Original follows the existing Prepared/Outgoing invalidation
+contract. The owner will use the feature normally and see how it goes, rather
+than undertake a separate effectiveness assessment. No required benchmark,
+paired comparison, repetition schedule, effort report or effectiveness sign-off
+is a prerequisite for ordinary use. Useful saved-correction influence, fewer
+repeated repairs and less total effort remain product goals, not mandatory
+measurement work. Correctness, safety, privacy and operational verification remain
+required; this decision neither claims effectiveness nor expands collection or
+private-data permission. See the [ordinary-use boundary](docs/personal-corrections-execution-guide.md#ordinary-use-boundary).
 
 Start history prospectively. Automatically retain Sayloom input passages,
 generated results, findings, suggestions, inspection/application/dismissal actions,
@@ -473,7 +491,7 @@ The published phrase-alternatives trial branch is experimental source, not a
 main delivery, completed trial or proof of benefit. Inspection-first findings,
 optional suggestions, useful saved-correction influence, prospective automatic
 history and managed history backup/restore remain planned work. Technical and
-inspection-first acceptance reconciliation remain outstanding; no checker is
+operational reconciliation remain outstanding; no checker is
 selected. Existing trial permissions and budgets do not activate that work.
 
 The current checkout is a useful local-first stage, not the complete product

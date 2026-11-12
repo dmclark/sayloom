@@ -1,6 +1,6 @@
 # Sayloom product implementation plan
 
-- **Status:** Owner-selected inspection-first assistance with saved-correction influence; technical/acceptance reconciliation and implementation outstanding
+- **Status:** Inspection-first save entry and ordinary-use direction confirmed; technical/operational reconciliation and implementation outstanding
 - **Audience:** Product, design, engineering, research, and delivery contributors
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
@@ -37,6 +37,16 @@ may have no alternative; the owner keeps, edits or explicitly applies wording.
 Hosting and other users remain deferred indefinitely. This selects product
 scope, not implementation acceptance or authority to activate recording or providers.
 
+**Owner amendment, 2026-11-12:** Initial inspection and explicit alternative
+application target Original. Separate Personal Correction review starts from
+selected current Original wording and owner-supplied Intended wording, without
+requiring a finding or current Prepared. Saving and applying remain independent.
+The owner will use the feature normally and see how it goes, rather than undertake
+a separate effectiveness assessment. The
+[ordinary-use boundary](personal-corrections-execution-guide.md#ordinary-use-boundary)
+distinguishes that decision from required engineering verification. No
+implementation, private-data use, spending or activation is authorized here.
+
 1. **Preserve source before adaptation.** The November 3, 2026 source-only
    preservation gate passed, including isolated recovery. It did not back up
    private operating records or clear holdings for deletion. Changes after
@@ -49,11 +59,11 @@ scope, not implementation acceptance or authority to activate recording or provi
    read-back verified; Project fields were deliberately unchanged. This completes
    earlier scoped document/issue reconciliation, not inspection-first
    technical/acceptance reconciliation or approval of implementation or activation.
-3. **Reconcile scope and acceptance before implementation selection.** Define the
-   bounded saved-correction contribution and adapt the retained Smart-specific
-   assessment explicitly for inspection-first assistance. Do not silently change
-   its measures or waive applicable gates. Then set the bounded implementation
-   contract: specify passage identity,
+3. **Set the bounded technical and operational contract before implementation
+   selection.** Preserve the approved save-entry and ordinary-use direction; do
+   not require a separate inspection effectiveness assessment. Retain explicit
+   saving, contextual reuse/abstention, all anchored repair types, management,
+   Cleanup independence and Prepared/CART protections. Specify passage identity,
    event ordering, stale/late responses, crash/retry recovery, recording failure,
    pause/private passages, deletion and managed-backup restore. Obtain approval
    for exact private destinations and provider/cost configuration. Do not invent
@@ -87,9 +97,10 @@ scope, not implementation acceptance or authority to activate recording or provi
 - Visible pause/private controls exclude a passage from retained history and
   do not promise offline processing or provider-side deletion.
 - Test failures, no findings or suggestions, findings without alternatives, missed issues, false alarms,
-  protected wording, contextual abstention and repeated occurrences. Establish
-  incremental mapping benefit and fewer repeated repairs with worthwhile net
-  savings after inspection, editing, saving, management and recovery costs.
+  protected wording, contextual abstention and repeated occurrences as applicable
+  engineering behavior. Useful contextual mapping influence, fewer repeated
+  repairs and worthwhile total effort savings remain goals judged through
+  ordinary use, not a required comparison exercise or effectiveness report.
   No randomized assignment or trial expiry remains in the ongoing workflow.
 - Managed backup restore preserves records and cannot undo an explicit deletion
   within managed scope. User exports and provider retention remain outside it.
@@ -97,8 +108,9 @@ scope, not implementation acceptance or authority to activate recording or provi
   import, history-informed suggestions, Personal Correction creation or training.
 - Verify affected tests and desktop browser states, both review surfaces and
   applicable broader integration requirements. Mobile remains deferred. Do not
-  claim the skipped final #187 browser/runtime checks passed. Owner usefulness
-  acceptance is separate from passing implementation checks.
+  claim the skipped final #187 browser/runtime checks passed. Passing engineering
+  checks does not establish effectiveness; a separate usefulness assessment or
+  effectiveness sign-off is not required for this delivery.
 
 ### Provider/application reconciliation and independent gates
 
@@ -120,6 +132,11 @@ waives them nor silently replaces the older five-second application contract.
 No local checker is selected or verified; local processing does not automatically
 pass or remove these gates. No new timing allocation or provider qualification
 is established here.
+
+The owner's ordinary-use decision must be carried into that reconciliation:
+distinguish necessary correctness/safety/privacy/operational verification from
+the separate effectiveness assessment the owner declined. Do not reintroduce
+that assessment under another gate name or claim the historical gates passed.
 
 ## Deferred Personal Corrections sequence
 
@@ -160,15 +177,15 @@ does not complete ordered mixed mappings or the loop. Current issues, not older
 disposition tables, own actionable state. This reconciliation creates no build
 tickets and does not advance or weaken the unverified preparation gate.
 
-The owner agreed the
-[single-user usefulness assessment design](personal-corrections-execution-guide.md#agreed-single-user-usefulness-assessment).
-Execution and owner acceptance remain outstanding: neither a working complete
-loop nor owner-accepted dependable preparation is established. Implementation
-correctness checks do not prove usefulness. The
-[usefulness assessment design decision](https://github.com/dmclark/sayloom/issues/164#issuecomment-6113842273)
-is resolved, and its reviewed document reconciliation is published.
-This design agreement authorizes no assessment execution, implementation, or
-operations and changes no phase order, deletion scope, or deferred backup policy.
+The [original single-user Smart usefulness assessment](personal-corrections-execution-guide.md#agreed-single-user-usefulness-assessment)
+and [closed #164 resolution](https://github.com/dmclark/sayloom/issues/164#issuecomment-6113842273)
+remain intact as design provenance, not completed acceptance or execution
+authority. The owner's later [ordinary-use decision](personal-corrections-execution-guide.md#ordinary-use-boundary)
+means that a separate effectiveness assessment is not required for the selected
+inspection-first delivery. Do not adapt the historical comparisons, scenarios,
+repetitions or effectiveness sign-off into a new delivery prerequisite. Technical
+and applicable operational contracts remain outstanding; no phase order, deletion
+scope, backup policy, implementation or activation authority changes here.
 
 Within the retained capability, the dependency order remains:
 
