@@ -146,6 +146,12 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="toggle-sidebar"' in response.text
     assert 'id="draft-preparation-mode"' in response.text
     assert 'id="default-preparation-mode"' in response.text
+    assert 'class="draft-preparation-control" for="draft-preparation-mode" hidden' in response.text
+    assert (
+        'class="settings-section correction-settings" '
+        'aria-labelledby="correction-settings-title" hidden'
+        in response.text
+    )
     assert '<option value="off">Off — Keep Original</option>' in response.text
     assert (
         '<option value="conservative">Conservative — Preserve my words</option>'
@@ -158,14 +164,14 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert "Clean automatically" not in response.text
     assert "Experimental Smart correction" in response.text
     assert "Learn about Smart correction" in response.text
-    assert "Formal evaluation and enrollment are not currently open." in response.text
+    assert "evaluation and enrollment" not in response.text
     assert 'id="run-smart-correction"' not in response.text
     assert 'id="nav-settings"' in response.text
     assert response.text.index('id="correction-settings-title"') < response.text.index(
         'id="targets-title"'
     )
-    assert 'id="smart-task-context"' in response.text
-    assert "Task context · this request only" in response.text
+    assert 'id="smart-task-context"' not in response.text
+    assert "Task context · this request only" not in response.text
     assert 'id="smart-repair-review"' in response.text
     assert 'id="smart-repair-list"' in response.text
     assert 'id="copy-outgoing"' in response.text
@@ -1703,7 +1709,7 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     assert "WORKSPACE_PREFERENCES_KEY" in script.text
     assert 'window.matchMedia("(max-width: 980px)")' in script.text
     assert "correction_mode: correctionMode" in script.text
-    assert "task_context: taskContext" in script.text
+    assert "task_context" not in script.text
     assert 'fetch("/api/preferences/preparation-default"' in script.text
     assert 'elements.draftPreparationMode.addEventListener("change"' in script.text
     assert "requestDraftRevision !== draftRevision" in script.text
@@ -1729,7 +1735,7 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     assert "publishNow();" not in initialization
 
 
-def test_browser_sends_ephemeral_task_context_and_discards_stale_smart_state(
+def test_browser_omits_task_context_and_discards_stale_smart_state(
     initialized_settings: Settings,
 ) -> None:
     script = TestClient(create_app(initialized_settings)).get("/static/app.js").text
@@ -1810,13 +1816,12 @@ async function settle() {
   await settle();
   const original = elements["#original-text"];
   const prepared = elements["#prepared-text"];
-  const taskContext = elements["#smart-task-context"];
-  original.value = "send teh report";
+  original.value = "send teh memo";
   await original.dispatch("input", { isTrusted: true });
-  taskContext.value = "First transient context";
   const staleRun = elements["#run-cleanup"].dispatch("click");
   await settle();
-  taskContext.value = "Current transient context";
+  original.value = "send teh report";
+  await original.dispatch("input", { isTrusted: true });
   const currentRun = elements["#run-cleanup"].dispatch("click");
   await settle();
   cleanupResolvers[1](response({
@@ -1838,7 +1843,6 @@ async function settle() {
     cleanupRequests,
     prepared: prepared.value,
     repairCount: prepared.dataset.repairCount,
-    taskContextHidden: elements["#smart-task-context-field"].hidden,
   }));
 })().catch((error) => { process.stderr.write(error.stack); process.exit(1); });
 """
@@ -1851,13 +1855,13 @@ async function settle() {
     )
     observed = json.loads(result.stdout)
 
-    assert [request["task_context"] for request in observed["cleanupRequests"]] == [
-        "First transient context",
-        "Current transient context",
+    assert [request["original_text"] for request in observed["cleanupRequests"]] == [
+        "send teh memo",
+        "send teh report",
     ]
+    assert all("task_context" not in request for request in observed["cleanupRequests"])
     assert observed["prepared"] == "Send the report."
     assert observed["repairCount"] == "1"
-    assert observed["taskContextHidden"] is False
 
 
 def test_browser_preparation_modes_and_user_confirmed_prepared_lifecycle(
@@ -1966,7 +1970,6 @@ const settle = async () => {
   const smartMode = {
     selected: draftMode.value,
     disclosureHidden: elements["#smart-mode-disclosure"].hidden,
-    taskContextHidden: elements["#smart-task-context-field"].hidden,
   };
 
   draftMode.value = "off";
@@ -1976,7 +1979,6 @@ const settle = async () => {
     outgoing: elements["#outgoing-kind"].textContent,
   };
 
-  elements["#smart-task-context"].value = "Stale context from the previous Original";
   original.selectionStart = 0; original.selectionEnd = original.value.length;
   await original.dispatch("beforeinput", { isTrusted: true });
   original.value = "Replacement draft";
@@ -1990,10 +1992,8 @@ const settle = async () => {
     promptOverrides: requests.filter((item) => item.url === "/api/cleanup")
       .map((item) => Object.hasOwn(item.body, "prompt_version_id")),
     promptHistoryRequested: requests.some((item) => item.url === "/api/prompts"),
-    replacementCarriedTaskContext: Object.hasOwn(
-      requests.filter((item) => item.url === "/api/cleanup").at(-1).body,
-      "task_context",
-    ),
+    carriedTaskContext: requests.filter((item) => item.url === "/api/cleanup")
+      .some((item) => Object.hasOwn(item.body, "task_context")),
     smartMode, offMode,
     replacementMode: draftMode.value,
     savedDefault: defaultMode.value,
@@ -2053,10 +2053,8 @@ const settle = async () => {
   assert.equal(prepared.value, exact);
   assert.equal(elements["#select-prepared"].disabled, false);
 
-  // Settings and Smart guidance affect only a later explicit generation.
+  // Mode changes affect only a later explicit generation.
   await mode("smart");
-  elements["#smart-task-context"].value = "New guidance";
-  await elements["#smart-task-context"].dispatch("input");
   assert.equal(prepared.value, exact); assert.equal(cleanupCount(), beforeConfirm);
   await open(); assert.equal(intended.value, exact);
   await mode("conservative"); await mode("smart");
@@ -2134,11 +2132,10 @@ const settle = async () => {
         "modes": ["conservative", "conservative", "smart", "smart"],
         "promptOverrides": [False, False, False, False],
         "promptHistoryRequested": False,
-        "replacementCarriedTaskContext": False,
+        "carriedTaskContext": False,
         "smartMode": {
             "selected": "smart",
             "disclosureHidden": False,
-            "taskContextHidden": False,
         },
         "offMode": {
             "prepared": "",
@@ -2401,7 +2398,6 @@ def test_browser_smart_repair_queue_selects_span_and_does_not_gate_outgoing(
     assert "function validateSmartRepairs" in script
     assert "function invalidateSmartRepairReview" in script
     assert "function selectSmartRepair" in script
-    assert 'elements.smartTaskContext.addEventListener("input"' in script
     assert 'elements.activePromptSelector.addEventListener("change"' not in script
     assert 'elements.copyOutgoing.addEventListener("click"' in script
     assert "navigator.clipboard.writeText(selectedOutgoingState().outgoing_text)" in script
@@ -2535,8 +2531,6 @@ async function settle() { await new Promise((resolve) => setImmediate(resolve));
     ),
   };
   await elements["#copy-outgoing"].dispatch("click");
-  elements["#smart-task-context"].value = "changed";
-  await elements["#smart-task-context"].dispatch("input");
   malformed = true;
   await elements["#run-cleanup"].dispatch("click");
   const cleanupTrigger = elements["#cleanup-status"];

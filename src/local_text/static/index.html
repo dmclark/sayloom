@@ -21,7 +21,7 @@
 
     <main>
       <section id="workspace-controls" class="control-rail" aria-label="Preparation controls">
-        <label class="draft-preparation-control" for="draft-preparation-mode">
+        <label class="draft-preparation-control" for="draft-preparation-mode" hidden>
           <span>Current draft</span>
           <select id="draft-preparation-mode">
             <option value="off">Off — Keep Original</option>
@@ -36,7 +36,6 @@
             <div>
               <p>Smart attempts to repair likely recognition errors without changing intended meaning.</p>
               <p>Review every proposed repair before using Prepared text.</p>
-              <p>Formal evaluation and enrollment are not currently open.</p>
             </div>
           </details>
         </div>
@@ -94,21 +93,6 @@
                 aria-label="Maximize Original pane"
                 aria-pressed="false"
               ><span aria-hidden="true">Maximize</span></button>
-              <label
-                id="smart-task-context-field"
-                class="smart-task-context"
-                for="smart-task-context"
-                hidden
-              >
-                <span>Task context · this request only</span>
-                <input
-                  id="smart-task-context"
-                  type="text"
-                  maxlength="4000"
-                  autocomplete="off"
-                  placeholder="Optional: what are you writing?"
-                >
-              </label>
             </header>
             <div class="editor-wrap" id="original-editor-wrap">
               <textarea
@@ -240,7 +224,7 @@
                 <h2 id="settings-title">Settings</h2>
               </div>
             </header>
-            <section class="settings-section correction-settings" aria-labelledby="correction-settings-title">
+            <section class="settings-section correction-settings" aria-labelledby="correction-settings-title" hidden>
               <div class="settings-section-heading">
                 <div>
                   <h3 id="correction-settings-title">Correction</h3>

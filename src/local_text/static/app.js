@@ -28,8 +28,6 @@
     smartModeDisclosure: document.querySelector("#smart-mode-disclosure"),
     defaultPreparationMode: document.querySelector("#default-preparation-mode"),
     modeSaveState: document.querySelector("#mode-save-state"),
-    smartTaskContextField: document.querySelector("#smart-task-context-field"),
-    smartTaskContext: document.querySelector("#smart-task-context"),
     smartRepairReview: document.querySelector("#smart-repair-review"),
     smartRepairNote: document.querySelector("#smart-repair-note"),
     smartRepairSummary: document.querySelector("#smart-repair-summary"),
@@ -706,8 +704,6 @@
     elements.defaultPreparationMode.value = defaultPreparationMode;
     elements.draftPreparationMode.value = draftPreparationMode;
     elements.smartModeDisclosure.hidden = draftPreparationMode !== "smart";
-    elements.smartTaskContextField.hidden = draftPreparationMode !== "smart";
-    elements.smartTaskContext.disabled = draftPreparationMode !== "smart";
     elements.runCleanup.disabled = draftPreparationMode === "off";
     renderExplicitSmartAction();
   }
@@ -1245,7 +1241,6 @@
     const explicitSmart = requestedCorrectionMode === "smart"
       && effectiveCorrectionMode() !== "smart";
     const correctionMode = explicitSmart ? "smart" : effectiveCorrectionMode();
-    const taskContext = correctionMode === "smart" ? elements.smartTaskContext.value : "";
     if (explicitSmart) setExplicitSmartState("running");
     if (!originalText.trim()) {
       elements.prepared.value = originalText;
@@ -1283,7 +1278,6 @@
           ...(Number.isInteger(activePromptVersionId)
             ? { prompt_version_id: activePromptVersionId }
             : {}),
-          ...(taskContext.trim() ? { task_context: taskContext } : {}),
         }),
         signal: controller.signal,
       });
@@ -1294,7 +1288,6 @@
           || requestDraftRevision !== draftRevision
           || originalText !== elements.original.value
           || correctionMode !== effectiveCorrectionMode()
-          || taskContext !== (correctionMode === "smart" ? elements.smartTaskContext.value : "")
         ) return;
         elements.prepared.value = originalText;
         setStatus("error");
@@ -1309,7 +1302,6 @@
         || requestDraftRevision !== draftRevision
         || originalText !== elements.original.value
         || correctionMode !== effectiveCorrectionMode()
-        || taskContext !== (correctionMode === "smart" ? elements.smartTaskContext.value : "")
       ) return;
       if (
         !result || typeof result.prepared_text !== "string"
@@ -1378,7 +1370,6 @@
         || requestDraftRevision !== draftRevision
         || originalText !== elements.original.value
         || correctionMode !== effectiveCorrectionMode()
-        || taskContext !== (correctionMode === "smart" ? elements.smartTaskContext.value : "")
       ) return;
       elements.prepared.value = originalText;
       setStatus("error");
@@ -1443,7 +1434,6 @@
       draftPreparationMode = defaultPreparationMode;
       draftModeOverridden = false;
       elements.prepared.value = "";
-      elements.smartTaskContext.value = "";
     } else if (!currentOriginalText && elements.original.value && !draftModeOverridden) {
       draftPreparationMode = defaultPreparationMode;
     }
@@ -1535,12 +1525,6 @@
       renderCorrectionMode();
     } finally {
       elements.defaultPreparationMode.disabled = false;
-    }
-  });
-
-  elements.smartTaskContext.addEventListener("input", () => {
-    if (effectiveCorrectionMode() === "smart" && elements.original.value) {
-      scheduleCleanup();
     }
   });
 
@@ -1641,7 +1625,6 @@
     elements.original.value = "";
     elements.prepared.value = "";
     elements.prepared.dataset.repairCount = "0";
-    elements.smartTaskContext.value = "";
     setCleanupError(null);
     clearCleanupAttempts();
     setStatus("unchanged");
