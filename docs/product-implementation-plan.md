@@ -114,29 +114,24 @@ implementation, private-data use, spending or activation is authorized here.
 
 ### Provider/application reconciliation and independent gates
 
-[#172](https://github.com/dmclark/sayloom/issues/172#issuecomment-6256315317)
-owns provider/privacy/routing and application timing reconciliation. OpenAI
-Direct with a 30-second request cap is the latest recorded investigation
-direction, not an accepted application configuration or whole-visible deadline.
-Earlier OpenRouter single-model and model-pair plans are history, not current
-instructions to implement fallback. No automatic cloud retry or model fallback
-is selected; old budgets and stopped-run allowances grant no new spending.
+**Owner decision, 2026-11-12:** The owner is satisfied with the direct OpenAI
+connection and accepts OpenAI Direct, with its 30-second provider-request cap,
+as the provider route for ordinary use. OpenRouter is not being pursued now;
+its earlier single-model and model-pair plans are history, not instructions to
+implement fallback. No automatic cloud retry or model fallback is selected; old
+budgets and stopped-run allowances grant no new spending. This decision closes
+[#172](https://github.com/dmclark/sayloom/issues/172); no further provider,
+routing or application-timing reconciliation is planned.
 
 The accepted [cloud recovery](https://github.com/dmclark/sayloom/issues/160),
 [local backup](https://github.com/dmclark/sayloom/issues/161) and
 [combined preparation](https://github.com/dmclark/sayloom/issues/162) contracts
-remain unpassed. Their applicability to inspection-first assistance, including
-approved-mapping influence and any local checker, must
-be explicitly reconciled under #172 before activation. This sequence neither
-waives them nor silently replaces the older five-second application contract.
-No local checker is selected or verified; local processing does not automatically
-pass or remove these gates. No new timing allocation or provider qualification
-is established here.
-
-The owner's ordinary-use decision must be carried into that reconciliation:
-distinguish necessary correctness/safety/privacy/operational verification from
-the separate effectiveness assessment the owner declined. Do not reintroduce
-that assessment under another gate name or claim the historical gates passed.
+remain closed decisions and are not claimed passed. This decision does not
+revisit them; a later need to apply them, set a whole-visible deadline or add
+another provider starts from a new issue. No local checker is selected or
+verified. Correctness, safety, privacy and operational checks remain required;
+do not reintroduce the separate effectiveness assessment the owner declined
+under another gate name.
 
 ## Deferred Personal Corrections sequence
 
@@ -156,8 +151,8 @@ fallback. The local basic Cleanup backup is an incomplete supporting capability,
 not a replacement for the broader Cleanup contract or contextual Smart repair.
 
 Historical OpenRouter specifications and their conditional budgets remain
-provenance under #172, not the selected integration instruction or fresh
-execution authority. Provider/application reconciliation is defined above.
+provenance in closed #172, not the selected integration instruction or fresh
+execution authority. The provider decision is recorded above.
 
 When Personal Corrections is separately resumed, its internal dependency order
 below remains governed by ADR-0002 and its execution guide. Agreement on an evidence
