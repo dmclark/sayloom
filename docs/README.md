@@ -60,7 +60,7 @@ itself rather than being duplicated here.
 | --- | --- |
 | [Development screenshot](images/sayloom-development.png) | Supporting image used by the root README, not an authority. |
 | [Correction modes and fallback routing decision](adr/0001-correction-modes-and-fallback-routing.md) | Verified implementation and routing history. Its Conservative/Smart product boundary is superseded and must not authorize new work. |
-| [Automatic correction prototype specification](automatic-correction-prototype-spec.md), [evaluation map](evaluation-mvp-map.md), and [automatic strategy evaluation harness](automatic-strategy-evaluation-harness.md) | Deferred research references only. Renewed research requires a new approved evaluation purpose and contract; these files grant no current collection, provider, evaluation, or pilot authority. |
+| [Automatic correction prototype specification](automatic-correction-prototype-spec.md) and [evaluation map](evaluation-mvp-map.md) | Deferred programme references with historical evaluation criteria; both Smart-evaluation toolchains are retired. No separate effectiveness assessment is required for ordinary use. These files grant no current collection, provider, evaluation, or pilot authority. |
 
 ## Draft collateral
 
@@ -75,7 +75,8 @@ itself rather than being duplicated here.
 | --- | --- |
 | [Frozen provider-screening reference bundle](archive/provider-response-screening/README.md) | Historical synthetic fixtures, source configurations and non-executable runner; the current response-screening protocol governs separately authorized reuse. Historical approval/pricing fields grant no new execution permission. |
 | [Intended-meaning evidence collection contract](intended-meaning-evidence-collection-contract.md) | ADR-0002 and the live Personal Corrections direction. Retired historical contract retained at its current path; no live collection or participant-package tooling remains, and it grants no collection or evaluation authority. |
-| [Correction benchmark pipeline](archive/correction-benchmark-pipeline.md) | Fixed eight-arm Smart scaffold; superseded for prototype acceptance by the automatic-strategy specification, map, and harness. |
+| [Automatic strategy evaluation harness](archive/automatic-strategy-evaluation-harness.md) | Retired Smart-evaluation harness and evaluation-only adapters; implementation and dedicated tests removed. Former criteria are provenance, not a required ordinary-use assessment or a passed gate. |
+| [Correction benchmark pipeline](archive/correction-benchmark-pipeline.md) | Retired fixed eight-arm Smart scaffold; implementation and dedicated tests removed without a completed product binding or private run. |
 | [Cleanup resilience and local evaluation design](archive/cleanup-resilience-evaluation.md) | Abandoned source-preserving corpus and benchmark path. No current evaluation model is authorized; renewed research requires a new approved purpose and contract. |
 | [Cleanup benchmark protocol version 1](archive/cleanup-evaluation-benchmark-v1.json) | Historical machine-readable artifact from the abandoned source-preserving evaluation path. |
 | [Cleanup benchmark protocol version 2](archive/cleanup-evaluation-benchmark-v2.json) | Historical machine-readable protocol from the retired benchmark and canary toolchain; non-operational. |

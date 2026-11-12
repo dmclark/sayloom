@@ -6,7 +6,10 @@
 > status. The research body below preserves prior planning, including prospective
 > Evidence Collection that has since been retired. It grants no current collection,
 > provider, evaluation, or pilot authority. Renewed research requires a new approved
-> evaluation purpose and contract.
+> evaluation purpose and contract. Both Smart-evaluation toolchains and their
+> dedicated tests have now been retired. The retained criteria do not require
+> a separate effectiveness assessment for ordinary use or establish any passed gate.
+> Engineering correctness, safety, privacy, and operational verification remain required.
 
 - **Status:** Deferred research reference
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)

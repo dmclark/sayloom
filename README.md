@@ -138,12 +138,13 @@ commands, development configuration, and participant-package tooling contain no 
 surface. Historical research documents remain for provenance and grant no authority to resume
 collection or evaluation.
 
-The provider-free [automatic-strategy evaluation harness](docs/automatic-strategy-evaluation-harness.md)
-is the current Smart evaluation contract. It supersedes the historical fixed
-2 × 2 × 2 [Smart correction benchmark scaffold](docs/archive/correction-benchmark-pipeline.md)
-for prototype acceptance. It remains independent of the retired Cleanup
-benchmark toolchain; archived Cleanup evidence does not validate Smart
-correction or authorize a private run.
+The formal Smart-evaluation toolchains are retired: the fixed eight-arm benchmark,
+automatic-strategy evaluation harness, and evaluation-only adapters have been removed.
+Their [harness](docs/archive/automatic-strategy-evaluation-harness.md) and
+[benchmark](docs/archive/correction-benchmark-pipeline.md) documentation remains historical
+provenance, not operating instructions or evidence that Smart works. The owner will use
+Sayloom normally and see how it goes; no separate effectiveness assessment is required.
+Live correction safety checks and engineering, privacy, and operational verification remain.
 
 ## Cleanup providers
 

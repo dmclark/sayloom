@@ -1,6 +1,14 @@
 # Automatic correction prototype specification
 
-- **Status:** Approved execution specification
+> **Deferred programme reference, not current execution authority.** The fixed-arm
+> Smart benchmark, automatic-strategy evaluation harness, evaluation-only adapters,
+> and dedicated tests have been retired. The body below preserves the former plan
+> and criteria, not available tooling or a requirement for another effectiveness
+> assessment. The owner will use Sayloom normally. Engineering correctness, safety,
+> privacy, and operational verification remain required; no evaluation gate is
+> declared passed. See the [documentation map](README.md).
+
+- **Status:** Deferred research reference; historical execution specification
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Initiative:** [Build Sayloom's automatic correction prototype](https://github.com/dmclark/sayloom/issues/46)
 - **Scope:** Offline method comparison, selected-strategy integration, verification, and a limited shareable pilot

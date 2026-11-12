@@ -1,12 +1,14 @@
 # Correction benchmark pipeline
 
-> **Historical fixed-arm scaffold.** This file documents the implemented eight-arm
-> Smart benchmark scaffold, but it is not the current prototype acceptance path.
-> Use the [documentation map](../README.md) and the current
-> [evaluation and automatic-correction prototype map](../evaluation-mvp-map.md).
+> **Retired fixed-arm scaffold; historical provenance only.** The eight-arm Smart
+> benchmark implementation and dedicated tests have been removed. Commands and criteria
+> below describe the former toolchain and are not operational. Product binding and a
+> private run were not completed; retirement does not establish a pass or quality claim.
+> No separate effectiveness assessment is required for ordinary use.
+> See the [documentation map](../README.md).
 
-- **Pipeline version:** `correction-benchmark-pipeline-v1`
-- **Status:** Historical implementation reference; product binding and private run were not completed
+- **Pipeline version:** `correction-benchmark-pipeline-v1` (historical)
+- **Status:** Retired implementation reference; product binding and private run were not completed
 - **Scope:** private text-only Smart-correction experiment
 - **Conditions:** prompt × task context × curated knowledge, each off/on
 - **Milestone map:** [`evaluation-mvp-map.md`](../evaluation-mvp-map.md)

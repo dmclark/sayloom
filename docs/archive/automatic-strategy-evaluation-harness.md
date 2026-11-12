@@ -1,9 +1,17 @@
 # Automatic strategy evaluation harness
 
-- **Pipeline version:** `automatic-strategy-evaluation-v1`
-- **Status:** frozen public-safe harness, validated with synthetic cases and an executor adapter
-- **Authority:** the acceptance contract and comparison protocol linked from the automatic
-  correction prototype map
+> **Retired implementation; historical provenance only.** The formal Smart-evaluation
+> harness, evaluation-only adapters, and dedicated tests have been removed. The body
+> below records the former contract, not available tools or instructions to run a study.
+> The owner will use Sayloom normally; no separate effectiveness assessment is required.
+> Retirement establishes no quality claim or passed gate. Live correction safety checks
+> and engineering, privacy, and operational verification remain required.
+> See the [documentation map](../README.md).
+
+- **Pipeline version:** `automatic-strategy-evaluation-v1` (historical)
+- **Status:** retired; original implementation description follows
+- **Former authority:** the acceptance contract and comparison protocol linked from the
+  automatic correction prototype map
 
 This harness registers, executes, adjudicates, and reports correction-method and complete
 Automatic correction strategy candidates without calling a provider itself. It does not authorize
