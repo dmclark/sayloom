@@ -25,7 +25,6 @@
     confirmPrepared: document.querySelector("#confirm-prepared"),
     cancelPreparedCorrection: document.querySelector("#cancel-prepared-correction"),
     draftPreparationMode: document.querySelector("#draft-preparation-mode"),
-    smartModeDisclosure: document.querySelector("#smart-mode-disclosure"),
     defaultPreparationMode: document.querySelector("#default-preparation-mode"),
     modeSaveState: document.querySelector("#mode-save-state"),
     smartRepairReview: document.querySelector("#smart-repair-review"),
@@ -65,8 +64,6 @@
     workspaceResizer: document.querySelector("#workspace-resizer"),
     layoutStacked: document.querySelector("#layout-stacked"),
     layoutSideBySide: document.querySelector("#layout-side-by-side"),
-    maximizeOriginal: document.querySelector("#maximize-original"),
-    maximizeOriginalIcon: document.querySelector("#maximize-original span"),
     maximizePrepared: document.querySelector("#maximize-prepared"),
     maximizePreparedIcon: document.querySelector("#maximize-prepared span"),
     toggleSidebar: document.querySelector("#toggle-sidebar"),
@@ -731,7 +728,6 @@
   function renderCorrectionMode() {
     elements.defaultPreparationMode.value = defaultPreparationMode;
     elements.draftPreparationMode.value = draftPreparationMode;
-    elements.smartModeDisclosure.hidden = draftPreparationMode !== "smart";
     elements.runCleanup.disabled = draftPreparationMode === "off";
     renderExplicitSmartAction();
     renderSmartRepairReview();
@@ -816,18 +812,13 @@
   }
 
   function renderMaximizedPane() {
-    elements.workspace.classList.toggle("is-original-maximized", maximizedPane === "original");
     elements.workspace.classList.toggle("is-prepared-maximized", maximizedPane === "prepared");
-    [
-      ["original", elements.maximizeOriginal, elements.maximizeOriginalIcon],
-      ["prepared", elements.maximizePrepared, elements.maximizePreparedIcon],
-    ].forEach(([pane, button, icon]) => {
-        const maximized = maximizedPane === pane;
-        const label = pane === "original" ? "Original" : "Prepared";
-        button.setAttribute("aria-pressed", String(maximized));
-        button.setAttribute("aria-label", `${maximized ? "Restore" : "Maximize"} ${label} pane`);
-        icon.textContent = maximized ? "Restore" : "Maximize";
-      });
+    const maximized = maximizedPane === "prepared";
+    elements.maximizePrepared.setAttribute("aria-pressed", String(maximized));
+    elements.maximizePrepared.setAttribute(
+      "aria-label", `${maximized ? "Restore" : "Maximize"} Prepared pane`,
+    );
+    elements.maximizePreparedIcon.textContent = maximized ? "Restore" : "Maximize";
   }
 
   function toggleMaximizedPane(pane) {
@@ -1561,7 +1552,6 @@
   elements.layoutSideBySide.addEventListener("click", () => {
     if (!narrowWorkspace.matches) setLayoutPreference("side-by-side");
   });
-  elements.maximizeOriginal.addEventListener("click", () => toggleMaximizedPane("original"));
   elements.maximizePrepared.addEventListener("click", () => toggleMaximizedPane("prepared"));
   elements.toggleSidebar.addEventListener("click", () => {
     sidebarCollapsed = !sidebarCollapsed;

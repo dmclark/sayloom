@@ -141,7 +141,7 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="toggle-original"' not in response.text
     assert 'id="layout-stacked"' in response.text
     assert 'id="layout-side-by-side"' in response.text
-    assert 'id="maximize-original"' in response.text
+    assert 'id="maximize-original"' not in response.text
     assert 'id="maximize-prepared"' in response.text
     assert 'id="toggle-sidebar"' in response.text
     assert 'id="draft-preparation-mode"' in response.text
@@ -162,8 +162,8 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     )
     assert 'id="cleanup-enabled"' not in response.text
     assert "Clean automatically" not in response.text
-    assert "Experimental Smart correction" in response.text
-    assert "Learn about Smart correction" in response.text
+    assert "Experimental Smart correction" not in response.text
+    assert "Learn about Smart correction" not in response.text
     assert "evaluation and enrollment" not in response.text
     assert 'id="run-smart-correction"' not in response.text
     assert 'id="nav-settings"' in response.text
@@ -200,7 +200,7 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
         1
     ].split("</article>", maxsplit=1)[0]
     assert 'class="panel-footer original-panel-footer"' in original_panel
-    assert 'id="maximize-original"' in original_panel
+    assert 'id="maximize-original"' not in original_panel
     assert 'id="run-cleanup"' not in original_panel
     assert 'id="clear-text"' not in original_panel
     prepared_panel = response.text.split('class="text-panel prepared-panel"', maxsplit=1)[
@@ -1969,7 +1969,7 @@ const settle = async () => {
   await draftMode.dispatch("change"); await settle();
   const smartMode = {
     selected: draftMode.value,
-    disclosureHidden: elements["#smart-mode-disclosure"].hidden,
+    inspectionHidden: elements["#smart-repair-review"].hidden,
   };
 
   draftMode.value = "off";
@@ -2135,7 +2135,7 @@ const settle = async () => {
         "carriedTaskContext": False,
         "smartMode": {
             "selected": "smart",
-            "disclosureHidden": False,
+            "inspectionHidden": False,
         },
         "offMode": {
             "prepared": "",
@@ -2730,7 +2730,6 @@ def test_configurable_workspace_uses_native_caret_and_accessible_controls(
     assert "cursor: col-resize" in stylesheet.text
     assert ".utility-rail" in stylesheet.text
     assert ".workspace.is-side-by-side" in stylesheet.text
-    assert ".workspace.is-original-maximized" in stylesheet.text
     assert ".workspace.is-prepared-maximized" in stylesheet.text
     assert ".workspace-shell.is-sidebar-collapsed" in stylesheet.text
     assert ".workspace-shell.is-sidebar-collapsed .utility-rail-icon { display: block; }" in (
