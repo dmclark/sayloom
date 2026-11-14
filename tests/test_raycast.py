@@ -177,6 +177,59 @@ def test_all_raycast_shell_files_parse() -> None:
         subprocess.run(["/bin/sh", "-n", path], check=True)
 
 
+@pytest.mark.parametrize(
+    ("original", "read_status"), [("existing clipboard", 0), ("", 0), ("keep this", 1)]
+)
+def test_paste_preserves_clipboard_or_aborts_if_backup_fails(
+    tmp_path: Path, original: str, read_status: int
+) -> None:
+    clipboard = tmp_path / "clipboard"
+    clipboard.write_text(original)
+    outgoing = tmp_path / "outgoing"
+    outgoing.write_text("outgoing text")
+    delivered = tmp_path / "delivered"
+    cliclick = tmp_path / "cliclick"
+    cliclick.write_text('#!/bin/sh\ncat "$CLIPBOARD" > "$DELIVERED"\n')
+    cliclick.chmod(0o700)
+    # Run the real library with only OS effects replaced. Bash permits functions
+    # named after absolute commands, so no production source rewriting is needed.
+    command = """
+      set -eu
+      . "$LIBRARY"
+      function /usr/bin/open { :; }
+      function /bin/sleep { :; }
+      read_utf8_clipboard() { cat "$CLIPBOARD"; return "$READ_STATUS"; }
+      copy_utf8_to_clipboard() { cat > "$CLIPBOARD"; }
+      prepare_command
+      paste_outgoing_text synthetic.destination "$OUTGOING"
+    """
+    result = subprocess.run(
+        ["bash", "-c", command],
+        env={
+            **os.environ,
+            "TMPDIR": str(tmp_path),
+            "LIBRARY": str(RAYCAST_DIRECTORY / "lib.sh"),
+            "CLIPBOARD": str(clipboard),
+            "OUTGOING": str(outgoing),
+            "DELIVERED": str(delivered),
+            "CLICLICK_PATH": str(cliclick),
+            "READ_STATUS": str(read_status),
+        },
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert clipboard.read_text() == original
+    if read_status:
+        assert result.returncode != 0
+        assert "could not back up the clipboard" in result.stderr
+        assert not delivered.exists()
+    else:
+        assert result.returncode == 0, result.stderr
+        assert delivered.read_text() == "outgoing text"
+
+
 def test_raycast_uses_the_fixed_development_port_without_a_generic_service() -> None:
     library = (RAYCAST_DIRECTORY / "lib.sh").read_text()
     opener = (RAYCAST_DIRECTORY / "open-sayloom.sh").read_text()

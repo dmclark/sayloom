@@ -76,7 +76,8 @@ paste_outgoing_text() {
   /bin/sleep 0.3
 
   clipboard_backup="$command_temp_directory/clipboard.txt"
-  read_utf8_clipboard > "$clipboard_backup" 2>/dev/null || : > "$clipboard_backup"
+  read_utf8_clipboard > "$clipboard_backup" 2>/dev/null \
+    || fail_command "could not back up the clipboard"
   copy_utf8_to_clipboard < "$outgoing_file" || fail_command "could not prepare the clipboard"
   clipboard_changed=1
 

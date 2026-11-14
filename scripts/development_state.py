@@ -283,10 +283,14 @@ def state_configuration(state: State) -> dict[str, str]:
     return {**load_environment_file(shared), **state_values}
 
 
-def state_environment(state: State, *, load_configuration: bool = False) -> dict[str, str]:
-    environment = {
+def clean_environment() -> dict[str, str]:
+    return {
         key: value for key, value in os.environ.items() if key not in APPLICATION_ENVIRONMENT_KEYS
     }
+
+
+def state_environment(state: State, *, load_configuration: bool = False) -> dict[str, str]:
+    environment = clean_environment()
     if load_configuration:
         environment.update(state_configuration(state))
     environment["LOCAL_TEXT_STATE_DIRECTORY"] = state.state_directory

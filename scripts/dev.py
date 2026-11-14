@@ -22,7 +22,6 @@ from pathlib import Path
 from urllib import parse, request
 
 from development_state import (
-    APPLICATION_ENVIRONMENT_KEYS,
     DEFAULT_STATE_ROOT,
     DEVELOPMENT_PORT,
     LEGACY_STATE_ROOT,
@@ -31,6 +30,7 @@ from development_state import (
     PRODUCTION_PORT,
     State,
     available_port,
+    clean_environment,
     configuration_paths,
     fail,
     legacy_configuration_path,
@@ -431,12 +431,6 @@ def migrate_state_root(source_root: Path, destination_root: Path) -> None:
                 shutil.rmtree(staging, ignore_errors=True)
 
 
-def clean_environment() -> dict[str, str]:
-    return {
-        key: value for key, value in os.environ.items() if key not in APPLICATION_ENVIRONMENT_KEYS
-    }
-
-
 def service_name(state: State) -> str:
     return f"gui/{os.getuid()}/{state.label}"
 
@@ -667,10 +661,7 @@ def verify_repository() -> None:
     root = repository_root()
     environment = clean_environment()
     for check in (
-        ["uv", "sync", "--locked"],
-        ["uv", "run", "ruff", "check", "."],
-        ["uv", "run", "pytest"],
-        ["/usr/bin/env", "node", "--check", "src/local_text/static/app.js"],
+        [str(root / "scripts/check")],
         ["git", "diff", "--check"],
     ):
         subprocess.run(check, cwd=root, env=environment, check=True)
