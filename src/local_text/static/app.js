@@ -31,9 +31,6 @@
     smartRepairNote: document.querySelector("#smart-repair-note"),
     smartRepairSummary: document.querySelector("#smart-repair-summary"),
     smartRepairList: document.querySelector("#smart-repair-list"),
-    smartRepairSelection: document.querySelector("#smart-repair-selection"),
-    smartRepairContext: document.querySelector("#smart-repair-context"),
-    smartRepairReason: document.querySelector("#smart-repair-reason"),
     runCleanup: document.querySelector("#run-cleanup"),
     clear: document.querySelector("#clear-text"),
     originalCount: document.querySelector("#original-count"),
@@ -165,6 +162,8 @@
   let smartRepairs = [];
   let selectedSmartRepair = null;
   let smartRepairResultCurrent = false;
+  let inspectionSequence = 0;
+  let preparedGeneration = 0;
   let personalCorrectionProfile = { enabled: false, entries: [] };
   let activePromptVersionId = null;
   let missedRepairBinding = null;
@@ -312,20 +311,66 @@
   }
 
   function invalidateSmartRepairReview() {
-    smartRepairs = [];
-    selectedSmartRepair = null;
+    preparedGeneration += 1;
     smartRepairResultCurrent = false;
     elements.prepared.dataset.repairCount = "0";
+    elements.prepared.setSelectionRange(0, 0);
     renderSmartRepairReview();
   }
 
+  function inspectionLocation(entry) {
+    const original = entry.kind === "finding" || entry.operation === "removal"
+      || entry.field === "original";
+    const editor = original ? elements.original : elements.prepared;
+    const span = original ? entry.original_span : entry.prepared_span;
+    if (
+      entry.revision !== draftRevision
+      || entry.originalText !== elements.original.value
+      || (!original && (entry.generation !== preparedGeneration
+        || entry.preparedText !== elements.prepared.value))
+      || !span || span.start === span.end
+      || Array.from(editor.value).slice(span.start, span.end).join("") !== span.text
+    ) return null;
+    return { editor, span };
+  }
+
+  // UI boundary only: no checker or provider is started by this event. Producers
+  // must capture this revision before asynchronous work, not at response time.
+  elements.original.dataset.revision = String(draftRevision);
+  elements.original.addEventListener("inspection-findings", (event) => {
+    const result = event.detail;
+    if (!result || result.revision !== draftRevision
+      || result.original_text !== elements.original.value
+      || !Array.isArray(result.findings)) return;
+    const characters = Array.from(result.original_text);
+    const valid = result.findings.every((finding) => {
+      const span = finding?.original_span;
+      return span && Number.isInteger(span.start) && Number.isInteger(span.end)
+        && span.start >= 0 && span.end > span.start && span.end <= characters.length
+        && span.text === characters.slice(span.start, span.end).join("")
+        && typeof finding.reason === "string"
+        && (finding.suggestion === undefined || typeof finding.suggestion === "string");
+    });
+    if (!valid) return;
+    result.findings.forEach((finding) => {
+      smartRepairs.push({
+        kind: "finding", id: ++inspectionSequence,
+        original_span: { ...finding.original_span },
+        inspection_reason: finding.reason, suggestion: finding.suggestion,
+        context: "", revision: draftRevision, originalText: result.original_text,
+      });
+    });
+    renderSmartRepairReview();
+  });
+
   function smartRepairReviewState() {
+    if (smartRepairs.length) return ["retained", null, null];
     if (smartRepairResultCurrent) return ["current", null, null];
     if (!elements.original.value) {
       return ["empty", "No repairs yet", "Repairs appear after Smart prepares Original."];
     }
     if (["waiting", "cleaning"].includes(status)) {
-      return ["pending", "Checking…", "Smart is preparing the current Original. Earlier repairs were cleared."];
+      return ["pending", "Checking…", "Smart is preparing the current Original."];
     }
     if (confirmedPreparedRevision === draftRevision) {
       return ["confirmed", "No generated repairs", "Prepared is your confirmed wording, not a Smart result."];
@@ -333,34 +378,40 @@
     if (["error", "timeout"].includes(status)) {
       return ["unavailable", "No repairs", "Smart did not return a current result, so there is nothing to inspect."];
     }
-    return ["stale", "No current repairs", "Earlier repairs no longer match Original and were cleared."];
+    return ["stale", "No current repairs", "Prepare with Smart to inspect lexical repairs."];
   }
 
   function renderSmartRepairReview() {
     // Smart keeps the inspection area in place through every state so the editors do not move.
-    const visible = smartRepairResultCurrent || draftPreparationMode === "smart";
+    const visible = smartRepairs.length > 0 || smartRepairResultCurrent || draftPreparationMode === "smart";
     const [state, summary, note] = smartRepairReviewState();
     elements.smartRepairReview.hidden = !visible;
     elements.smartRepairReview.dataset.state = state;
     elements.workspace.classList.toggle("has-smart-repair-review", visible);
+    const scrollTop = elements.smartRepairList.scrollTop;
     elements.smartRepairList.textContent = "";
-    if (!smartRepairResultCurrent) {
-      elements.smartRepairSelection.hidden = true;
+    if (!smartRepairResultCurrent && !smartRepairs.length) {
       elements.smartRepairSummary.textContent = summary;
       elements.smartRepairNote.textContent = note;
       elements.smartRepairNote.hidden = false;
       return;
     }
 
+    const findings = smartRepairs.filter((entry) => entry.kind === "finding").length;
+    const repairs = smartRepairs.length - findings;
     elements.smartRepairSummary.textContent = smartRepairs.length === 0
       ? "No lexical repairs"
-      : `${smartRepairs.length} repair${smartRepairs.length === 1 ? "" : "s"}`;
+      : `${findings} findings · ${repairs} repairs`;
     elements.smartRepairNote.textContent = smartRepairs.length === 0
       ? "Smart made no lexical repairs to this draft."
-      : "Select a repair to inspect its corresponding wording and sentence context.";
+      : "Select wording to highlight. Edit Original directly; Keep dismisses a finding.";
+    elements.smartRepairNote.hidden = false;
     smartRepairs.forEach((repair) => {
       const item = document.createElement("li");
+      item.className = "inspection-entry";
       const button = document.createElement("button");
+      const details = document.createElement("div");
+      details.className = "inspection-entry-details";
       const meta = document.createElement("span");
       const change = document.createElement("span");
       const original = document.createElement("del");
@@ -368,42 +419,98 @@
       const prepared = document.createElement("ins");
       button.type = "button";
       button.className = "smart-repair-item";
-      button.setAttribute("aria-current", String(repair.queue_position === selectedSmartRepair));
+      button.setAttribute("aria-current", String(repair.id === selectedSmartRepair));
       meta.className = "smart-repair-item-meta";
-      meta.textContent = `${repair.queue_position} · ${repair.operation}`;
+      const located = inspectionLocation(repair);
+      const unavailable = repair.kind === "finding" ? "Text changed" : "Location unavailable";
+      meta.textContent = repair.kind === "finding"
+        ? `Finding${located ? "" : ` · ${unavailable}`}`
+        : `Applied in ${repair.field === "original" ? "Original" : "Prepared"} · ${repair.operation}${located ? "" : ` · ${unavailable}`}`;
       change.className = "smart-repair-item-change";
       original.textContent = repair.original_span.text || "∅";
       original.setAttribute("aria-label", `Original: ${original.textContent}`);
       separator.textContent = " → ";
       separator.setAttribute("aria-hidden", "true");
-      prepared.textContent = repair.prepared_span.text || "∅";
+      prepared.textContent = repair.prepared_span?.text || "∅";
       prepared.setAttribute("aria-label", `Prepared: ${prepared.textContent}`);
-      change.append(original, separator, prepared);
+      if (repair.kind === "finding") {
+        const wording = document.createElement("span");
+        wording.textContent = repair.original_span.text;
+        change.append(wording);
+        if (repair.suggestion !== undefined) {
+          const suggestion = document.createElement("span");
+          suggestion.className = "inspection-suggestion";
+          suggestion.textContent = `Suggested: ${repair.suggestion || "∅"}`;
+          // Suggestions are informational in this slice; application is a follow-up.
+          suggestion.setAttribute("aria-disabled", String(!located));
+          details.append(suggestion);
+        }
+      } else change.append(original, separator, prepared);
+      const location = document.createElement("p");
+      location.className = "inspection-location";
+      location.textContent = located
+        ? (located.editor === elements.original ? "Original" : "Prepared")
+        : unavailable;
+      details.append(location);
+      if (repair.context) {
+        const context = document.createElement("p");
+        context.className = "inspection-context";
+        context.textContent = `Context: ${repair.context}`;
+        details.append(context);
+      }
+      const reason = document.createElement("p");
+      reason.className = "inspection-reason";
+      reason.textContent = repair.inspection_reason;
+      details.append(reason);
+      if (repair.kind === "finding") {
+        const keep = document.createElement("button");
+        keep.type = "button";
+        keep.className = "button button-quiet inspection-keep";
+        keep.textContent = "Keep";
+        keep.setAttribute("aria-label", `Keep ${repair.original_span.text}`);
+        keep.addEventListener("click", () => {
+          const index = smartRepairs.findIndex((entry) => entry.id === repair.id);
+          if (index < 0) return;
+          smartRepairs.splice(index, 1);
+          selectedSmartRepair = null;
+          elements.original.setSelectionRange(elements.original.selectionEnd, elements.original.selectionEnd);
+          elements.prepared.setSelectionRange(0, 0);
+          renderSmartRepairReview();
+          const next = elements.smartRepairList.children[index]
+            || elements.smartRepairList.lastElementChild;
+          (next?.querySelector("button") || elements.original).focus({ preventScroll: true });
+        });
+        details.append(keep);
+      }
       button.append(meta, change);
-      button.addEventListener("click", () => selectSmartRepair(repair.queue_position));
-      item.append(button);
+      button.addEventListener("click", () => selectSmartRepair(repair.id));
+      item.append(button, details);
       elements.smartRepairList.append(item);
     });
-
-    const selected = smartRepairs.find(
-      (repair) => repair.queue_position === selectedSmartRepair,
-    );
-    elements.smartRepairSelection.hidden = !selected;
-    elements.smartRepairNote.hidden = Boolean(selected);
-    if (!selected) return;
-    elements.smartRepairContext.textContent = `Context: ${selected.context}`;
-    elements.smartRepairContext.title = elements.smartRepairContext.textContent;
-    elements.smartRepairReason.textContent = selected.inspection_reason;
-    elements.smartRepairReason.title = elements.smartRepairReason.textContent;
+    elements.smartRepairList.scrollTop = scrollTop;
   }
 
   function selectSmartRepair(queuePosition) {
-    const repair = smartRepairs.find((candidate) => candidate.queue_position === queuePosition);
+    const repair = smartRepairs.find((candidate) => candidate.id === queuePosition);
     if (!repair) return;
     selectedSmartRepair = queuePosition;
     renderSmartRepairReview();
-    const span = repair.operation === "removal" ? repair.original_span : repair.prepared_span;
-    const editor = repair.operation === "removal" ? elements.original : elements.prepared;
+    elements.original.setSelectionRange(elements.original.selectionEnd, elements.original.selectionEnd);
+    elements.prepared.setSelectionRange(0, 0);
+    const location = inspectionLocation(repair);
+    // CART is presentation-only: retain inspection, but never mark the output.
+    if (!location || maximizedPane === "prepared") {
+      elements.smartRepairList.querySelector('[aria-current="true"]').focus({ preventScroll: true });
+      window.requestAnimationFrame(() => {
+        if (selectedSmartRepair === queuePosition
+          && (!inspectionLocation(repair) || maximizedPane === "prepared")) {
+          elements.original.setSelectionRange(elements.original.selectionEnd, elements.original.selectionEnd);
+          elements.prepared.setSelectionRange(0, 0);
+        }
+      });
+      return;
+    }
+    const { span, editor } = location;
     const utf16Start = Array.from(editor.value).slice(0, span.start).join("").length;
     const utf16End = Array.from(editor.value).slice(0, span.end).join("").length;
     editor.focus({ preventScroll: true });
@@ -411,8 +518,11 @@
   }
 
   function showSmartRepairResult(repairs) {
-    smartRepairs = repairs;
-    selectedSmartRepair = null;
+    repairs.forEach((repair) => smartRepairs.push({
+      ...repair, id: ++inspectionSequence, kind: "repair", field: "prepared",
+      revision: draftRevision, originalText: elements.original.value,
+      preparedText: elements.prepared.value, generation: preparedGeneration,
+    }));
     smartRepairResultCurrent = true;
     elements.prepared.dataset.repairCount = String(repairs.length);
     renderSmartRepairReview();
@@ -823,6 +933,14 @@
 
   function toggleMaximizedPane(pane) {
     maximizedPane = maximizedPane === pane ? null : pane;
+    if (maximizedPane === "prepared") {
+      elements.maximizePrepared.focus({ preventScroll: true });
+      elements.prepared.setSelectionRange(0, 0);
+      window.requestAnimationFrame(() => {
+        // Chromium can restore a textarea selection when the grid is relaid out.
+        if (maximizedPane === "prepared") elements.prepared.setSelectionRange(0, 0);
+      });
+    }
     renderMaximizedPane();
   }
 
@@ -1439,6 +1557,7 @@
     const originalChanged = elements.original.value !== currentOriginalText;
     if (originalChanged) {
       draftRevision += 1;
+      elements.original.dataset.revision = String(draftRevision);
       if (confirmedPreparedRevision !== null || preparedCorrectionRevision !== null) {
         confirmedPreparedRevision = null;
         elements.prepared.value = "";
@@ -1501,6 +1620,7 @@
       return;
     }
     draftRevision += 1;
+    elements.original.dataset.revision = String(draftRevision);
     invalidateSmartRepairReview();
     elements.prepared.value = "";
     elements.prepared.dataset.repairCount = "0";
@@ -1637,9 +1757,12 @@
     originalOutgoingOverride = false;
     draftPreparationMode = defaultPreparationMode;
     draftRevision += 1;
+    elements.original.dataset.revision = String(draftRevision);
     draftModeOverridden = false;
     currentOriginalText = "";
     setExplicitSmartState("hidden");
+    smartRepairs = [];
+    selectedSmartRepair = null;
     invalidateSmartRepairReview();
     elements.original.value = "";
     elements.prepared.value = "";
