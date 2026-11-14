@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from local_text.config import Profile
 from local_text.targets import GeneratedCommand, command_filename
 
 
@@ -35,11 +36,12 @@ class TargetObservation:
 
 
 class TargetAdapter:
-    def __init__(self, directory: Path) -> None:
+    def __init__(self, directory: Path, profile: Profile = Profile.DEVELOPMENT) -> None:
         self.directory = directory.expanduser()
+        self.profile = profile
 
     def _path(self, target_id: str) -> Path:
-        return self.directory / command_filename(target_id)
+        return self.directory / command_filename(target_id, self.profile)
 
     @staticmethod
     def _is_owned(path: Path, target_id: str) -> bool:

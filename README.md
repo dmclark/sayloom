@@ -290,7 +290,7 @@ scripts/dev.py db seed
 scripts/dev.py init
 ```
 
-Use `scripts/dev.py restart` for a real update rather than running
+Use `scripts/dev.py restart` for a development update rather than running
 migration steps individually. It runs all checks, makes an online SQLite backup,
 migrates, applies the deterministic seed release, and restarts only the current
 checkout's state-scoped service.
@@ -337,6 +337,125 @@ this repository.
 
 End-user Preferences and Keychain-backed credential management are deferred;
 this developer-safety gate intentionally provides no Preferences or Keychain UI.
+
+## Stable workflow
+
+Stable is an independently prepared checkout of `main`, served with the release
+profile on **7532**. Development remains on **7523**, selected by `dev.py`.
+Stable never follows an active worktree or copies uncommitted implementation.
+Do not pull or edit its checkout manually: use the explicit update command.
+
+### Prepare a new installation explicitly
+
+Use Python 3.12 or newer and `uv`. From the checkout containing the Stable
+tooling, prepare an installation with explicit external paths:
+
+```sh
+.venv/bin/python scripts/stable.py --checkout /path/to/stable-checkout install \
+  --database /path/to/private/stable.sqlite3 \
+  --configuration /path/to/private/stable-environment.json \
+  --raycast-directory /path/to/raycast/scripts
+```
+
+The configuration is a regular **0600 JSON object** of provider/model settings,
+using the `LOCAL_TEXT_GEMINI_*`, `LOCAL_TEXT_OPENAI_*`, `LOCAL_TEXT_OPENROUTER_*`,
+`LOCAL_TEXT_CLEANUP_ROUTE_ORDER`, `LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS`,
+`LOCAL_TEXT_CLEANUP_TIMEOUT_SECONDS`, and
+`LOCAL_TEXT_CLEANUP_PAID_DATA_ACKNOWLEDGEMENT` names supported by `Settings`.
+Values are strings. An empty object enables no external provider. Keys selecting
+the profile, database, diagnostics, or development state are not accepted;
+Stable sets its own runtime boundary and does not inherit shell API keys.
+
+Installation prepares locked dependencies at a permanent external path, copies
+the control script outside the checkout, writes a user LaunchAgent, and installs
+Stable-prefixed Raycast commands. It **does not start the service** or migrate an
+existing database. Only a new database can be initialized with the additional
+`--initialize` option, which explicitly migrates and seeds after confirmation.
+Existing command collisions are refused, not overwritten.
+
+The default private runtime is `~/.local/share/local-text/stable-runtime`,
+separate from configuration files, for which use `~/.config/local-text/stable/`.
+This avoids introducing spaces into the default runtime path. Select another
+runtime directory with the global `--root` option. All runtime, data,
+configuration, and generated command paths must be outside the checkout.
+Installation must not be used to
+blindly replace an older Stable service: inspect its registration, launcher,
+environment, data paths, and health first. It never restores a stash or removes
+untracked files.
+
+### Check, start, and update independently
+
+The installed shell entry point uses its prepared Python interpreter, so it does
+not depend on the checkout's `.venv` or the shell's default Python:
+
+```sh
+stable="$HOME/.local/share/local-text/stable-runtime/stable"
+"$stable" status
+"$stable" start
+"$stable" restart
+"$stable" update --dry-run
+"$stable" update
+```
+
+`status` reports local service ownership, HTTP health, schema readiness, installed
+commit, and updates from a fresh GitHub `main` fetch. This fetch changes only Git
+objects and a dedicated reference, never the checkout. The explicit upstream
+defaults to `https://github.com/dmclark/sayloom.git`, independently of `origin`;
+`--upstream` at installation selects another source. Offline checks report
+availability as `unknown`. Ahead/divergent history is not treated as a safe update.
+
+`start` and `restart` use only the installed revision and environment. They never
+fetch, sync dependencies, migrate, initialize, or seed. LaunchAgent runs Stable
+at login; failed startup is reported rather than retried indefinitely. A stopped
+or crashed service can be started explicitly after inspecting status/logs.
+
+`update` previews the exact candidate commit, changed files, migration identifiers,
+and requested seed action before confirmation. `--dry-run` does not prepare
+dependencies or rehearse migrations. After confirmation, update prepares a
+separate locked environment and runs candidate checks against synthetic state
+without provider credentials. It then revalidates the approved basis, stops
+Stable for a short maintenance window, and installs only the previewed commit.
+Network or preparation failure leaves the current service untouched.
+
+Schema migration uses a verified SQLite backup and is rehearsed on a copy before
+touching the original. Existing data is retained by the migrations, subject to
+review of the particular transformation; the script cannot prove a migration is
+non-destructive. Historical migration edits, unknown revisions, non-linear graphs,
+launcher protocol incompatibility, dirty tracked files, and untracked collisions
+are rejected. `--seed` explicitly requests deterministic seeding as part of the
+approved update; it is not a normal startup action. `--yes` accepts the displayed
+operation without an interactive prompt and should be used only after review.
+
+### Recover without silently restoring older data
+
+An interrupted or failed data-changing update leaves a persistent maintenance
+record and blocks normal startup. Status and the private `operation-error.log`
+and service logs explain the failure. Before database mutation, an ordinary
+failure attempts to recover the previous compatible code/environment. Once
+mutation begins, there is **no automatic database restore or schema downgrade**.
+
+```sh
+"$stable" recover --use candidate
+"$stable" recover --use previous --restore-backup
+```
+
+Recovery requires confirmation. Previous-runtime recovery after database mutation
+requires explicit backup restoration; this can discard newer writes. The current
+database is backed up before restoration as an additional recovery point. If its
+schema or SQLite integrity is damaged, the stopped database and its journal files
+are preserved instead, so damaged schema metadata does not prevent recovery.
+Interrupted first-time initialization can be resumed explicitly with
+`recover --use candidate`; this completes migration/seeding without replacing the
+new database. It is not a normal startup action.
+Backups and environments are private and retained without automatic pruning;
+retention and deletion policy must be agreed before real rollout. UI deletion
+does not imply removal from backups. Code rollback alone cannot undo a migration.
+
+Stable's installed opener and target commands stay on 7532, require healthy
+release-profile responses, and never update, migrate, or fall back to development.
+Targets generated by the release app have distinct `stable-` filenames, so
+development installation/removal cannot overwrite them. Updates preserve installed
+commands; regenerate changed target definitions explicitly in the Targets page.
 
 ## Raycast commands
 

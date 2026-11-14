@@ -8,6 +8,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field, field_validator
 
+from local_text.config import Profile
+
 
 class SendStrategy(StrEnum):
     SYNTHETIC_PASTE = "synthetic_paste"
@@ -45,15 +47,33 @@ class GeneratedCommand:
     sha256: str
 
 
-def command_filename(target_id: str) -> str:
+def command_filename(target_id: str, profile: Profile = Profile.DEVELOPMENT) -> str:
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,35}", target_id):
         raise ValueError("invalid target identifier")
-    return f"sayloom-target-{target_id}.sh"
+    prefix = "stable-" if profile is Profile.RELEASE else ""
+    return f"{prefix}sayloom-target-{target_id}.sh"
 
 
-def _fetch_and_clipboard_library() -> str:
-    return """LOCAL_TEXT_BASE_URL=${LOCAL_TEXT_BASE_URL:-http://127.0.0.1:7523}
-command_temp_directory=""
+def _fetch_and_clipboard_library(profile: Profile) -> str:
+    endpoint = (
+        "LOCAL_TEXT_BASE_URL=http://127.0.0.1:7532\n"
+        if profile is Profile.RELEASE
+        else "LOCAL_TEXT_BASE_URL=${LOCAL_TEXT_BASE_URL:-http://127.0.0.1:7523}\n"
+    )
+    health_check = (
+        """/usr/bin/curl --fail --silent --connect-timeout 1 --max-time 2 \\
+  "$LOCAL_TEXT_BASE_URL/health" --output "$state_file" \\
+  || fail_command "Stable is not healthy; use the Stable command"
+[ "$(/usr/bin/plutil -extract status raw -o - "$state_file")" = "ok" ] && \\
+  [ "$(/usr/bin/plutil -extract profile raw -o - "$state_file")" = "release" ] \\
+  || fail_command "Stable release profile is not healthy"
+"""
+        if profile is Profile.RELEASE
+        else ""
+    )
+    return (
+        endpoint
+        + """command_temp_directory=""
 clipboard_backup=""
 clipboard_changed=0
 
@@ -71,7 +91,9 @@ command_temp_directory=$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/local-text-raycast.
   || fail_command "could not create temporary files"
 outgoing_file="$command_temp_directory/outgoing.txt"
 state_file="$command_temp_directory/outgoing-state.json"
-http_status=$(/usr/bin/curl --silent --show-error --connect-timeout 1 --max-time 3 \\
+"""
+        + health_check
+        + """http_status=$(/usr/bin/curl --silent --show-error --connect-timeout 1 --max-time 3 \\
   --output "$state_file" --write-out '%{http_code}' \\
   "$LOCAL_TEXT_BASE_URL/api/outgoing-state") \\
   || fail_command "outgoing state is unavailable"
@@ -85,17 +107,21 @@ value_type=$(/usr/bin/plutil -type outgoing_text "$state_file" 2>/dev/null) \\
 LC_ALL=C /usr/bin/grep -q '[^[:space:]]' "$outgoing_file" \\
   || fail_command "there is no outgoing text"
 """
+    )
 
 
-def generate_command(target_id: str, definition: TargetDefinition) -> GeneratedCommand:
-    filename = command_filename(target_id)
+def generate_command(
+    target_id: str, definition: TargetDefinition, profile: Profile = Profile.DEVELOPMENT
+) -> GeneratedCommand:
+    filename = command_filename(target_id, profile)
     title = definition.display_name.replace("\n", " ")
+    command_title = f"Stable: Send to {title}" if profile is Profile.RELEASE else f"Send to {title}"
     app_name = definition.application_name.replace("\\", "\\\\").replace('"', '\\"')
     bundle_id = shlex.quote(definition.application_bundle_id)
     header = f"""#!/bin/sh
 
 # @raycast.schemaVersion 1
-# @raycast.title Send to {title}
+# @raycast.title {command_title}
 # @raycast.mode compact
 # @raycast.packageName Sayloom Targets
 # @raycast.icon {definition.icon}
@@ -136,7 +162,7 @@ end run
 APPLESCRIPT
 """
     success_message = shlex.quote(f"Sent to {title} without submitting")
-    content = header + _fetch_and_clipboard_library() + delivery
+    content = header + _fetch_and_clipboard_library(profile) + delivery
     content += f"printf '%s\\n' {success_message}\n"
     return GeneratedCommand(content=content, sha256=hashlib.sha256(content.encode()).hexdigest())
 

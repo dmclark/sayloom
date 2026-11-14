@@ -369,7 +369,7 @@ def create_app(
     prompts = PromptStore(database)
     targets = TargetStore(database)
     personal_corrections = PersonalCorrectionStore(database)
-    adapter = target_adapter or TargetAdapter(runtime.resolved_raycast_directory)
+    adapter = target_adapter or TargetAdapter(runtime.resolved_raycast_directory, runtime.profile)
     configuration_error: str | None = None
     preparation_default = PreparationMode.CONSERVATIVE
     if schema.ready:
@@ -848,7 +848,7 @@ def create_app(
             raise HTTPException(status_code=404, detail="target does not exist") from exc
 
     def target_response(target: TargetRecord) -> dict[str, object]:
-        generated = generate_command(target.id, target.definition)
+        generated = generate_command(target.id, target.definition, runtime.profile)
         observation = adapter.observe(target.id, generated)
         primary_state = "disabled" if not target.enabled else observation.installation.value
         return {
@@ -912,7 +912,7 @@ def create_app(
                     "retry_action": "Enable the target, then install it.",
                 },
             )
-        generated = generate_command(target.id, target.definition)
+        generated = generate_command(target.id, target.definition, runtime.profile)
         try:
             adapter.install(target.id, generated)
         except TargetArtifactError as exc:
@@ -924,7 +924,7 @@ def create_app(
     def disable_target(target_id: str) -> dict[str, object]:
         require_configuration()
         target = target_or_404(target_id)
-        generated = generate_command(target.id, target.definition)
+        generated = generate_command(target.id, target.definition, runtime.profile)
         try:
             adapter.remove(target.id, generated)
         except TargetArtifactError as exc:
@@ -941,7 +941,7 @@ def create_app(
     def remove_target(target_id: str) -> Response:
         require_configuration()
         target = target_or_404(target_id)
-        generated = generate_command(target.id, target.definition)
+        generated = generate_command(target.id, target.definition, runtime.profile)
         try:
             adapter.remove(target.id, generated)
         except TargetArtifactError as exc:
