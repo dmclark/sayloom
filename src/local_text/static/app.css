@@ -804,7 +804,7 @@ main { padding-top: 8px; }
 
 .smart-repair-review {
   display: grid;
-  grid-template-rows: auto auto minmax(70px, 1fr) auto;
+  grid-template-rows: auto auto minmax(70px, 1fr);
   min-width: 0;
   min-height: 0;
   padding: 14px;
@@ -825,7 +825,7 @@ main { padding-top: 8px; }
 .smart-repair-review h3 { margin: 2px 0 0; font: 500 1.08rem "Iowan Old Style", Palatino, serif; }
 .smart-repair-review header > strong { color: var(--blue-dark); font-size: 0.68rem; }
 .smart-repair-note,
-.smart-repair-selection p { margin: 10px 0; color: var(--muted); font-size: 0.68rem; line-height: 1.45; }
+.inspection-entry-details p { margin: 10px 0; color: var(--muted); font-size: 0.68rem; line-height: 1.45; }
 .smart-repair-review ol {
   display: grid;
   align-content: start;
@@ -836,14 +836,20 @@ main { padding-top: 8px; }
   list-style: none;
 }
 
+.inspection-entry {
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--paper-bright);
+}
+
 .smart-repair-item {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   width: 100%;
   padding: 7px 8px;
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: 3px;
   color: var(--ink);
   background: var(--paper-bright);
@@ -851,16 +857,18 @@ main { padding-top: 8px; }
   text-align: left;
 }
 
-.smart-repair-item[aria-current="true"] { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(23, 105, 170, 0.13); }
+.inspection-entry:has(.smart-repair-item[aria-current="true"]) { border-color: var(--blue); }
 .smart-repair-item-meta { color: var(--muted); font-size: 0.62rem; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; }
 .smart-repair-item-change { overflow-wrap: anywhere; font: 0.8rem/1.4 Charter, Georgia, serif; }
 .smart-repair-item del { color: #7d2630; }
 .smart-repair-item ins { color: var(--blue-dark); font-weight: 700; text-decoration: none; }
-.smart-repair-selection { padding-top: 2px; border-top: 1px solid var(--line); }
-.smart-repair-selection p {
+.inspection-suggestion { display: block; color: var(--blue-dark); font: 0.7rem/1.4 "Avenir Next", Avenir, sans-serif; }
+.inspection-suggestion[aria-disabled="true"] { color: var(--muted); text-decoration: line-through; }
+.inspection-entry-details { padding: 0 8px 8px; overflow-wrap: anywhere; }
+.inspection-entry-details p {
   margin: 4px 0;
 }
-.smart-repair-selection #smart-repair-reason { color: var(--ink); }
+.inspection-entry-details .inspection-reason { color: var(--ink); }
 
 textarea {
   display: block;

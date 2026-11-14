@@ -177,10 +177,7 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="copy-outgoing"' in response.text
     assert "Evidence Collection" not in response.text
     assert "evidence-collection" not in response.text
-    assert (
-        "Select a repair to inspect its corresponding wording and sentence context."
-        in response.text
-    )
+    assert 'id="smart-repair-selection"' not in response.text
     assert 'id="cleanup-disclosure"' in response.text
     assert 'id="cleanup-route-list"' in response.text
     assert "This does not save an evaluation corpus." not in response.text
@@ -2517,6 +2514,7 @@ async function settle() { await new Promise((resolve) => setImmediate(resolve));
         button.children[1].children[2].textContent,
       ];
     }),
+    details: queue.children.map((item) => item.children[1].children.map((p) => p.textContent)),
   };
   await queue.children[0].children[0].dispatch("click");
   const inspected = {
@@ -2524,8 +2522,8 @@ async function settle() { await new Promise((resolve) => setImmediate(resolve));
       elements["#prepared-text"].selectionStart,
       elements["#prepared-text"].selectionEnd,
     ],
-    context: elements["#smart-repair-context"].textContent,
-    reason: elements["#smart-repair-reason"].textContent,
+    context: queue.children[0].children[1].children[1].textContent,
+    reason: queue.children[0].children[1].children[2].textContent,
     selected: elements["#smart-repair-list"].children.some(
       (item) => item.children[0].attributes["aria-current"] === "true",
     ),
@@ -2576,11 +2574,23 @@ async function settle() { await new Promise((resolve) => setImmediate(resolve));
     assert observed == {
         "before": {
             "hidden": False,
-            "summary": "2 repairs",
+            "summary": "0 findings · 2 repairs",
             "outgoing": "send the report now",
             "queue": [
-                ["1 · replacement", "teh", "the"],
-                ["2 · addition", "∅", "now"],
+                ["Applied in Prepared · replacement", "teh", "the"],
+                ["Applied in Prepared · addition", "∅", "now"],
+            ],
+            "details": [
+                [
+                    "Prepared",
+                    "Context: send the report now",
+                    "Prepared replaces wording; verify meaning.",
+                ],
+                [
+                    "Prepared",
+                    "Context: send the report now",
+                    "Prepared adds wording; verify meaning.",
+                ],
             ],
         },
         "inspected": {
@@ -2592,8 +2602,8 @@ async function settle() { await new Promise((resolve) => setImmediate(resolve));
         "copied": ["send the report now"],
         "invalidated": {
             "hidden": False,
-            "state": "unavailable",
-            "summary": "No repairs",
+            "state": "retained",
+            "summary": "0 findings · 2 repairs",
         },
         "malformed": {
             "prepared": "send teh report",
@@ -2611,7 +2621,7 @@ async function settle() { await new Promise((resolve) => setImmediate(resolve));
             "copiedDelta": 0,
             "recoveryHidden": True,
             "dialogOpen": False,
-            "reviewHidden": True,
+            "reviewHidden": False,
         },
     }
 
