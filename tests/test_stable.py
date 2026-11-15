@@ -125,8 +125,184 @@ def install(tmp_path: Path, checkout: Path, upstream: Path, *arguments: str):
         str(config),
         "--raycast-directory",
         str(tmp_path / "commands"),
+        "--reuse-existing",
         *arguments,
     )
+
+
+def test_default_install_and_existing_installation_preserve_files(tmp_path: Path) -> None:
+    upstream, checkout = application_pair(tmp_path)
+    home = tmp_path / "home"
+    config = home / ".config/local-text/stable/environment.json"
+    database = home / ".local/share/local-text/stable/local-text.sqlite3"
+    missing = stable(tmp_path, checkout, upstream, "install")
+    assert missing.returncode != 0
+    assert "--initialize" in missing.stderr
+    assert str(database) in missing.stdout
+    assert str(config) in missing.stdout
+    assert not config.exists()
+
+    declined = stable(tmp_path, checkout, upstream, "install", "--initialize", input="n\n")
+    assert declined.returncode == 0, declined.stderr
+    assert not config.exists()
+    assert not database.exists()
+
+    prepared = stable(tmp_path, checkout, upstream, "install", "--initialize", "--yes")
+    assert prepared.returncode == 0, prepared.stderr
+    root = tmp_path / "stable"
+    manifest = root / "installation.json"
+    installed = json.loads(manifest.read_text())
+    assert installed["database"] == str(database)
+    assert installed["configuration"] == str(config)
+    assert installed["raycast_directory"] == str(home / ".config/raycast/scripts")
+    assert config.read_text() == "{}\n"
+    assert config.stat().st_mode & 0o777 == 0o600
+    config.write_text('{"LOCAL_TEXT_OPENAI_MODEL": "owner-model"}\n')
+    before = {path: path.read_bytes() for path in (manifest, config, database, root / "stable.py")}
+    for arguments, answer, success in (
+        ((), "", False),
+        (("--yes",), "", False),
+        ((), "y\n", True),
+        (("--reuse-existing", "--yes"), "", True),
+        (("--configuration", str(tmp_path / "other.json"), "--reuse-existing"), "", False),
+        (("--initialize", "--reuse-existing"), "", False),
+    ):
+        result = stable(tmp_path, checkout, upstream, "install", *arguments, input=answer)
+        assert (result.returncode == 0) is success, result.stderr
+        assert {path: path.read_bytes() for path in before} == before
+
+
+def test_install_checkout_option_accepts_either_position_and_requires_a_directory(tmp_path):
+    upstream, checkout = repository_pair(tmp_path)
+    after = stable(tmp_path, checkout, upstream, "install", "--checkout", str(checkout))
+    assert after.returncode != 0
+    assert "--initialize" in after.stderr
+    assert "unrecognized arguments" not in after.stderr
+    for arguments in (("--checkout", "main", "install"), ("install", "--checkout", "main")):
+        invalid = stable(tmp_path, checkout, upstream, *arguments)
+        assert invalid.returncode != 0
+        assert "directory" in invalid.stderr
+        assert "branch" in invalid.stderr
+        assert "database is missing" not in invalid.stderr
+
+
+def test_existing_stable_database_is_offered_without_initializing_a_new_one(tmp_path):
+    upstream, checkout = repository_pair(tmp_path)
+    home = tmp_path / "home"
+    database = home / ".local/share/local-text/stable/local-text.sqlite3"
+    database.parent.mkdir(parents=True)
+    # The decline path must not open or interpret existing database contents.
+    database.write_bytes(b"owner database must not be opened or replaced")
+    before = database.read_bytes()
+    declined = stable(tmp_path, checkout, upstream, "install", input="n\n")
+    assert declined.returncode == 0, declined.stderr
+    assert str(database) in declined.stdout
+    assert "Reuse" in declined.stdout
+    assert database.read_bytes() == before
+    assert not (home / "Library/Application Support/local-text/release").exists()
+    assert not (home / ".config/local-text/stable/environment.json").exists()
+    refused = stable(tmp_path, checkout, upstream, "install", "--initialize", "--yes")
+    assert refused.returncode != 0
+    assert "--initialize is only for a new database" in refused.stderr
+    explicit = tmp_path / "different.sqlite3"
+    overridden = stable(tmp_path, checkout, upstream, "install", "--database", str(explicit))
+    assert overridden.returncode != 0
+    assert "database is missing" in overridden.stderr
+    assert str(explicit) in overridden.stdout
+
+
+def test_existing_configuration_requires_reuse_and_legacy_is_preserved(tmp_path: Path) -> None:
+    upstream, checkout = application_pair(tmp_path)
+    directory = tmp_path / "home/.config/local-text/stable"
+    directory.mkdir(parents=True)
+    legacy = directory / "environment"
+    legacy.write_text("SYNTHETIC_OWNER_SETTING=preserve\n")
+    legacy.chmod(0o600)
+    refused = stable(tmp_path, checkout, upstream, "install", "--initialize", "--yes")
+    assert refused.returncode != 0
+    assert "legacy" in refused.stderr
+    assert legacy.read_text() == "SYNTHETIC_OWNER_SETTING=preserve\n"
+    assert not (directory / "environment.json").exists()
+
+    config = directory / "environment.json"
+    config.write_text('{"LOCAL_TEXT_OPENAI_MODEL": "synthetic-model"}\n')
+    config.chmod(0o600)
+    refused = stable(tmp_path, checkout, upstream, "install", "--initialize", "--yes")
+    assert refused.returncode != 0
+    assert "--reuse-existing" in refused.stderr
+    assert not (tmp_path / "stable/installation.json").exists()
+    prepared = stable(
+        tmp_path, checkout, upstream, "install", "--initialize", "--reuse-existing", "--yes"
+    )
+    assert prepared.returncode == 0, prepared.stderr
+    assert config.read_text() == '{"LOCAL_TEXT_OPENAI_MODEL": "synthetic-model"}\n'
+    assert legacy.read_text() == "SYNTHETIC_OWNER_SETTING=preserve\n"
+
+
+def test_legacy_configuration_can_be_reused_without_conversion(tmp_path: Path) -> None:
+    upstream, checkout = application_pair(tmp_path)
+    directory = tmp_path / "home/.config/local-text/stable"
+    directory.mkdir(parents=True)
+    legacy = directory / "environment"
+    contents = (
+        "# Existing Stable settings\n"
+        "export LOCAL_TEXT_OPENAI_MODEL='synthetic model'\n"
+        "LOCAL_TEXT_OPENAI_API_KEY='synthetic-secret'\n"
+    )
+    legacy.write_text(contents)
+    legacy.chmod(0o600)
+
+    declined = stable(tmp_path, checkout, upstream, "install", "--initialize", input="n\n")
+    assert declined.returncode == 0, declined.stderr
+    assert "Reuse" in declined.stdout
+    assert str(legacy) in declined.stdout
+    assert not (tmp_path / "stable/installation.json").exists()
+    refused = stable(tmp_path, checkout, upstream, "install", "--initialize", "--yes")
+    assert refused.returncode != 0
+    assert "--reuse-existing" in refused.stderr
+
+    prepared = stable(tmp_path, checkout, upstream, "install", "--initialize", input="y\ny\n")
+    assert prepared.returncode == 0, prepared.stderr
+    installed = json.loads((tmp_path / "stable/installation.json").read_text())
+    assert installed["configuration"] == str(legacy)
+    assert legacy.read_text() == contents
+    assert not (directory / "environment.json").exists()
+    assert "synthetic-secret" not in declined.stdout + refused.stderr + prepared.stdout
+    status = stable(tmp_path, checkout, upstream, "status")
+    assert status.returncode == 0, status.stderr
+    assert json.loads(status.stdout)["schema"]["state"] == "current"
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [
+        'LOCAL_TEXT_OPENAI_MODEL="$(touch {marker})"\n',
+        "touch {marker}\n",
+        "LOCAL_TEXT_OPENAI_MODEL=synthetic;true\n",
+        "LOCAL_TEXT_DATABASE_PATH=/unrelated/database\n",
+        "LOCAL_TEXT_OPENAI_MODEL=first\nLOCAL_TEXT_OPENAI_MODEL=second\n",
+    ],
+)
+def test_legacy_configuration_refuses_shell_code_and_unsupported_settings(
+    tmp_path: Path, contents: str
+) -> None:
+    upstream, checkout = repository_pair(tmp_path)
+    directory = tmp_path / "home/.config/local-text/stable"
+    directory.mkdir(parents=True)
+    legacy = directory / "environment"
+    marker = tmp_path / "must-not-exist"
+    contents = contents.format(marker=marker)
+    legacy.write_text(contents)
+    legacy.chmod(0o600)
+    result = stable(
+        tmp_path, checkout, upstream, "install", "--initialize", "--reuse-existing", "--yes"
+    )
+    assert result.returncode != 0
+    assert "legacy Stable configuration" in result.stderr
+    assert legacy.read_text() == contents
+    assert not marker.exists()
+    assert not (directory / "environment.json").exists()
+    assert not (tmp_path / "stable/installation.json").exists()
 
 
 def test_install_requires_explicit_initialization_and_never_starts_service(tmp_path: Path) -> None:

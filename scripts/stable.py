@@ -25,6 +25,8 @@ STABLE_PROTOCOL = 1
 PORT = 7532
 UPSTREAM = "https://github.com/dmclark/sayloom.git"
 DEFAULT_ROOT = Path.home() / ".local/share/local-text/stable-runtime"
+DEFAULT_DATABASE = Path.home() / ".local/share/local-text/stable/local-text.sqlite3"
+DEFAULT_CONFIGURATION = Path.home() / ".config/local-text/stable/environment.json"
 CONFIGURATION_KEYS = {
     "LOCAL_TEXT_GEMINI_API_KEY",
     "LOCAL_TEXT_GEMINI_MODEL",
@@ -95,8 +97,29 @@ def locked(root: Path):
 
 def configuration(path: Path) -> dict:
     if path.is_symlink() or path.stat().st_mode & 0o077:
-        fail("Stable configuration must be a regular private JSON file (0600)")
-    values = read_json(path)
+        fail("Stable configuration must be a regular private file (0600)")
+    try:
+        values = read_json(path)
+    except json.JSONDecodeError:
+        if path.name != "environment":
+            raise
+        # Legacy Stable used literal shell assignments. Never source the file:
+        # substitutions, commands, duplicate keys and unknown settings are refused.
+        values = {}
+        for number, line in enumerate(path.read_text().splitlines(), 1):
+            lexer = shlex.shlex(line, posix=True, punctuation_chars=True)
+            lexer.whitespace_split = True
+            words = list(lexer)
+            if words and words[0] == "export":
+                words = words[1:]
+            if not words:
+                continue
+            if len(words) != 1 or "=" not in words[0]:
+                fail(f"legacy Stable configuration requires literal assignments (line {number})")
+            key, value = words[0].split("=", 1)
+            if key in values or key not in CONFIGURATION_KEYS or "$" in value or "`" in value:
+                fail(f"unsupported legacy Stable configuration assignment (line {number})")
+            values[key] = value
     if not isinstance(values, dict) or any(
         key not in CONFIGURATION_KEYS or not isinstance(value, str) for key, value in values.items()
     ):
@@ -124,7 +147,7 @@ def environment(installed: dict, source: Path, database: Path | None = None) -> 
 
 def load_installation(root: Path) -> dict:
     if not (root / "installation.json").is_file():
-        fail("Stable is not installed; use install with explicit configuration and database paths")
+        fail("Stable is not installed; use install to review defaults or select external paths")
     installed = read_json(root / "installation.json")
     if installed["protocol"] != STABLE_PROTOCOL:
         fail("unsupported Stable installation protocol")
@@ -139,7 +162,9 @@ def require_idle(root: Path) -> None:
 def require_checkout(installed: dict) -> None:
     checkout = Path(installed["checkout"])
     if git(checkout, "branch", "--show-current") != "main":
-        fail("Stable checkout must be on main")
+        fail(
+            "Stable checkout must be on main; run from Stable's main checkout or select --checkout"
+        )
     if git(checkout, "rev-parse", "HEAD") != installed["commit"]:
         fail("checkout differs from installed commit; do not pull Stable manually")
     if git(checkout, "status", "--porcelain", "--untracked-files=no"):
@@ -415,20 +440,57 @@ def require_command_destinations(directory: Path, commands: dict) -> None:
 def install(root: Path, arguments: argparse.Namespace) -> None:
     require_idle(root)
     if (root / "installation.json").exists():
-        fail("Stable is already installed; use status/update, not reinstall")
+        installed = load_installation(root)
+        for option in ("database", "configuration", "raycast_directory"):
+            selected = getattr(arguments, option)
+            if selected is not None and selected.expanduser().resolve() != Path(installed[option]):
+                fail("Stable is already installed; refusing changed paths; use status/update")
+        if arguments.initialize:
+            fail("--initialize cannot be used with an existing installation")
+        print(f"Existing Stable installation: {root}; configuration: {installed['configuration']}")
+        if arguments.reuse_existing or (
+            not arguments.yes and confirm("Use this installation unchanged?", False)
+        ):
+            print("Using existing Stable unchanged. Use start or status; no files were replaced.")
+            return
+        fail("Stable already exists; use --reuse-existing to retain it, or status/update")
     for reserved in ("stable.py", "stable", "environments", "backups"):
         path = root / reserved
         if path.exists() or path.is_symlink():
             fail(f"refusing to replace unmanaged Stable runtime path: {reserved}")
-    checkout = arguments.checkout.resolve()
-    database = arguments.database.resolve()
-    config = arguments.configuration.resolve()
-    for private in (root, database, config, arguments.raycast_directory.resolve()):
+    checkout = arguments.checkout.expanduser().resolve()
+    if not checkout.is_dir():
+        fail(
+            "Stable checkout directory does not exist; --checkout expects a path, not a branch name"
+        )
+    database = (arguments.database or DEFAULT_DATABASE).expanduser().resolve()
+    config_path = (arguments.configuration or DEFAULT_CONFIGURATION).expanduser()
+    legacy = config_path.with_name("environment")
+    if (
+        arguments.configuration is None
+        and not config_path.exists()
+        and not config_path.is_symlink()
+        and (legacy.exists() or legacy.is_symlink())
+    ):
+        config_path = legacy
+    if config_path.is_symlink():
+        fail("Stable configuration must not be a symlink")
+    config = config_path.resolve()
+    command_directory = (
+        (arguments.raycast_directory or Path.home() / ".config/raycast/scripts")
+        .expanduser()
+        .resolve()
+    )
+    for private in (root, database, config, command_directory):
         if private.is_relative_to(checkout):
             fail(
                 "Stable runtime, database, configuration, and commands must be outside the checkout"
             )
-    configuration(config)
+    print(f"Database: {database}\nConfiguration: {config}\nRaycast directory: {command_directory}")
+    if config.exists():
+        configuration(config)
+    elif arguments.configuration is not None:
+        fail("explicit configuration file is missing; create a private JSON file first")
     if not database.exists() and not arguments.initialize:
         fail("database is missing; explicit install --initialize is required")
     if arguments.initialize and database.exists():
@@ -442,14 +504,26 @@ def install(root: Path, arguments: argparse.Namespace) -> None:
         "upstream": arguments.upstream,
         "database": str(database),
         "configuration": str(config),
-        "raycast_directory": str(arguments.raycast_directory.resolve()),
+        "raycast_directory": str(command_directory),
         "label": label,
         "plist": str(Path.home() / "Library/LaunchAgents" / f"{label}.plist"),
     }
+    if (database.exists() or config.exists()) and not arguments.reuse_existing:
+        if arguments.yes:
+            fail("existing files preserved; review paths and select --reuse-existing to use them")
+        if not confirm("Reuse these existing Stable files unchanged?", False):
+            print("Existing Stable files preserved; installation cancelled.")
+            return
     require_checkout(installed)
     require_free_port()
     if not confirm("Prepare Stable installation (does not start it)?", arguments.yes):
         return
+    if not config.exists():
+        config.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        # Exclusive creation must never replace an existing provider configuration.
+        with open(config, "x", opener=lambda name, flags: os.open(name, flags, 0o600)) as output:
+            output.write("{}\n")
+        print("Created empty provider configuration; external cleanup is not enabled.")
     installed = prepare_environment(root, installed, checkout)
     installed["service_arguments"] = [
         installed["python"],
@@ -906,10 +980,19 @@ def main() -> None:
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("status")
     installer = commands.add_parser("install", help="prepare a new installation; does not start it")
-    installer.add_argument("--database", type=Path, required=True)
-    installer.add_argument("--configuration", type=Path, required=True)
     installer.add_argument(
-        "--raycast-directory", type=Path, default=Path.home() / ".config/raycast/scripts"
+        "--checkout",
+        type=Path,
+        default=argparse.SUPPRESS,
+        help="Stable main checkout directory, not a branch name",
+    )
+    installer.add_argument("--database", type=Path, help=f"default: {DEFAULT_DATABASE}")
+    installer.add_argument("--configuration", type=Path, help=f"default: {DEFAULT_CONFIGURATION}")
+    installer.add_argument(
+        "--raycast-directory", type=Path, help="default: ~/.config/raycast/scripts"
+    )
+    installer.add_argument(
+        "--reuse-existing", action="store_true", help="use existing Stable files unchanged"
     )
     installer.add_argument("--initialize", action="store_true")
     installer.add_argument("--yes", action="store_true")

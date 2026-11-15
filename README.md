@@ -345,10 +345,20 @@ profile on **7532**. Development remains on **7523**, selected by `dev.py`.
 Stable never follows an active worktree or copies uncommitted implementation.
 Do not pull or edit its checkout manually: use the explicit update command.
 
-### Prepare a new installation explicitly
+### Prepare an installation
 
 Use Python 3.12 or newer and `uv`. From the checkout containing the Stable
-tooling, prepare an installation with explicit external paths:
+tooling, review the default paths without supplying parameters:
+
+```sh
+.venv/bin/python scripts/stable.py install
+```
+
+Defaults are the Stable database at
+`~/.local/share/local-text/stable/local-text.sqlite3`, provider
+configuration at `~/.config/local-text/stable/environment.json`, and Raycast
+commands at `~/.config/raycast/scripts`. Existing data is offered for reuse,
+not initialized or replaced. Override any path independently:
 
 ```sh
 .venv/bin/python scripts/stable.py --checkout /path/to/stable-checkout install \
@@ -357,7 +367,24 @@ tooling, prepare an installation with explicit external paths:
   --raycast-directory /path/to/raycast/scripts
 ```
 
-The configuration is a regular **0600 JSON object** of provider/model settings,
+`--checkout` takes a directory path, not a branch name. For `install`, it can
+appear before or after the subcommand.
+
+Existing files require an explicit reuse confirmation; `--yes` alone does not
+consent to reuse. For reviewed noninteractive reuse, add `--reuse-existing`.
+An existing managed installation is offered unchanged, never reinstalled;
+conflicting path overrides are refused. If the default JSON file is absent, an
+existing Stable `environment` file is offered for reuse without conversion or
+replacement. Its private (0600) literal `KEY=value` or `export KEY=value`
+assignments are read as data, never sourced or executed. Shell substitutions,
+commands, duplicate keys, and unsupported settings are refused. An existing
+JSON file takes precedence; `--configuration` overrides discovery.
+
+On a fresh setup, add `--initialize` to create the database. After confirmation,
+a missing default configuration is created privately as `{}` (no external
+provider); an explicitly selected configuration must already exist.
+
+New configuration uses a regular **0600 JSON object** of provider/model settings,
 using the `LOCAL_TEXT_GEMINI_*`, `LOCAL_TEXT_OPENAI_*`, `LOCAL_TEXT_OPENROUTER_*`,
 `LOCAL_TEXT_CLEANUP_ROUTE_ORDER`, `LOCAL_TEXT_CLEANUP_ROUTE_ATTEMPT_SECONDS`,
 `LOCAL_TEXT_CLEANUP_TIMEOUT_SECONDS`, and
