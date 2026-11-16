@@ -159,9 +159,11 @@
                 </details>
               </div>
               <div class="editor-wrap">
+                <div id="prepared-highlights" class="prepared-highlights" aria-hidden="true" hidden></div>
                 <textarea
                   id="prepared-text"
                   aria-label="Prepared text"
+                  aria-describedby="prepared-inspection-status"
                   autocomplete="off"
                   placeholder="Prepared text appears here."
                   readonly
@@ -181,7 +183,7 @@
                   <strong id="smart-repair-summary">0 repairs</strong>
                 </header>
                 <p id="smart-repair-note" class="smart-repair-note">
-                  Select wording to highlight. Edit Original directly; Keep dismisses a finding.
+                  Select wording or an entry. Edit Original; Keep dismisses a finding.
                 </p>
                 <ol id="smart-repair-list" aria-label="Findings and applied repairs"></ol>
               </section>
@@ -189,6 +191,7 @@
             <footer class="panel-footer">
               <span><strong id="prepared-count">0</strong> characters</span>
               <span id="prepared-origin" role="status">No current Prepared</span>
+              <span id="prepared-inspection-status" class="visually-hidden" role="status"></span>
               <div class="panel-footer-actions">
                 <button id="correct-prepared" class="button button-quiet" type="button"
                   aria-haspopup="dialog" aria-controls="prepared-correction-dialog" hidden disabled>Correct Prepared</button>
