@@ -166,7 +166,9 @@ def run_checks(screenshots: Path | None, manual: bool = False) -> None:
             return page.evaluate(
                 """({findings, overrides}) => {
               const e = document.querySelector('#original-text');
+              const p = document.querySelector('#prepared-text');
               const detail = {original_text:e.value, revision:Number(e.dataset.revision),
+                prepared_text:p.value, prepared_generation:Number(p.dataset.generation),
                 findings, ...overrides};
               e.dispatchEvent(new CustomEvent('inspection-findings', {detail}));
               return detail;
@@ -174,35 +176,48 @@ def run_checks(screenshots: Path | None, manual: bool = False) -> None:
                 {"findings": findings, "overrides": overrides},
             )
 
-        def finding(start: int, end: int, text: str, suggestion: str | None = None) -> dict:
-            result = {
+        def finding(start: int, end: int, text: str, alternatives: list[str] | None = None) -> dict:
+            # Explicit mapping for this synthetic response only. Production must
+            # supply independently bound Prepared spans, never copy source offsets.
+            mapped = fields() == (ORIGINAL, PREPARED)
+            target_start = start - 3 if mapped and start >= 27 else start
+            target_text = "amber" if mapped and start == 11 else text
+            return {
                 "original_span": {"start": start, "end": end, "text": text},
+                "prepared_span": {"start": target_start, "end": target_start + len(target_text),
+                                  "text": target_text},
                 "reason": "Synthetic finding: inspect whether this matches intended wording.",
+                "alternatives": alternatives or [],
             }
-            if suggestion is not None:
-                result["suggestion"] = suggestion
-            return result
 
         def capture(name: str) -> None:
             if screenshots:
                 screenshots.mkdir(parents=True, exist_ok=True)
-                page.locator(".workspace-shell").screenshot(path=screenshots / name)
+                page.screenshot(path=screenshots / name, full_page=True, animations="disabled")
 
         if manual:
             original.fill(ORIGINAL)
             page.select_option("#draft-preparation-mode", "smart", force=True)
             expect(prepared).to_have_value(PREPARED)
-            inject([finding(11, 16, "umber", "amber"), finding(50, 57, "pigment")])
-            expect(entries).to_have_count(4)
-            entries.nth(2).click()
+            inject([
+                finding(34, 39, "Umber", ["Amber", "Ochre"]),
+                finding(50, 57, "pigment"),
+                finding(17, 23, "parcel", ["package"]),
+            ])
+            expect(entries).to_have_count(5)
+            page.locator("#workspace-resizer").focus()
+            page.keyboard.press("Home")
             print(
                 "Synthetic inspection demo is open in Chromium on this host.\n"
                 "No live detector: both findings and preparation are fixed synthetic fixtures.\n"
                 "All browser-context network requests are mocked or blocked; no server/port.\n"
                 "Use synthetic text only. No private runtime, credentials, saving, delivery,\n"
                 "downloads, or app clipboard writes.\n"
-                "Every entry is expanded. Try Keep underneath pigment without selecting it;\n"
-                "select finding wording to highlight; edit umber to amber in\n"
+                "Inspection stays right of Prepared with compact colour-matched entries.\n"
+                "Try Keep on pigment without selecting it; Original stays unmarked.\n"
+                "See all marked findings before selection; compare zero, one or multiple\n"
+                "alternatives (viewing them applies nothing); select wording to highlight;\n"
+                "edit umber to amber in\n"
                 "Original and pause to see Text changed; select the removal repair to see\n"
                 "Location unavailable. Prepared updates are mocked, not generated.\n"
                 "Close this window (or Ctrl-C) to stop. Close and relaunch to reset.\n"
@@ -218,40 +233,65 @@ def run_checks(screenshots: Path | None, manual: bool = False) -> None:
             return
 
         original.fill(ORIGINAL)
-        bound = inject([finding(11, 16, "umber", "amber"), finding(50, 57, "pigment")])
+        page.select_option("#draft-preparation-mode", "conservative", force=True)
+        expect(prepared).to_have_value(PREPARED)
+        bound = inject([finding(11, 16, "umber", ["amber", "ochre"]), finding(50, 57, "pigment")])
         expect(entries).to_have_count(2)
+        marks = page.locator("#prepared-highlights mark")
+        expect(marks).to_have_text(["amber", "pigment"])
+        expect(page.locator('mark[data-selected="true"]')).to_have_count(0)
+        assert original.input_value() == ORIGINAL
+        assert page.locator("#prepared-highlights").text_content() == PREPARED + "\n"
+        expect(page.locator("#original-highlights")).to_have_count(0)
+        assert marks.first.evaluate("e => getComputedStyle(e).textDecorationStyle") == "wavy"
+        assert page.locator("#prepared-highlights").get_attribute("aria-hidden") == "true"
+        page.locator("#workspace-resizer").focus()
+        page.keyboard.press("Home")
         expect(page.locator("#smart-repair-selection")).to_have_count(0)
         # Details and per-entry actions are expanded before any selection.
         for card in cards.all():
             expect(card.locator(".inspection-reason")).to_be_visible()
-            expect(card.locator(".inspection-location")).to_have_text("Original")
+            expect(card.locator(".inspection-location")).to_have_text("Prepared")
             expect(card.locator(".inspection-keep")).to_be_visible()
-        expect(cards.nth(0).locator(".inspection-suggestion")).to_have_text("Suggested: amber")
+        expect(cards.nth(0).locator(".inspection-suggestion")).to_have_text(["amber", "ochre"])
         expect(cards.nth(1).locator(".inspection-suggestion")).to_have_count(0)
+        # One option is also valid. Adding/removing it leaves other findings marked.
+        inject([finding(34, 39, "Umber", ["Amber"])])
+        expect(cards.last.locator(".inspection-suggestion")).to_have_text("Amber")
+        expect(marks).to_have_text(["amber", "Umber", "pigment"])
+        cards.last.locator(".inspection-keep").click()
+        expect(marks).to_have_text(["amber", "pigment"])
         before = fields()
+        page.click("#layout-side-by-side")
         # UTF-16 selection must account for the leading supplementary character.
         entries.nth(0).focus()
         page.keyboard.press("Enter")
-        assert selection("#original-text") == [12, 17]
+        assert selection("#prepared-text") == [12, 17]
+        expect(page.locator('mark[data-selected="true"]')).to_have_text("amber")
+        assert marks.first.evaluate("e => getComputedStyle(e).textDecorationStyle") == "double"
+        page.click("#layout-stacked")
+        # Viewing the non-first hypothesis is not an application action.
+        cards.first.locator(".inspection-suggestion").nth(1).click()
         assert fields() == before
         page.wait_for_timeout(850)
-        assert len(cleanups) == 0, "Preparation off, selection and inaction must not generate"
+        assert len(cleanups) == 1, "Selection and inaction must not generate"
         # Keep on an unselected entry cannot dismiss the selected finding instead.
         # No replacement is required. Keyboard-only Keep changes neither field.
         cards.nth(1).locator(".inspection-keep").focus()
         page.keyboard.press("Enter")
         expect(entries).to_have_count(1)
-        expect(entries.first.locator(".smart-repair-item-change")).to_have_text("umber")
+        expect(entries.first.locator(".smart-repair-item-change")).to_have_text("amber")
         expect(entries.first).to_be_focused()
+        expect(marks).to_have_text(["amber"])
         assert fields() == before
-        assert len(cleanups) == 0
+        assert len(cleanups) == 1
 
         page.select_option("#draft-preparation-mode", "smart", force=True)
         expect(prepared).to_have_value(PREPARED)
+        expect(marks).to_have_text(["amber"])  # Only the newly bound repair is marked.
         expect(entries).to_have_count(3)
         # Applied repairs include details before selection, but never dismissal.
         for card in cards.all()[1:]:
-            expect(card.locator(".inspection-context")).to_be_visible()
             expect(card.locator(".inspection-reason")).to_be_visible()
             expect(card.locator(".inspection-keep")).to_have_count(0)
         entries.nth(1).click()
@@ -260,11 +300,20 @@ def run_checks(screenshots: Path | None, manual: bool = False) -> None:
         # The removal selects exact Original wording, never its empty Prepared span.
         entries.nth(2).click()
         assert selection("#original-text") == [25, 27]
-        inject([finding(11, 16, "umber", "amber")])
+        inject([finding(11, 16, "umber", ["amber", "ochre"])])
         entries.nth(3).click()
-        expect(cards.nth(3).locator(".inspection-location")).to_have_text("Original")
+        expect(cards.nth(3).locator(".inspection-location")).to_have_text("Prepared")
         cards.nth(3).scroll_into_view_if_needed()
-        capture("196-expanded-current-final.png")
+        # CART suppresses even current unresolved marks, not only stale ones.
+        expect(marks).to_have_text(["amber"])
+        page.click("#maximize-prepared")
+        expect(marks).to_have_count(0)
+        expect(page.locator("#prepared-highlights")).to_be_hidden()
+        entries.nth(3).click()
+        page.wait_for_function("document.querySelector('#prepared-text').selectionEnd === 0")
+        assert selection("#prepared-text") == [0, 0]
+        page.click("#maximize-prepared")
+        expect(marks).to_have_text(["amber"])
 
         # Two quick edits use one existing debounce, retaining entries throughout.
         count = len(cleanups)
@@ -274,9 +323,9 @@ def run_checks(screenshots: Path | None, manual: bool = False) -> None:
         expect(entries).to_have_count(4)
         entries.nth(3).click()
         expect(cards.nth(3).locator(".inspection-location")).to_have_text("Text changed")
-        expect(cards.nth(3).locator(".inspection-suggestion")).to_have_attribute(
-            "aria-disabled", "true"
-        )
+        for option in cards.nth(3).locator(".inspection-suggestion").all():
+            expect(option).to_have_attribute("aria-disabled", "true")
+        expect(marks).to_have_count(0)
         assert selection("#original-text")[0] == selection("#original-text")[1]
         assert selection("#prepared-text") == [0, 0]
         expect(prepared).to_have_value(original.input_value())
@@ -289,12 +338,14 @@ def run_checks(screenshots: Path | None, manual: bool = False) -> None:
         expect(cards.nth(2).locator(".inspection-location")).to_have_text("Location unavailable")
         assert selection("#prepared-text") == [0, 0]
         cards.nth(2).scroll_into_view_if_needed()
-        capture("196-expanded-stale-final.png")
+        cards.nth(3).scroll_into_view_if_needed()
+        capture("196-prepared-stale.png")
 
         # Matching wording restored in the same place must not resurrect bindings.
         edit(ORIGINAL)
         expect(prepared).to_have_value(PREPARED)
         expect(entries).to_have_count(6)
+        expect(marks).to_have_text(["amber"])
         entries.nth(3).click()
         expect(cards.nth(3).locator(".inspection-location")).to_have_text("Text changed")
         entries.nth(1).click()
@@ -303,6 +354,11 @@ def run_checks(screenshots: Path | None, manual: bool = False) -> None:
         # Stale, wrong-passage and invalid-offset findings are rejected atomically.
         inject(bound["findings"], revision=bound["revision"])
         inject(bound["findings"], original_text=ORIGINAL + " Other passage.")
+        inject(bound["findings"], prepared_text=PREPARED + " Other result.")
+        inject(bound["findings"], prepared_generation=bound["prepared_generation"])
+        wrong_target = finding(50, 57, "pigment")
+        wrong_target["prepared_span"] = wrong_target["original_span"]
+        inject([wrong_target])  # Removal shifted this occurrence by three code points.
         inject([finding(11, 16, "umber"), finding(999, 1000, "x")])
         expect(entries).to_have_count(6)
 
@@ -339,7 +395,8 @@ def run_checks(screenshots: Path | None, manual: bool = False) -> None:
         page.fill("#intended-prepared", "Owner-confirmed synthetic wording.")
         page.click("#confirm-prepared")
         expect(prepared).to_have_value("Owner-confirmed synthetic wording.")
-        inject([finding(11, 16, "umber")])
+        inject([{**finding(11, 16, "umber"),
+                 "prepared_span": {"start": 0, "end": 5, "text": "Owner"}}])
         cards.last.locator(".inspection-keep").click()
         page.select_option("#draft-preparation-mode", "smart", force=True)
         page.wait_for_timeout(850)
@@ -366,8 +423,112 @@ def run_checks(screenshots: Path | None, manual: bool = False) -> None:
         assert all(path in {"config", "outgoing-state", "cleanup"} for path, _, _ in requests)
         page.click("#clear-text")
         expect(entries).to_have_count(0)
+        delayed = False
         page.reload()
+        expect(page.locator("#draft-preparation-mode")).to_have_value("off")
         expect(entries).to_have_count(0)
+        expect(marks).to_have_count(0)
+        # Plain text, repeated occurrences, overlaps, wrapping and native editing.
+        text = "📝 umber umber <b>& text\t" + ("wrapped text " * 18 + "\n") * 30 + "umber\n"
+        original.fill(text)
+        page.select_option("#draft-preparation-mode", "conservative", force=True)
+        expect(prepared).to_have_value(text)
+        second = text.index("umber", text.index("umber") + 1)
+        last = text.rindex("umber")
+        inject([finding(second, second + 5, "umber", ["amber", "ochre"]),
+                finding(last, last + 5, "umber")])
+        expect(marks).to_have_text(["umber", "umber"])
+        assert page.locator("#prepared-highlights").text_content() == text + "\n"
+        expect(page.locator("#prepared-highlights b")).to_have_count(0)
+        page.click("#select-original")
+        assert any(path == "outgoing-state" and body and body.get("outgoing_text") == text
+                   for path, _, body in requests)
+        # Invalid/duplicate alternatives reject a whole batch without marking it.
+        inject([finding(2, 7, "umber"), finding(second, second + 5, "umber", ["x", "x"])])
+        inject([{**finding(2, 7, "umber"), "alternatives": [42]}])
+        expect(entries).to_have_count(2)
+        # Legacy one-suggestion producers are preserved at the existing UI boundary.
+        legacy = finding(2, 7, "umber")
+        legacy.pop("alternatives")
+        legacy["suggestion"] = "amber"
+        inject([legacy])
+        expect(marks).to_have_count(3)
+        inject([finding(2, second + 5, text[2:second + 5])])
+        assert page.locator("#prepared-highlights").text_content() == text + "\n"
+        for width in (1280, 1480):
+            page.set_viewport_size({"width": width, "height": 1050})
+            for layout in ("side-by-side", "stacked"):
+                page.click(f"#layout-{layout}")
+                prepared.evaluate("e => {e.scrollTop = e.scrollHeight;}")
+                page.wait_for_function("""() => {
+                  const e = document.querySelector('#prepared-text');
+                  const m = document.querySelector('#prepared-highlights');
+                  return e.scrollTop > 0 && e.scrollTop === m.scrollTop
+                    && e.clientWidth === m.clientWidth;
+                }""")
+                assert prepared.evaluate("""e => {
+                  const m = document.querySelector('#prepared-highlights');
+                  const a = getComputedStyle(e), b = getComputedStyle(m);
+                  return ['fontFamily', 'fontSize', 'lineHeight', 'letterSpacing', 'padding']
+                    .every(k => a[k] === b[k]);
+                }""")
+        # A real keyboard replacement touches just the selected occurrence; undo
+        # restores wording but must not revive the now-stale finding bindings.
+        page.select_option("#draft-preparation-mode", "off", force=True)
+        count = len(cleanups)
+        original.focus()
+        original.evaluate("(e, start) => e.setSelectionRange(start, start + 5)", second + 1)
+        page.keyboard.insert_text("amber")
+        expect(original).to_have_value(text[:second] + "amber" + text[second + 5:])
+        expect(marks).to_have_count(0)
+        page.keyboard.press("ControlOrMeta+z")
+        expect(original).to_have_value(text)
+        expect(marks).to_have_count(0)
+        expect(entries).to_have_count(4)
+        page.click("#clear-text")
+        expect(entries).to_have_count(0)
+        page.wait_for_timeout(850)
+        assert len(cleanups) == count == 7
+        delayed = False
+        original.fill(ORIGINAL)
+        page.select_option("#draft-preparation-mode", "smart", force=True)
+        expect(prepared).to_have_value(PREPARED)
+        inject([finding(34, 39, "Umber", ["Amber", "Ochre"]),
+                finding(50, 57, "pigment"), finding(17, 23, "parcel", ["package"])])
+        expect(entries).to_have_count(5)
+        page.click("#layout-stacked")
+        page.locator("#workspace-resizer").focus()
+        page.keyboard.press("Home")
+        expect(marks).to_have_text(["amber", "parcel", "Umber", "pigment"])
+        # Right-hand placement and matched backgrounds are observable contracts.
+        assert page.locator("#smart-repair-review").bounding_box()["x"] >= (
+            prepared.bounding_box()["x"] + prepared.bounding_box()["width"]
+        )
+        for mark in marks.all():
+            tone = mark.get_attribute("data-tone")
+            card = page.locator(f'.inspection-entry[data-tone="{tone}"]').first
+            assert mark.evaluate("e => getComputedStyle(e).backgroundColor") == card.evaluate(
+                "e => getComputedStyle(e).backgroundColor"
+            )
+        capture("196-prepared-before-selection.png")
+        pigment = marks.last.bounding_box()
+        page.mouse.click(pigment["x"] + pigment["width"] / 2,
+                         pigment["y"] + pigment["height"] / 2)
+        expect(cards.nth(3)).to_have_attribute("data-selected", "true")
+        entries.nth(2).focus()
+        page.keyboard.press("Enter")
+        expect(page.locator('mark[data-selected="true"]')).to_have_text("Umber")
+        assert selection("#prepared-text") == [32, 37]  # Not Original's [35, 40].
+        assert selection("#original-text")[0] == selection("#original-text")[1]
+        assert prepared.evaluate("e => getComputedStyle(e, '::selection').backgroundColor") == (
+            cards.nth(2).evaluate("e => getComputedStyle(e).backgroundColor")
+        )
+        capture("196-prepared-selected-options.png")
+        before = fields()
+        page.click("#select-prepared")
+        assert any(path == "outgoing-state" and body and body.get("outgoing_text") == PREPARED
+                   for path, _, body in requests)
+        assert fields() == before
         assert not errors, errors
         print(
             json.dumps(

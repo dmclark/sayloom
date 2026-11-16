@@ -2522,8 +2522,7 @@ async function settle() { await new Promise((resolve) => setImmediate(resolve));
       elements["#prepared-text"].selectionStart,
       elements["#prepared-text"].selectionEnd,
     ],
-    context: queue.children[0].children[1].children[1].textContent,
-    reason: queue.children[0].children[1].children[2].textContent,
+    reason: queue.children[0].children[1].children[1].textContent,
     selected: elements["#smart-repair-list"].children.some(
       (item) => item.children[0].attributes["aria-current"] === "true",
     ),
@@ -2577,26 +2576,23 @@ async function settle() { await new Promise((resolve) => setImmediate(resolve));
             "summary": "0 findings · 2 repairs",
             "outgoing": "send the report now",
             "queue": [
-                ["Applied in Prepared · replacement", "teh", "the"],
-                ["Applied in Prepared · addition", "∅", "now"],
+                ["Repair · replacement", "teh", "the"],
+                ["Repair · addition", "∅", "now"],
             ],
             "details": [
                 [
                     "Prepared",
-                    "Context: send the report now",
-                    "Prepared replaces wording; verify meaning.",
+                    "Applied in Prepared.",
                 ],
                 [
                     "Prepared",
-                    "Context: send the report now",
-                    "Prepared adds wording; verify meaning.",
+                    "Applied in Prepared.",
                 ],
             ],
         },
         "inspected": {
             "selection": [5, 8],
-            "context": "Context: send the report now",
-            "reason": "Prepared replaces wording; verify meaning.",
+            "reason": "Applied in Prepared.",
             "selected": True,
         },
         "copied": ["send the report now"],
