@@ -47,6 +47,36 @@ a separate effectiveness assessment. The
 distinguishes that decision from required engineering verification. No
 implementation, private-data use, spending or activation is authorized here.
 
+### #197-specific completion gate
+
+**Owner amendment, 2026-11-16:** The later
+[#197 findings contract](unresolved-findings-contract.md) requires controlled
+normal-route supply/application evidence and separately authorized real-provider
+evaluation of intended-text recovery usefulness, latency, and cost before #197
+closes or release readiness is claimed. Evaluation cases and reuse consent,
+provider coverage, usefulness/preservation criteria, latency thresholds, and
+cost/spending ceilings remain deferred pending owner approval.
+
+This is a narrow exception to this plan's older no-separate-assessment wording
+for #197 only. It does not impose a product-wide effectiveness programme,
+ordinary-use measurement/reporting task, Personal Corrections comparison or
+sign-off, or revival of retired evaluation harnesses. All ordinary-use statements
+below retain that broader boundary, subject to this bounded #197 gate. No
+implementation, provider calls, private-data use, spending, or activation is
+authorized, and no acceptance result is claimed.
+
+**Interim history boundary, owner-confirmed 2026-11-16:**
+[The retention clarification](https://ampcode.com/threads/T-01a1e5ce-f1b1-7556-bf85-87f9de86c90c)
+allows #197 implementation before history is delivered. Ordinary use may precede
+history after #197's existing acceptance gates pass, with an explicit warning
+that those sessions are not retained and cannot be recovered later. Prospective
+private history remains required follow-up work under PRODUCT.md and ADR-0003,
+not a prerequisite for this interim route. This does not waive D010/P003 or
+authorize implementation, activation, recording, private-data access, or spending.
+History's contract must still be settled before recording is activated.
+
+### Implementation order
+
 1. **Preserve source before adaptation.** The November 3, 2026 source-only
    preservation gate passed, including isolated recovery. It did not back up
    private operating records or clear holdings for deletion. Changes after
@@ -67,13 +97,16 @@ implementation, private-data use, spending or activation is authorized here.
    event ordering, stale/late responses, crash/retry recovery, recording failure,
    pause/private passages, deletion and managed-backup restore. Obtain approval
    for exact private destinations and provider/cost configuration. Do not invent
-   silent fallbacks when history cannot be recorded.
+   silent fallbacks when history cannot be recorded. For the interim #197 route,
+   unresolved history mechanics do not block implementation selection; they
+   remain prerequisites for recording activation, not findings implementation.
 4. **Adapt retained source deliberately.** The published #187 branch is a source
    candidate, not evidence of issue detection or personal reuse and not a
    wholesale merge instruction. Remove trial randomization,
    expiry and content deletion on uncertain/revised feedback; keep explicit
    suggestion application, spending safeguards and no automatic retries. Add
-   prospective history and its review; retain standalone conversational-review
+   prospective history and its review as separately contracted follow-up work,
+   not a condition of the interim #197 route; retain standalone conversational-review
    access. Audit continuity WIP for necessary protections only and reconcile
    migrations with main rather than copying competing histories.
 5. **Verify, then separately authorize integration and activation.** Begin with
@@ -90,20 +123,23 @@ implementation, private-data use, spending or activation is authorized here.
 - Explicitly reviewed/saved mappings usefully improve later contextual assistance
   across sessions. Verify edit/disable/delete authorization boundaries; a trigger
   match alone justifies neither a replacement nor a mapping-derived warning.
-- Input, generated results, findings, suggestions, inspection/application/dismissal
+- For history delivery, input, generated results, findings, suggestions, inspection/application/dismissal
   actions, applied/reversed edits, final wording,
   configuration and timing remain distinguishable across reload/restart.
   Preserve uncertain/revised labels; no mandatory fidelity confirmation.
-- Visible pause/private controls exclude a passage from retained history and
-  do not promise offline processing or provider-side deletion.
+  This persistence is not required for the explicitly warned interim #197 route.
+- For history delivery, visible pause/private controls exclude a passage from
+  retained history and do not promise offline processing or provider-side deletion.
 - Test failures, no findings or suggestions, findings without alternatives, missed issues, false alarms,
   protected wording, contextual abstention and repeated occurrences as applicable
   engineering behavior. Useful contextual mapping influence, fewer repeated
   repairs and worthwhile total effort savings remain goals judged through
   ordinary use, not a required comparison exercise or effectiveness report.
   No randomized assignment or trial expiry remains in the ongoing workflow.
-- Managed backup restore preserves records and cannot undo an explicit deletion
-  within managed scope. User exports and provider retention remain outside it.
+- For history delivery, managed backup restore preserves records and cannot undo
+  an explicit deletion within managed scope. These requirements precede recording
+  activation, not the interim #197 route. User exports and provider retention
+  remain outside that guarantee.
 - Keep historical trial and conversational records separate; no automatic
   import, history-informed suggestions, Personal Correction creation or training.
 - Verify affected tests and desktop browser states, both review surfaces and
@@ -111,6 +147,32 @@ implementation, private-data use, spending or activation is authorized here.
   claim the skipped final #187 browser/runtime checks passed. Passing engineering
   checks does not establish effectiveness; a separate usefulness assessment or
   effectiveness sign-off is not required for this delivery.
+
+### History purposes and content boundary
+
+The owner confirmed private analysis, explicitly requested reprocessing, and
+separate reviewed Personal Correction saving as intended purposes for prospective
+history. These purposes do not authorize record access, provider requests or
+automatic reuse. Personal Corrections retain separate review/save requirements;
+historical sentences and occurrence history do not enter later processing
+requests. Reprocessing selection and authorization remain to be designed, not an
+exception to those existing boundaries. Evaluation and training remain possible
+future purposes, neither ruled out nor approved; each needs separate purpose/scope
+approval and applicable data-use/provider/spending permission. P003 remains deferred.
+
+History should distinguish accepted findings/alternatives, server-derived
+complete/partial/unavailable status, user actions, and bounded failure, rejection
+and overflow diagnostics. Do not retain rejected model wording by default; this
+direction does not select raw provider-payload retention. Findings, actions,
+final copied wording, and Keep do not establish verified intent.
+
+Exact storage destinations, event/snapshot granularity, recording-failure
+behavior, pause/private-passage semantics, restore-safe deletion mechanics,
+diagnostic content limits, and review/reprocessing authorization UX remain
+unresolved before recording activation. No mechanism is selected here. The
+separate Personal Corrections managed-backup deletion question remains unresolved.
+The interim #197 route does not waive these history requirements or authorize
+importing historical private records.
 
 ### Provider/application reconciliation and independent gates
 
