@@ -33,7 +33,6 @@
     smartRepairNote: document.querySelector("#smart-repair-note"),
     smartRepairSummary: document.querySelector("#smart-repair-summary"),
     smartRepairList: document.querySelector("#smart-repair-list"),
-    runCleanup: document.querySelector("#run-cleanup"),
     clear: document.querySelector("#clear-text"),
     originalCount: document.querySelector("#original-count"),
     preparedCount: document.querySelector("#prepared-count"),
@@ -46,6 +45,7 @@
     cleanupRecovery: document.querySelector("#cleanup-recovery"),
     cleanupStatus: document.querySelector("#cleanup-status"),
     retryCleanup: document.querySelector("#retry-cleanup"),
+    retryCleanupState: document.querySelector("#retry-cleanup-state"),
     cleanupResult: document.querySelector("#cleanup-result"),
     cleanupResultStatus: document.querySelector("#cleanup-result-status"),
     cleanupAttemptDetails: document.querySelector("#cleanup-attempt-details"),
@@ -142,6 +142,11 @@
   let activeRequest = null;
   let requestSequence = 0;
   let replaceAllPending = false;
+  let originalEditRange = null;
+  const originalUndo = [];
+  const originalRedo = [];
+  let replayingOriginalEdit = false;
+  let originalComposition = null;
   let syntheticPastePending = false;
   let syntheticPasteTimer = null;
   let returnSelectionPending = false;
@@ -160,10 +165,10 @@
   let confirmedPreparedRevision = null;
   let draftModeOverridden = false;
   let currentOriginalText = elements.original.value;
-  let failedCorrectionMode = null;
   let smartRepairs = [];
   let selectedSmartRepair = null;
   let smartRepairResultCurrent = false;
+  let findingsProcessingStatus = null;
   let inspectionSequence = 0;
   let preparedGeneration = 0;
   let personalCorrectionProfile = { enabled: false, entries: [] };
@@ -185,6 +190,11 @@
 
   function setStatus(nextStatus) {
     status = nextStatus;
+    if (["error", "timeout"].includes(status)) {
+      smartRepairs.forEach((entry) => {
+        if (entry.kind === "finding") entry.recheck = "not-rechecked";
+      });
+    }
     elements.outgoingKind.dataset.state = nextStatus;
     renderCountsAndSelection();
     renderSmartRepairReview();
@@ -192,16 +202,6 @@
 
   function effectiveCorrectionMode() {
     return draftPreparationMode === "smart" ? "smart" : "conservative";
-  }
-
-  function renderExplicitSmartAction() {
-    elements.retryCleanup.textContent = failedCorrectionMode === "smart"
-      ? "Try Conservative"
-      : "Retry cleanup";
-  }
-
-  function setExplicitSmartState() {
-    renderExplicitSmartAction();
   }
 
   function clearCleanupAttempts() {
@@ -312,19 +312,26 @@
       && originalUnaffected.every((token, index) => token === preparedUnaffected[index]);
   }
 
-  function invalidateSmartRepairReview() {
+  function invalidateSmartRepairReview(recheck = "not-rechecked") {
     preparedGeneration += 1;
     elements.prepared.dataset.generation = String(preparedGeneration);
     smartRepairResultCurrent = false;
+    findingsProcessingStatus = null;
+    smartRepairs.forEach((entry) => {
+      if (entry.kind === "finding") entry.recheck = recheck;
+    });
     elements.prepared.dataset.repairCount = "0";
     elements.prepared.setSelectionRange(0, 0);
     renderSmartRepairReview();
   }
 
   function inspectionLocation(entry) {
+    if (entry.kind === "finding" && entry.recheck) return null;
     const original = entry.operation === "removal" || entry.field === "original";
     const editor = original ? elements.original : elements.prepared;
-    const span = original ? entry.original_span : entry.prepared_span;
+    const span = original
+      ? (entry.field === "original" ? entry.applied_span : entry.original_span)
+      : entry.prepared_span;
     if (
       entry.revision !== draftRevision
       || entry.originalText !== elements.original.value
@@ -405,14 +412,13 @@
   // UI boundary only: no checker or provider is started by this event. Producers
   // must capture this revision before asynchronous work, not at response time.
   elements.original.dataset.revision = String(draftRevision);
-  elements.original.addEventListener("inspection-findings", (event) => {
-    const result = event.detail;
+  function ingestFindings(result, processingStatus = "partial") {
     if (!result || result.revision !== draftRevision
       || result.original_text !== elements.original.value
       || result.prepared_generation !== preparedGeneration
       || result.prepared_text !== elements.prepared.value
       || !["prepared", "unchanged"].includes(status)
-      || !Array.isArray(result.findings)) return;
+      || !Array.isArray(result.findings) || result.findings.length > 5) return false;
     const characters = Array.from(result.original_text);
     const preparedCharacters = Array.from(result.prepared_text);
     // Preserve the single-suggestion boundary while accepting distinct alternatives.
@@ -426,17 +432,28 @@
       const prepared = finding?.prepared_span;
       return span && Number.isInteger(span.start) && Number.isInteger(span.end)
         && span.start >= 0 && span.end > span.start && span.end <= characters.length
+        && span.end - span.start <= 200
         && span.text === characters.slice(span.start, span.end).join("")
         && prepared && Number.isInteger(prepared.start) && Number.isInteger(prepared.end)
         && prepared.start >= 0 && prepared.end > prepared.start
         && prepared.end <= preparedCharacters.length
+        && prepared.end - prepared.start <= 200
         && prepared.text === preparedCharacters.slice(prepared.start, prepared.end).join("")
-        && typeof finding.reason === "string"
+        && typeof finding.reason === "string" && finding.reason.trim().length > 0
+        && Array.from(finding.reason).length <= 160
         && Array.isArray(finding.alternatives)
-        && finding.alternatives.every((option) => typeof option === "string")
+        && finding.alternatives.length <= 3
+        && finding.alternatives.every((option) => typeof option === "string"
+          && Array.from(option).length <= 200)
         && new Set(finding.alternatives).size === finding.alternatives.length;
     });
-    if (!valid) return;
+    if (!valid) return false;
+    smartRepairs = smartRepairs.filter((entry) => entry.kind !== "finding"
+      || (processingStatus !== "complete" && !findings.some((finding) => (
+        finding.original_span.start === entry.original_span.start
+        && finding.original_span.end === entry.original_span.end
+        && finding.original_span.text === entry.original_span.text
+      ))));
     findings.forEach((finding) => {
       smartRepairs.push({
         kind: "finding", id: ++inspectionSequence,
@@ -449,6 +466,11 @@
       });
     });
     renderSmartRepairReview();
+    return true;
+  }
+
+  elements.original.addEventListener("inspection-findings", (event) => {
+    ingestFindings(event.detail);
   });
 
   function smartRepairReviewState() {
@@ -472,14 +494,16 @@
   function renderSmartRepairReview() {
     // Smart keeps the inspection area in place through every state so the editors do not move.
     renderPreparedHighlights();
-    const visible = smartRepairs.length > 0 || smartRepairResultCurrent || draftPreparationMode === "smart";
+    const visible = smartRepairs.length > 0 || smartRepairResultCurrent
+      || findingsProcessingStatus !== null || draftPreparationMode === "smart";
     const [state, summary, note] = smartRepairReviewState();
     elements.smartRepairReview.hidden = !visible;
     elements.smartRepairReview.dataset.state = state;
+    elements.smartRepairReview.dataset.findingsStatus = findingsProcessingStatus || "";
     elements.workspace.classList.toggle("has-smart-repair-review", visible);
     const scrollTop = elements.smartRepairList.scrollTop;
     elements.smartRepairList.textContent = "";
-    if (!smartRepairResultCurrent && !smartRepairs.length) {
+    if (!smartRepairResultCurrent && !smartRepairs.length && findingsProcessingStatus === null) {
       elements.smartRepairSummary.textContent = summary;
       elements.smartRepairNote.textContent = note;
       elements.smartRepairNote.hidden = false;
@@ -489,11 +513,18 @@
     const findings = smartRepairs.filter((entry) => entry.kind === "finding").length;
     const repairs = smartRepairs.length - findings;
     elements.smartRepairSummary.textContent = smartRepairs.length === 0
-      ? "No lexical repairs"
+      ? (findingsProcessingStatus === "complete" ? "No findings or repairs"
+        : findingsProcessingStatus === "partial" ? "Findings incomplete"
+          : findingsProcessingStatus === "unavailable" ? "Findings unavailable" : "No lexical repairs")
       : `${findings} findings · ${repairs} repairs`;
-    elements.smartRepairNote.textContent = smartRepairs.length === 0
+    const findingsNote = {
+      complete: "Findings processing complete; not exhaustive.",
+      partial: "Findings incomplete: some entries were rejected or exceeded the limit. Prepared remains available.",
+      unavailable: "Findings unavailable. Prepared remains available.",
+    }[findingsProcessingStatus];
+    elements.smartRepairNote.textContent = findingsNote || (smartRepairs.length === 0
       ? "Smart made no lexical repairs to this draft."
-      : "Select wording or an entry. Edit Original; Keep dismisses a finding.";
+      : "Choose an alternative to apply it to Original. Keep dismisses a finding.");
     elements.smartRepairNote.hidden = false;
     smartRepairs.forEach((repair) => {
       const item = document.createElement("li");
@@ -513,8 +544,9 @@
       button.setAttribute("aria-current", String(repair.id === selectedSmartRepair));
       meta.className = "smart-repair-item-meta";
       const located = inspectionLocation(repair);
-      const unavailable = repair.kind === "finding" && (repair.revision !== draftRevision
-        || repair.originalText !== elements.original.value) ? "Text changed" : "Location unavailable";
+      const unavailable = repair.kind === "finding" && repair.recheck
+        ? (repair.recheck === "pending" ? "Awaiting recheck" : "Not rechecked")
+        : "Location unavailable";
       meta.textContent = repair.kind === "finding"
         ? "Finding"
         : `Repair · ${repair.operation}`;
@@ -529,18 +561,25 @@
         const wording = document.createElement("span");
         wording.textContent = repair.prepared_span.text;
         change.append(wording);
-        const optionsLabel = document.createElement("p");
+        const optionsLabel = document.createElement("fieldset");
         optionsLabel.className = "inspection-options";
-        optionsLabel.textContent = repair.alternatives.length
-          ? "Possible alternatives: " : "No alternatives offered";
+        const legend = document.createElement("legend");
+        legend.textContent = repair.alternatives.length
+          ? "Choose to apply to Original:" : "No alternatives offered";
+        optionsLabel.append(legend);
         details.append(optionsLabel);
-        repair.alternatives.forEach((option) => {
-          const suggestion = document.createElement("span");
+        repair.alternatives.forEach((option, index) => {
+          const suggestion = document.createElement("label");
           suggestion.className = "inspection-suggestion";
-          suggestion.textContent = option || "∅ (remove wording)";
-          // Suggestions are informational in this slice; application is a follow-up.
-          suggestion.setAttribute("aria-disabled", String(!located));
-          if (optionsLabel.children.length) optionsLabel.append(" · ");
+          const radio = document.createElement("input");
+          radio.type = "radio";
+          radio.name = `inspection-alternative-${repair.id}`;
+          radio.disabled = !findingCanApply(repair);
+          radio.addEventListener("change", () => {
+            if (radio.checked) applyFinding(repair.id, index);
+          });
+          suggestion.append(radio, document.createTextNode(option || "∅ (remove wording)"));
+          suggestion.setAttribute("aria-disabled", String(radio.disabled));
           optionsLabel.append(suggestion);
         });
       } else change.append(original, separator, prepared);
@@ -566,6 +605,7 @@
         keep.type = "button";
         keep.className = "button button-quiet inspection-keep";
         keep.textContent = "Keep";
+        keep.disabled = Boolean(repair.recheck);
         keep.setAttribute("aria-label", `Keep ${repair.original_span.text}`);
         keep.addEventListener("click", () => {
           const index = smartRepairs.findIndex((entry) => entry.id === repair.id);
@@ -585,6 +625,42 @@
       elements.smartRepairList.append(item);
     });
     elements.smartRepairList.scrollTop = scrollTop;
+  }
+
+  function findingCanApply(finding) {
+    const span = finding.original_span;
+    return finding.kind === "finding" && Boolean(inspectionLocation(finding))
+      && Array.from(elements.original.value).slice(span.start, span.end).join("") === span.text;
+  }
+
+  function applyFinding(id, alternativeIndex) {
+    const finding = smartRepairs.find((entry) => entry.id === id);
+    if (!finding || !findingCanApply(finding)
+      || !Number.isInteger(alternativeIndex)) return;
+    const option = finding.alternatives[alternativeIndex];
+    if (typeof option !== "string") return;
+    const { start, end } = finding.original_span;
+    const characters = Array.from(elements.original.value);
+    const updated = characters.slice(0, start).join("") + option + characters.slice(end).join("");
+    if (Array.from(updated).length > 100_000) return;
+
+    // Use the normal Original-edit policy, including debounce and correction protections.
+    // Capture the exact edit so repeated wording cannot rebind a different occurrence.
+    originalEditRange = { start, end };
+    smartRepairs.splice(smartRepairs.indexOf(finding), 1);
+    elements.original.value = updated;
+    handleOriginalInput({ isTrusted: false });
+    const repair = {
+      id: ++inspectionSequence, kind: "repair", field: "original", tone: "blue",
+      operation: option ? "replacement" : "removal",
+      original_span: { ...finding.original_span },
+      prepared_span: { start, end: start + Array.from(option).length, text: option },
+      applied_span: { start, end: start + Array.from(option).length, text: option },
+      revision: draftRevision, originalText: updated,
+      inspection_reason: "Applied your chosen alternative to Original.",
+    };
+    smartRepairs.push(repair);
+    selectSmartRepair(repair.id);
   }
 
   function selectSmartRepair(queuePosition) {
@@ -936,8 +1012,6 @@
   function renderCorrectionMode() {
     elements.defaultPreparationMode.value = defaultPreparationMode;
     elements.draftPreparationMode.value = draftPreparationMode;
-    elements.runCleanup.disabled = draftPreparationMode === "off";
-    renderExplicitSmartAction();
     renderSmartRepairReview();
   }
 
@@ -1077,6 +1151,7 @@
     preparedCorrectionStartingText = null;
     elements.preparedCorrectionDialog.close();
     elements.intendedPrepared.value = "";
+    elements.retryCleanupState.textContent = "";
     renderCountsAndSelection();
   }
 
@@ -1092,7 +1167,6 @@
     elements.reviewPersonalCorrections.checked = false;
     elements.intendedPrepared.value = startingText;
     if (["waiting", "cleaning"].includes(status)) setStatus("stale");
-    setExplicitSmartState("hidden");
     renderPreparedCorrection();
     elements.preparedCorrectionDialog.showModal();
     elements.intendedPrepared.focus();
@@ -1222,8 +1296,11 @@
   function setError(kind, error) {
     errors[kind] = error;
     const trigger = errorTrigger(kind);
-    if (kind === "cleanup") elements.cleanupRecovery.hidden = error === null;
-    else trigger.disabled = error === null;
+    if (kind === "cleanup") {
+      elements.cleanupRecovery.hidden = error === null;
+      elements.retryCleanup.hidden = error === null;
+      elements.retryCleanupState.textContent = "";
+    } else trigger.disabled = error === null;
     trigger.classList.toggle("has-error-details", error !== null);
     if (error === null) {
       trigger.removeAttribute("aria-label");
@@ -1237,9 +1314,7 @@
     trigger.setAttribute("aria-label", `${statusText}. View ${kind} error details`);
   }
 
-  function setCleanupError(error, correctionMode = null) {
-    failedCorrectionMode = error === null ? null : correctionMode;
-    renderExplicitSmartAction();
+  function setCleanupError(error) {
     setError("cleanup", error);
   }
 
@@ -1456,40 +1531,43 @@
     elements.original.setSelectionRange(Math.min(selection.start, end), end);
   }
 
-  async function runCleanup(
-    requestedCorrectionMode = null,
-    invocation = "manual",
-  ) {
-    if (invocation === "automatic" && manualPreparationProtected()) return;
-    if (preparedCorrectionRevision !== null) cancelPreparedCorrection();
-    confirmedPreparedRevision = null;
+  function retryCleanup() {
+    const explanation = manualPreparationProtected()
+      ? "Retry blocked: your open or confirmed manual correction is protected. Edit Original to prepare new wording."
+      : !errors.cleanup || !["error", "timeout"].includes(status)
+        || draftPreparationMode === "off" || !elements.original.value.trim()
+        ? "Retry is available only after preparation fails with preparation enabled."
+        : "";
+    elements.retryCleanupState.textContent = explanation;
+    if (preparedCorrectionRevision !== null) {
+      elements.preparedCorrectionState.textContent = explanation;
+    }
+    if (explanation) return;
+    return runCleanup();
+  }
+
+  async function runCleanup() {
+    if (manualPreparationProtected()) return;
     window.clearTimeout(cleanupTimer);
     cleanupTimer = null;
-    if (invocation !== "automatic") {
-      markMissedRepairStale("This review is stale because cleanup was run again.");
-    }
+    markMissedRepairStale("This review is stale because cleanup was run again.");
     abortActiveRequest();
     setCleanupError(null);
     clearCleanupAttempts();
-    invalidateSmartRepairReview();
+    invalidateSmartRepairReview("pending");
 
     const originalText = elements.original.value;
     const requestDraftRevision = draftRevision;
-    const explicitSmart = requestedCorrectionMode === "smart"
-      && effectiveCorrectionMode() !== "smart";
-    const correctionMode = explicitSmart ? "smart" : effectiveCorrectionMode();
-    if (explicitSmart) setExplicitSmartState("running");
+    const correctionMode = effectiveCorrectionMode();
     if (!originalText.trim()) {
       elements.prepared.value = originalText;
       setStatus("unchanged");
-      setExplicitSmartState("hidden");
       schedulePublication();
       return;
     }
     if (draftPreparationMode === "off") {
       elements.prepared.value = "";
       setStatus("disabled");
-      if (explicitSmart) setExplicitSmartState("retry", "Smart correction needs cleanup enabled.");
       schedulePublication();
       return;
     }
@@ -1528,8 +1606,7 @@
         ) return;
         elements.prepared.value = originalText;
         setStatus("error");
-        setCleanupError(error, correctionMode);
-        if (explicitSmart) setExplicitSmartState("retry", "Smart correction failed.");
+        setCleanupError(error);
         restoreOriginalSelection(selection);
         return;
       }
@@ -1549,8 +1626,7 @@
       ) {
         elements.prepared.value = originalText;
         setStatus("error");
-        setCleanupError(malformedResponseError("Cleanup", response.status), correctionMode);
-        if (explicitSmart) setExplicitSmartState("retry", "Smart correction failed.");
+        setCleanupError(malformedResponseError("Cleanup", response.status));
         restoreOriginalSelection(selection);
         return;
       }
@@ -1570,15 +1646,20 @@
         correctionMode === "smart"
         && ["prepared", "unchanged"].includes(result.status)
       ) showSmartRepairResult(result.lexical_repairs);
-      if (explicitSmart && ["prepared", "unchanged"].includes(result.status)) {
-        setExplicitSmartState(
-          "success",
-          result.status === "prepared" ? "Smart correction applied." : "Smart correction unchanged.",
-        );
-      } else if (correctionMode === "conservative" && ["prepared", "unchanged"].includes(result.status)) {
-        setExplicitSmartState("available");
-      } else if (explicitSmart) {
-        setExplicitSmartState("retry", "Smart correction failed.");
+      if (["prepared", "unchanged"].includes(result.status)) {
+        // Only bind after the existing request/revision/mode guards accept Prepared.
+        // Incomplete checks cannot resolve omitted older findings.
+        smartRepairs.forEach((entry) => {
+          if (entry.kind === "finding") entry.recheck = "not-rechecked";
+        });
+        findingsProcessingStatus = ["complete", "partial", "unavailable"].includes(result.findings_status)
+          ? result.findings_status : "unavailable";
+        if (findingsProcessingStatus !== "unavailable" && !ingestFindings({
+          original_text: originalText, revision: requestDraftRevision,
+          prepared_text: result.prepared_text, prepared_generation: preparedGeneration,
+          findings: result.findings,
+        }, findingsProcessingStatus)) findingsProcessingStatus = "unavailable";
+        renderSmartRepairReview();
       }
       if (result.status === "timeout" || result.status === "provider_error") {
         const safe = result.error;
@@ -1596,7 +1677,7 @@
           retryAction: typeof safe?.retry_action === "string"
             ? safe.retry_action
             : "Retry cleanup or continue with Original.",
-        }), correctionMode);
+        }));
       } else {
         setCleanupError(null);
       }
@@ -1611,8 +1692,7 @@
       elements.prepared.value = originalText;
       setStatus("error");
       if (error.name !== "AbortError") {
-        setCleanupError(error?.code ? error : networkError("Cleanup"), correctionMode);
-        if (explicitSmart) setExplicitSmartState("retry", "Smart correction failed.");
+        setCleanupError(error?.code ? error : networkError("Cleanup"));
       }
       restoreOriginalSelection(selection);
     } finally {
@@ -1627,10 +1707,9 @@
     window.clearTimeout(cleanupTimer);
     cleanupTimer = null;
     if (manualPreparationProtected()) return;
-    setExplicitSmartState("hidden");
     setCleanupError(null);
     clearCleanupAttempts();
-    invalidateSmartRepairReview();
+    invalidateSmartRepairReview(draftPreparationMode === "off" ? "not-rechecked" : "pending");
     if (draftPreparationMode === "off") {
       elements.prepared.value = "";
       setStatus("disabled");
@@ -1641,7 +1720,7 @@
     setStatus("waiting");
     schedulePublication();
     cleanupTimer = window.setTimeout(
-      () => runCleanup(null, "automatic"),
+      runCleanup,
       CLEANUP_DEBOUNCE_MS,
     );
   }
@@ -1652,9 +1731,106 @@
       && elements.original.selectionEnd === elements.original.value.length;
   }
 
+  function originalTextEdit() {
+    const before = Array.from(currentOriginalText);
+    const after = Array.from(elements.original.value);
+    let start = 0;
+    // Input alone supplies text, not occurrence identity. Without a captured range,
+    // record a whole-text replacement so this edit and Undo/Redo cannot guess survivors.
+    let prefixLimit = originalEditRange?.start ?? 0;
+    if (originalEditRange?.inputType?.endsWith("Backward")) {
+      // The post-edit caret identifies the deleted prefix even for repeated words.
+      prefixLimit = Math.min(prefixLimit,
+        Array.from(elements.original.value.slice(0, elements.original.selectionStart)).length);
+    }
+    while (start < prefixLimit && start < after.length && before[start] === after[start]) start += 1;
+    let end = before.length;
+    let afterEnd = after.length;
+    const suffixLimit = originalEditRange?.end ?? before.length;
+    while (end > suffixLimit && afterEnd > start && before[end - 1] === after[afterEnd - 1]) {
+      end -= 1;
+      afterEnd -= 1;
+    }
+    return {
+      start, removed: before.slice(start, end).join(""), inserted: after.slice(start, afterEnd).join(""),
+      beforeSelection: originalEditRange?.selection || [
+        before.slice(0, start).join("").length, before.slice(0, end).join("").length,
+      ],
+      afterSelection: [elements.original.selectionStart, elements.original.selectionEnd],
+    };
+  }
+
+  function updateFindingOccurrences(edit) {
+    const { start } = edit;
+    const end = start + Array.from(edit.removed).length;
+    const delta = Array.from(edit.inserted).length - Array.from(edit.removed).length;
+    smartRepairs = smartRepairs.filter((entry) => {
+      if (entry.kind !== "finding") return true;
+      const span = entry.original_span;
+      // Track the exact occurrence, never search for matching wording elsewhere.
+      if (span.end <= start) return true;
+      if (span.start < end) return false;
+      entry.original_span = { ...span, start: span.start + delta, end: span.end + delta };
+      return true;
+    });
+  }
+
+  function replayOriginalHistory(redo) {
+    const from = redo ? originalRedo : originalUndo;
+    const to = redo ? originalUndo : originalRedo;
+    originalComposition = null;
+    replaceAllPending = false;
+    originalEditRange = null;
+    const transaction = from.pop();
+    if (!transaction) return;
+    // Only text edits live in this volatile history, never Inspection entries or bindings.
+    replayingOriginalEdit = true;
+    try {
+      const edits = redo ? transaction : [...transaction].reverse();
+      for (const edit of edits) {
+        const removed = redo ? edit.removed : edit.inserted;
+        const inserted = redo ? edit.inserted : edit.removed;
+        const characters = Array.from(elements.original.value);
+        const end = edit.start + Array.from(removed).length;
+        originalEditRange = { start: edit.start, end };
+        elements.original.value = characters.slice(0, edit.start).join("")
+          + inserted + characters.slice(end).join("");
+        handleOriginalInput({ isTrusted: false });
+      }
+      to.push(transaction);
+      const selection = redo ? transaction.at(-1).afterSelection : transaction[0].beforeSelection;
+      elements.original.setSelectionRange(...selection);
+    } finally {
+      replayingOriginalEdit = false;
+      originalEditRange = null;
+    }
+  }
+
   function handleOriginalInput(event) {
-    const originalChanged = elements.original.value !== currentOriginalText;
-    if (originalChanged) {
+    if (["historyUndo", "historyRedo"].includes(event.inputType)) {
+      // Some input paths cannot cancel beforeinput. Discard the untracked native result
+      // and replay our exact transaction instead, without treating it as a new edit.
+      elements.original.value = currentOriginalText;
+      replayOriginalHistory(event.inputType === "historyRedo");
+      return;
+    }
+    const replacedAll = replaceAllPending;
+    const originalChanged = elements.original.value !== currentOriginalText
+      || (originalEditRange !== null && originalEditRange.end > originalEditRange.start)
+      || (originalEditRange === null && Boolean(event.inputType?.startsWith("insert")));
+    if (originalChanged || replacedAll) {
+      const edit = originalTextEdit();
+      if (!replacedAll) updateFindingOccurrences(edit);
+      if (!replayingOriginalEdit) {
+        if (originalComposition !== null) {
+          if (!originalComposition.length) originalUndo.push(originalComposition);
+          originalComposition.push(edit);
+        } else originalUndo.push([edit]);
+        originalRedo.length = 0;
+      }
+    }
+    originalEditRange = null;
+    if (originalChanged || replacedAll) {
       draftRevision += 1;
       elements.original.dataset.revision = String(draftRevision);
       if (confirmedPreparedRevision !== null || preparedCorrectionRevision !== null) {
@@ -1667,18 +1843,21 @@
         schedulePublication();
       }
     }
-    const replacedAll = replaceAllPending && originalChanged;
     if (replacedAll) {
       draftPreparationMode = defaultPreparationMode;
       draftModeOverridden = false;
       elements.prepared.value = "";
+      smartRepairs = [];
+      selectedSmartRepair = null;
+      invalidateSmartRepairReview();
     } else if (!currentOriginalText && elements.original.value && !draftModeOverridden) {
       draftPreparationMode = defaultPreparationMode;
     }
-    if (originalChanged) markMissedRepairStale("This review is stale because Original changed.");
+    if (originalChanged || replacedAll) {
+      markMissedRepairStale("This review is stale because Original changed.");
+    }
     replaceAllPending = false;
     currentOriginalText = elements.original.value;
-    setExplicitSmartState("hidden");
     renderCorrectionMode();
     const followsSyntheticPaste = syntheticPastePending && event.isTrusted;
     if (followsSyntheticPaste) {
@@ -1694,9 +1873,31 @@
   }
 
   // Compatibility path for dictation tools that precede trusted input with a synthetic paste.
-  elements.original.addEventListener("beforeinput", () => {
+  elements.original.addEventListener("beforeinput", (event) => {
+    if (["historyUndo", "historyRedo"].includes(event.inputType)) {
+      if (event.cancelable !== false) {
+        event.preventDefault();
+        replayOriginalHistory(event.inputType === "historyRedo");
+      }
+      return;
+    }
     replaceAllPending = originalIsFullySelected();
+    originalEditRange = {
+      start: Array.from(elements.original.value.slice(0, elements.original.selectionStart)).length,
+      end: Array.from(elements.original.value.slice(0, elements.original.selectionEnd)).length,
+      inputType: event.inputType,
+      selection: [elements.original.selectionStart, elements.original.selectionEnd],
+    };
   });
+  elements.original.addEventListener("keydown", (event) => {
+    if (!(event.metaKey || event.ctrlKey) || event.altKey || event.isComposing) return;
+    const key = event.key.toLowerCase();
+    if (key !== "z" && !(key === "y" && event.ctrlKey && !event.metaKey)) return;
+    event.preventDefault();
+    replayOriginalHistory(key === "y" || event.shiftKey);
+  });
+  elements.original.addEventListener("compositionstart", () => { originalComposition = []; });
+  elements.original.addEventListener("compositionend", () => { originalComposition = null; });
   elements.original.addEventListener("paste", (event) => {
     replaceAllPending = originalIsFullySelected();
     if (!event.isTrusted) {
@@ -1777,7 +1978,6 @@
     renderSidebar();
     saveWorkspacePreferences();
   });
-  elements.runCleanup.addEventListener("click", () => runCleanup());
   elements.correctPrepared.addEventListener("click", openPreparedCorrection);
   elements.intendedPrepared.addEventListener("input", renderPreparedCorrection);
   elements.cancelPreparedCorrection.addEventListener("click", cancelPreparedCorrection);
@@ -1811,10 +2011,7 @@
       openMissedRepairReview();
     }
   });
-  elements.retryCleanup.addEventListener("click", () => {
-    if (failedCorrectionMode === "smart") applyDraftPreparationMode("conservative");
-    else runCleanup();
-  });
+  elements.retryCleanup.addEventListener("click", retryCleanup);
   elements.selectOriginal.addEventListener("click", () => {
     originalOutgoingOverride = true;
     publishNow();
@@ -1859,7 +2056,10 @@
     elements.original.dataset.revision = String(draftRevision);
     draftModeOverridden = false;
     currentOriginalText = "";
-    setExplicitSmartState("hidden");
+    originalEditRange = null;
+    originalUndo.length = 0;
+    originalRedo.length = 0;
+    originalComposition = null;
     smartRepairs = [];
     selectedSmartRepair = null;
     invalidateSmartRepairReview();
@@ -2369,7 +2569,7 @@
   document.addEventListener("keydown", (event) => {
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
       event.preventDefault();
-      runCleanup();
+      retryCleanup();
     }
   });
 

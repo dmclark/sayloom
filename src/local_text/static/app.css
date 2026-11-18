@@ -727,7 +727,6 @@ main { padding-top: 8px; }
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
-.cleanup-recovery .button { min-height: 28px; height: 28px; padding: 4px 8px; }
 .panel-maximize {
   flex: none;
   min-width: 70px;
@@ -865,7 +864,8 @@ main { padding-top: 8px; }
 .smart-repair-item del { color: #7d2630; }
 .smart-repair-item ins { color: var(--blue-dark); font-weight: 700; text-decoration: none; }
 .inspection-keep { align-self: start; min-height: 28px; padding: 4px 8px; color: var(--inspection-ink); text-decoration: underline; }
-.inspection-suggestion { color: var(--inspection-ink); font: 0.7rem/1.4 "Avenir Next", Avenir, sans-serif; }
+.inspection-suggestion { display: flex; align-items: baseline; gap: 5px; padding: 4px 0; color: var(--inspection-ink); font: 0.7rem/1.4 "Avenir Next", Avenir, sans-serif; cursor: pointer; }
+.inspection-suggestion input { flex: none; margin: 0; accent-color: var(--inspection-ink); }
 .inspection-suggestion[aria-disabled="true"] { color: var(--muted); text-decoration: line-through; }
 .inspection-entry-details { grid-column: 1 / -1; padding: 0 8px 6px; overflow-wrap: anywhere; display: flex; flex-direction: column; }
 .inspection-entry-details p {
@@ -873,7 +873,8 @@ main { padding-top: 8px; }
   color: var(--inspection-ink);
 }
 .inspection-entry-details .inspection-reason { color: var(--ink); }
-.inspection-options { order: 1; }
+.inspection-options { order: 1; min-width: 0; margin: 4px 0 0; padding: 0; border: 0; }
+.inspection-options legend { padding: 0; color: var(--inspection-ink); font-size: 0.7rem; }
 
 [data-tone="amber"] { --inspection-ink: #875400; --inspection-wash: #fae6b6; }
 [data-tone="violet"] { --inspection-ink: #654299; --inspection-wash: #e9dff6; }
@@ -940,6 +941,9 @@ textarea::placeholder { color: var(--muted); font-style: italic; }
 .panel-footer-actions { display: flex; align-items: center; gap: 6px; min-height: 30px; }
 .panel-footer-actions .button { min-height: 30px; padding: 5px 10px; font-size: 0.66rem; }
 .panel-footer-actions .button:disabled { opacity: 0.72; }
+.original-retry { margin-left: auto; justify-content: flex-end; text-align: right; font-size: 0.75rem; }
+.original-retry .button { font-size: inherit; }
+#retry-cleanup-state { max-width: 65ch; letter-spacing: normal; }
 #model-label { color: var(--ink); }
 
 .error-details-dialog {

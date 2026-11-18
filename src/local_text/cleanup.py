@@ -17,7 +17,14 @@ from enum import StrEnum
 from typing import Annotated, Any, Literal, Protocol
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    model_serializer,
+    model_validator,
+)
 
 from local_text.prompts import effective_smart_system_prompt, effective_system_prompt
 
@@ -34,6 +41,8 @@ OPENROUTER_ENDPOINTS = frozenset({"azure", "azure/swedencentral"})
 OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 SOURCE_TEXT_FRAME = "<SOURCE_TEXT>\n{original_text}\n</SOURCE_TEXT>"
 MAX_PREPARED_TEXT_CHARACTERS = 100_000
+MAX_FINDINGS = 5
+FINDINGS_OUTPUT_TOKENS = 4_096
 GEMINI_MAX_OUTPUT_TOKENS = 65_536
 OPENAI_MAX_OUTPUT_TOKENS = 128_000
 SMART_UNREVIEWED_LEADING_FILLERS = frozenset({"erm", "hmm", "uh", "um"})
@@ -43,18 +52,6 @@ ROUTE_BREAKER_BASE_SECONDS = 15.0
 ROUTE_BREAKER_MAX_SECONDS = 300.0
 QUOTA_BREAKER_BASE_SECONDS = 60.0
 QUOTA_BREAKER_MAX_SECONDS = 900.0
-PREPARED_TEXT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "prepared_text": {
-            "type": "string",
-            "description": "The prepared version of the supplied Original text.",
-            "maxLength": MAX_PREPARED_TEXT_CHARACTERS,
-        }
-    },
-    "required": ["prepared_text"],
-    "additionalProperties": False,
-}
 OPENAI_PERMANENT_QUOTA_CODES = {
     "credit_balance_exhausted",
     "organization_spend_limit_exceeded",
@@ -164,6 +161,55 @@ class TextSpan(BaseModel):
     text: str
 
 
+class FindingSpan(TextSpan):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    text: str = Field(min_length=1, max_length=200)
+
+
+class UnresolvedFinding(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    original_span: FindingSpan
+    prepared_span: FindingSpan
+    reason: str = Field(min_length=1, max_length=160)
+    alternatives: list[Annotated[str, Field(max_length=200)]] = Field(max_length=3)
+
+    @model_validator(mode="after")
+    def valid_wording(self) -> UnresolvedFinding:
+        if not self.reason.strip() or len(set(self.alternatives)) != len(self.alternatives):
+            raise ValueError("invalid finding wording")
+        return self
+
+
+class FindingsStatus(StrEnum):
+    COMPLETE = "complete"
+    PARTIAL = "partial"
+    UNAVAILABLE = "unavailable"
+
+
+# Use the same bounded shape for every provider. Local validation remains authoritative.
+_finding_schema = UnresolvedFinding.model_json_schema()
+PREPARED_TEXT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "prepared_text": {
+            "type": "string",
+            "description": "The prepared version of the supplied Original text.",
+            "maxLength": MAX_PREPARED_TEXT_CHARACTERS,
+        },
+        "findings": {
+            "type": "array",
+            "maxItems": MAX_FINDINGS,
+            "items": {"$ref": "#/$defs/UnresolvedFinding"},
+        },
+    },
+    "required": ["prepared_text", "findings"],
+    "additionalProperties": False,
+    "$defs": {**_finding_schema.pop("$defs"), "UnresolvedFinding": _finding_schema},
+}
+
+
 class LexicalRepair(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -186,6 +232,8 @@ class CleanupResult(BaseModel):
     error: SafeError | None = None
     attempts: list[CleanupAttempt] = Field(default_factory=list)
     lexical_repairs: list[LexicalRepair] | None = None
+    findings: tuple[UnresolvedFinding, ...] = ()
+    findings_status: FindingsStatus = FindingsStatus.UNAVAILABLE
 
     @model_serializer(mode="wrap")
     def omit_absent_repairs(self, handler: Any) -> dict[str, Any]:
@@ -219,6 +267,8 @@ class ProviderOutput:
     input_tokens: int | None = None
     output_tokens: int | None = None
     prior_failures: tuple[ProviderFailure, ...] = ()
+    findings: tuple[UnresolvedFinding, ...] = ()
+    findings_status: FindingsStatus = FindingsStatus.UNAVAILABLE
 
 
 class ProviderFailure(RuntimeError):
@@ -573,7 +623,7 @@ class GeminiAdapter:
         input_tokens, output_tokens = _gemini_usage(response_payload)
         try:
             text = _extract_gemini_text(response_payload)
-            prepared_text = _parse_prepared_text(text)
+            prepared_text, findings, findings_status = _parse_preparation(text, original_text)
         except (ProviderMalformedResponseError, ProviderRejectedOutputError) as error:
             _attribute_failure(error, self, started)
             error.input_tokens = input_tokens
@@ -586,6 +636,8 @@ class GeminiAdapter:
             elapsed_ms=_elapsed_ms(started),
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            findings=findings,
+            findings_status=findings_status,
         )
 
 
@@ -681,7 +733,7 @@ class OpenAIAdapter:
         input_tokens, output_tokens = _openai_usage(response_payload)
         try:
             text = _extract_openai_text(response_payload)
-            prepared_text = _parse_prepared_text(text)
+            prepared_text, findings, findings_status = _parse_preparation(text, original_text)
         except (ProviderMalformedResponseError, ProviderRejectedOutputError) as error:
             _attribute_failure(error, self, started)
             error.input_tokens = input_tokens
@@ -694,6 +746,8 @@ class OpenAIAdapter:
             elapsed_ms=_elapsed_ms(started),
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            findings=findings,
+            findings_status=findings_status,
         )
 
 
@@ -750,19 +804,8 @@ class OpenRouterAdapter:
                 "json_schema": {
                     "name": "cleanup_result",
                     "strict": True,
-                    # Azure rejects maxLength; the local parser still enforces the size limit.
-                    "schema": {
-                        **PREPARED_TEXT_SCHEMA,
-                        "properties": {
-                            "prepared_text": {
-                                key: value
-                                for key, value in PREPARED_TEXT_SCHEMA["properties"][
-                                    "prepared_text"
-                                ].items()
-                                if key != "maxLength"
-                            }
-                        },
-                    },
+                    # Azure rejects these value/array limits; local validation enforces them.
+                    "schema": _openrouter_schema(PREPARED_TEXT_SCHEMA),
                 },
             },
         }
@@ -825,7 +868,7 @@ class OpenRouterAdapter:
             text = message.get("content") if isinstance(message, dict) else None
             if not isinstance(text, str):
                 raise ProviderMalformedResponseError("provider returned malformed content")
-            prepared_text = _parse_prepared_text(text)
+            prepared_text, findings, findings_status = _parse_preparation(text, original_text)
         except ProviderFailure as error:
             _attribute_failure(error, self, started)
             error.input_tokens = input_tokens
@@ -838,6 +881,8 @@ class OpenRouterAdapter:
             elapsed_ms=_elapsed_ms(started),
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            findings=findings,
+            findings_status=findings_status,
         )
 
 
@@ -1056,6 +1101,8 @@ class SequentialCleanupProvider:
                         input_tokens=output.input_tokens,
                         output_tokens=output.output_tokens,
                         prior_failures=tuple(failures),
+                        findings=output.findings,
+                        findings_status=output.findings_status,
                     )
 
             _release_probe(route_breaker, route_half_open)
@@ -1291,7 +1338,22 @@ def _extract_openai_text(payload: Any) -> str:
     return text
 
 
-def _parse_prepared_text(text: str) -> str:
+def _openrouter_schema(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _openrouter_schema(item)
+            for key, item in value.items()
+            if key not in {"minLength", "maxLength", "minimum", "maxItems"}
+        }
+    if isinstance(value, list):
+        return [_openrouter_schema(item) for item in value]
+    return value
+
+
+def _parse_preparation(
+    text: str,
+    original_text: str,
+) -> tuple[str, tuple[UnresolvedFinding, ...], FindingsStatus]:
     try:
         payload = json.loads(text)
     except json.JSONDecodeError as error:
@@ -1300,13 +1362,42 @@ def _parse_prepared_text(text: str) -> str:
         ) from error
     if (
         not isinstance(payload, dict)
-        or set(payload) != {"prepared_text"}
+        or not set(payload) <= {"prepared_text", "findings"}
         or not isinstance(payload.get("prepared_text"), str)
         or not payload["prepared_text"].strip()
         or len(payload["prepared_text"]) > MAX_PREPARED_TEXT_CHARACTERS
     ):
         raise ProviderMalformedResponseError("provider returned malformed structured output")
-    return payload["prepared_text"]
+    prepared = payload["prepared_text"]
+    raw_findings = payload.get("findings")
+    if not isinstance(raw_findings, list):
+        return prepared, (), FindingsStatus.UNAVAILABLE
+    findings = []
+    partial = len(raw_findings) > MAX_FINDINGS
+    for raw in raw_findings:
+        try:
+            finding = UnresolvedFinding.model_validate(raw)
+        except ValidationError:
+            partial = True
+            continue
+        # Prepared is independently accepted with surrounding whitespace stripped.
+        # Do not shift offsets or search for another occurrence when binding fails.
+        if not _finding_is_bound(finding, original_text, prepared.strip()):
+            partial = True
+            continue
+        if len(findings) < MAX_FINDINGS:
+            findings.append(finding)
+    return prepared, tuple(findings), FindingsStatus.PARTIAL if partial else FindingsStatus.COMPLETE
+
+
+def _finding_is_bound(finding: UnresolvedFinding, original: str, prepared: str) -> bool:
+    return all(
+        0 <= span.start < span.end <= len(passage) and passage[span.start : span.end] == span.text
+        for span, passage in (
+            (finding.original_span, original),
+            (finding.prepared_span, prepared),
+        )
+    )
 
 
 def _output_token_cap(
@@ -1320,14 +1411,17 @@ def _output_token_cap(
     Cleanup may expand to the smaller of its semantic expansion limit and the absolute
     100,000-character contract. Two output characters per token is conservative for ordinary
     prose; 256 tokens cover JSON escaping/framing. Gemini low thinking receives a separate 2,048
-    token allowance at its call site. Truncation is intentionally handled as invalid output.
+    token allowance at its call site. Findings add at most 4,096 tokens before provider clipping;
+    this is not a guaranteed reserve or a monetary cap. Truncation remains invalid output.
     """
     allowed_characters = min(
         MAX_PREPARED_TEXT_CHARACTERS,
         max(len(original_text) * 4, len(original_text) + 1_000),
     )
     estimated_text_tokens = (allowed_characters + 1) // 2
-    return min(provider_max, estimated_text_tokens + 256 + thinking_headroom)
+    return min(
+        provider_max, estimated_text_tokens + 256 + thinking_headroom + FINDINGS_OUTPUT_TOKENS
+    )
 
 
 def _gemini_usage(payload: Any) -> tuple[int | None, int | None]:
@@ -1749,6 +1843,11 @@ class CleanupService:
                 if prepared_text == original_text
                 else CleanupStatus.PREPARED
             )
+            findings = tuple(
+                finding
+                for finding in provider_output.findings
+                if _finding_is_bound(finding, original_text, prepared_text)
+            )
             result = self._result(
                 prepared_text,
                 status,
@@ -1756,6 +1855,12 @@ class CleanupService:
                 provider=selected_provider,
                 model=selected_model,
                 attempts=attempts,
+                findings=findings,
+                findings_status=(
+                    FindingsStatus.PARTIAL
+                    if len(findings) != len(provider_output.findings)
+                    else provider_output.findings_status
+                ),
                 lexical_repairs=(
                     lexical_repairs(original_text, prepared_text)
                     if correction_mode is CorrectionMode.SMART
@@ -1785,6 +1890,8 @@ class CleanupService:
         model: str | None = None,
         attempts: list[CleanupAttempt] | None = None,
         lexical_repairs: list[LexicalRepair] | None = None,
+        findings: tuple[UnresolvedFinding, ...] = (),
+        findings_status: FindingsStatus = FindingsStatus.UNAVAILABLE,
     ) -> CleanupResult:
         return CleanupResult(
             prepared_text=text,
@@ -1797,6 +1904,8 @@ class CleanupService:
             correction_mode=correction_mode,
             error=error,
             attempts=attempts or [],
+            findings=findings,
+            findings_status=findings_status,
             lexical_repairs=(
                 lexical_repairs
                 if lexical_repairs is not None
@@ -1955,7 +2064,8 @@ def _log_provider_traffic(
             entry["payload"] = payload
         else:
             entry["status"] = status
-            entry["body"] = response.text if response is not None else None
+            # Even opt-in traffic diagnostics must not retain model findings wording.
+            entry["body_bytes"] = len(response.content) if response is not None else None
         logger.info(
             "provider_traffic %s",
             json.dumps(entry, ensure_ascii=False, separators=(",", ":"), sort_keys=True),

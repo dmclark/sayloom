@@ -24,7 +24,7 @@ from local_text.cleanup import (
     ProviderTimeoutError,
     ProviderTransportError,
     _output_token_cap,
-    _parse_prepared_text,
+    _parse_preparation,
 )
 
 
@@ -35,11 +35,7 @@ def gemini_response(
 ) -> dict[str, Any]:
     response: dict[str, Any] = {
         "candidates": [
-            {
-                "content": {
-                    "parts": [{"text": json.dumps({"prepared_text": prepared_text})}]
-                }
-            }
+            {"content": {"parts": [{"text": json.dumps({"prepared_text": prepared_text})}]}}
         ]
     }
     if usage:
@@ -71,6 +67,231 @@ def openai_response(
     return response
 
 
+@pytest.mark.parametrize("mode", ["smart", "conservative"])
+def test_findings_survive_normal_provider_route_with_independent_unicode_spans(mode) -> None:
+    original = "📝 send umber then umber"
+    finding = {
+        "original_span": {"start": 18, "end": 23, "text": "umber"},
+        "prepared_span": {"start": 19, "end": 24, "text": "umber"},
+        "reason": "Possible recognition ambiguity.",
+        "alternatives": ["amber", "ochre"],
+    }
+    calls = []
+
+    def respond(request):
+        calls.append(request)
+        response = openai_response()
+        response["output"][0]["content"][0]["text"] = json.dumps(
+            {
+                "prepared_text": "📝 Send umber, then umber.",
+                "findings": [finding],
+            }
+        )
+        return httpx.Response(200, json=response)
+
+    async def exercise():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            adapter = OpenAIAdapter("synthetic-key", client)
+            routed = cleanup_module.SequentialCleanupProvider(
+                (cleanup_module.CleanupRoute(adapter, "synthetic-quota"),),
+                partition_schedule=cleanup_module.CleanupPartitionSchedule(7, (7,)),
+            )
+            return await cleanup_module.CleanupService(routed, adapter.model, 7).clean(
+                cleanup_module.CleanupRequest(original_text=original, correction_mode=mode),
+                "Synthetic instruction",
+            )
+
+    result = asyncio.run(exercise()).model_dump(mode="json")
+    assert result["prepared_text"] == "📝 Send umber, then umber."
+    assert result["findings_status"] == "complete"
+    assert result["findings"] == [finding]
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("provider", ["openai", "gemini", "openrouter"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        "empty",
+        "missing",
+        "non_array",
+        "all_invalid",
+        "overflow",
+        "boundary",
+        "reason_long",
+        "reason_empty",
+        "reason_type",
+        "alternative_long",
+        "alternative_type",
+        "alternatives_missing",
+        "alternatives_many",
+        "alternatives_duplicate",
+        "span_long",
+        "span_empty",
+        "span_mismatch",
+        "span_outside",
+        "span_float",
+        "span_bool",
+        "prepared_offset_copied",
+        "original_mismatch",
+        "invalid_prepared",
+        "trimmed_prepared",
+    ],
+)
+def test_findings_validation_is_bounded_and_does_not_retry_valid_prepared(provider, case) -> None:
+    original = "📝 " + "🟠" * 201 + " then umber umber"
+    prepared = original + "."
+    valid = {
+        "original_span": {"start": 215, "end": 220, "text": "umber"},
+        "prepared_span": {"start": 215, "end": 220, "text": "umber"},
+        "reason": "Possible recognition ambiguity.",
+        "alternatives": [],
+    }
+    changed = json.loads(json.dumps(valid))
+    expected_status = "partial"
+    expected = [valid]
+    payload = {"prepared_text": prepared}
+    if case == "empty":
+        expected_status, expected, payload["findings"] = "complete", [], []
+    elif case in {"missing", "non_array"}:
+        expected_status, expected = "unavailable", []
+        if case == "non_array":
+            payload["findings"] = {"status": "complete"}
+    elif case == "all_invalid":
+        payload["findings"], expected = [None, {}], []
+    elif case == "overflow":
+        # Reject the first entry, then retain the first five VALID entries in priority order.
+        payload["findings"] = [None] + [dict(valid, reason=str(i)) for i in range(7)]
+        expected = [dict(valid, reason=str(i)) for i in range(5)]
+    elif case == "boundary":
+        changed.update(reason="🟠" * 160, alternatives=["🟠" * 200, "", "ochre"])
+        changed["original_span"] = {"start": 2, "end": 202, "text": "🟠" * 200}
+        changed["prepared_span"] = changed["original_span"].copy()
+        payload["findings"], expected, expected_status = [changed], [changed], "complete"
+    elif case == "invalid_prepared":
+        payload.update(prepared_text="Unrelated invented wording.", findings=[valid])
+        expected_status, expected = "unavailable", []
+    elif case == "trimmed_prepared":
+        payload.update(prepared_text="  " + prepared + "  ", findings=[valid])
+        expected_status = "complete"
+    else:
+        if case == "reason_long":
+            changed["reason"] = "🟠" * 161
+        elif case == "reason_empty":
+            changed["reason"] = " \t"
+        elif case == "reason_type":
+            changed["reason"] = 7
+        elif case == "alternative_long":
+            changed["alternatives"] = ["🟠" * 201]
+        elif case == "alternative_type":
+            changed["alternatives"] = [7]
+        elif case == "alternatives_missing":
+            del changed["alternatives"]
+        elif case == "alternatives_many":
+            changed["alternatives"] = ["a", "b", "c", "d"]
+        elif case == "alternatives_duplicate":
+            changed["alternatives"] = ["amber", "amber"]
+        elif case == "span_long":
+            changed["prepared_span"] = {"start": 2, "end": 203, "text": "🟠" * 201}
+        elif case == "span_empty":
+            changed["original_span"] = {"start": 214, "end": 214, "text": ""}
+        elif case == "span_mismatch":
+            changed["prepared_span"]["text"] = "amber"
+        elif case == "span_outside":
+            changed["original_span"]["end"] = 999
+        elif case == "span_float":
+            changed["original_span"]["start"] = 215.0
+        elif case == "span_bool":
+            changed["original_span"]["start"] = True
+        elif case == "prepared_offset_copied":
+            payload["prepared_text"] = "📝, " + original[2:] + "."
+        elif case == "original_mismatch":
+            changed["original_span"]["text"] = "ochre"
+        payload["findings"] = [changed, valid]
+        if case == "prepared_offset_copied":
+            # Only the second finding supplies the independently shifted Prepared span.
+            payload["findings"][1] = dict(
+                valid,
+                prepared_span={
+                    "start": 216,
+                    "end": 221,
+                    "text": "umber",
+                },
+            )
+            expected = [payload["findings"][1]]
+    calls = []
+
+    def respond(request):
+        calls.append(request)
+        if provider == "openrouter":
+            schema = json.loads(request.content)["response_format"]["json_schema"]["schema"]
+            pending = [schema]
+            while pending:
+                item = pending.pop()
+                if isinstance(item, dict):
+                    assert not {"minLength", "maxLength", "minimum", "maxItems"} & item.keys()
+                    pending.extend(item.values())
+                elif isinstance(item, list):
+                    pending.extend(item)
+        encoded = json.dumps(payload)
+        if provider == "gemini":
+            body = {"candidates": [{"content": {"parts": [{"text": encoded}]}}]}
+        elif provider == "openai":
+            body = {
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [
+                            {"type": "output_text", "text": encoded},
+                        ],
+                    }
+                ],
+            }
+        else:
+            body = {
+                "provider": "Azure",
+                "choices": [{"finish_reason": "stop", "message": {"content": encoded}}],
+            }
+        return httpx.Response(200, json=body)
+
+    async def exercise():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            adapter = (
+                GeminiAdapter("synthetic-key", GEMINI_37_FLASH, client)
+                if provider == "gemini"
+                else OpenAIAdapter("synthetic-key", client)
+                if provider == "openai"
+                else cleanup_module.OpenRouterAdapter(
+                    "synthetic-key",
+                    "openai/gpt-4.1",
+                    client,
+                    serving_endpoint="azure",
+                )
+            )
+            routed = cleanup_module.SequentialCleanupProvider(
+                (
+                    cleanup_module.CleanupRoute(
+                        adapter, adapter.quota_group_id or "synthetic-quota"
+                    ),
+                ),
+                partition_schedule=cleanup_module.CleanupPartitionSchedule(6, (6,)),
+            )
+            return await cleanup_module.CleanupService(routed, adapter.model, 6).clean(
+                cleanup_module.CleanupRequest(original_text=original),
+                "Synthetic instruction",
+            )
+
+    result = asyncio.run(exercise()).model_dump(mode="json")
+    assert result["prepared_text"] == (
+        original if case == "invalid_prepared" else payload["prepared_text"].strip()
+    )
+    assert result["findings_status"] == expected_status
+    assert result["findings"] == expected
+    assert result["status"] == ("provider_error" if case == "invalid_prepared" else "prepared")
+    assert len(calls) == 1
+
+
 def test_gemini_37_request_shape_and_usage_are_provider_correct() -> None:
     requests: list[httpx.Request] = []
 
@@ -93,15 +314,12 @@ def test_gemini_37_request_shape_and_usage_are_provider_correct() -> None:
     assert len(requests) == 1
     request = requests[0]
     assert request.url == (
-        "https://generativelanguage.googleapis.com/v1beta/"
-        "models/gemini-3.7-flash:generateContent"
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent"
     )
     assert request.url.query == b""
     assert request.headers["x-goog-api-key"] == "synthetic-key"
     body = json.loads(request.content)
-    assert body["system_instruction"] == {
-        "parts": [{"text": "Synthetic system instruction"}]
-    }
+    assert body["system_instruction"] == {"parts": [{"text": "Synthetic system instruction"}]}
     assert body["contents"] == [
         {
             "role": "user",
@@ -110,11 +328,11 @@ def test_gemini_37_request_shape_and_usage_are_provider_correct() -> None:
     ]
     assert body["generationConfig"] == {
         "thinkingConfig": {"thinkingLevel": "low"},
-        "maxOutputTokens": 2_812,
+        "maxOutputTokens": 6_908,
         "responseMimeType": "application/json",
         "responseJsonSchema": PREPARED_TEXT_SCHEMA,
     }
-    assert body["generationConfig"]["maxOutputTokens"] < 4_096
+    assert body["generationConfig"]["maxOutputTokens"] < GEMINI_MAX_OUTPUT_TOKENS
     assert "temperature" not in body["generationConfig"]
     assert "minimal" not in request.content.decode()
 
@@ -152,7 +370,7 @@ def test_openai_luna_request_shape_and_usage_are_provider_correct() -> None:
                 "content": "<SOURCE_TEXT>\nsynthetic source\n</SOURCE_TEXT>",
             },
         ],
-        "max_output_tokens": 764,
+        "max_output_tokens": 4_860,
         "reasoning": {"effort": "none"},
         "store": False,
         "text": {
@@ -164,12 +382,12 @@ def test_openai_luna_request_shape_and_usage_are_provider_correct() -> None:
             }
         },
     }
-    assert body["max_output_tokens"] < 2_048
+    assert body["max_output_tokens"] < OPENAI_MAX_OUTPUT_TOKENS
     assert "temperature" not in body
 
 
 @pytest.mark.parametrize("provider", ["gemini", "openai"])
-def test_enabled_provider_traffic_logs_exact_request_and_success_response(
+def test_enabled_provider_traffic_excludes_model_wording_from_success_response(
     provider: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     messages: list[str] = []
@@ -244,7 +462,7 @@ def test_enabled_provider_traffic_logs_exact_request_and_success_response(
         ]
         assert request_entry["payload"]["store"] is False
     assert response_entry == {
-        "body": raw_body,
+        "body_bytes": len(raw_body.encode()),
         "direction": "response",
         "event": "provider_traffic",
         "model": GEMINI_37_FLASH if provider == "gemini" else OPENAI_GPT_56_LUNA,
@@ -259,7 +477,7 @@ def test_enabled_provider_traffic_logs_exact_request_and_success_response(
 
 
 @pytest.mark.parametrize("provider", ["gemini", "openai"])
-def test_enabled_provider_traffic_logs_exact_error_response(
+def test_enabled_provider_traffic_excludes_wording_from_error_response(
     provider: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     messages: list[str] = []
@@ -297,7 +515,8 @@ def test_enabled_provider_traffic_logs_exact_error_response(
     response_entry = json.loads(messages[-1].split(" ", maxsplit=1)[1])
     assert response_entry["provider"] == provider
     assert response_entry["status"] == 503
-    assert response_entry["body"] == raw_body
+    assert response_entry["body_bytes"] == len(raw_body.encode())
+    assert "exact private detail" not in messages[-1]
 
 
 def test_disabled_or_broken_provider_traffic_diagnostics_do_not_change_requests(
@@ -405,7 +624,7 @@ def test_output_token_cap_is_source_sensitive_and_provider_bounded() -> None:
         provider_max=OPENAI_MAX_OUTPUT_TOKENS,
     )
 
-    assert short_openai == 764
+    assert short_openai == 4_860
     assert short_gemini == short_openai + 2_048
     assert longer_openai > short_openai
     assert _output_token_cap("x" * 100_000, provider_max=1_234) == 1_234
@@ -415,9 +634,9 @@ def test_structured_output_character_ceiling_is_in_schema_and_runtime_parser() -
     assert PREPARED_TEXT_SCHEMA["properties"]["prepared_text"]["maxLength"] == 100_000
     boundary_text = "x" * MAX_PREPARED_TEXT_CHARACTERS
 
-    assert _parse_prepared_text(json.dumps({"prepared_text": boundary_text})) == boundary_text
+    assert _parse_preparation(json.dumps({"prepared_text": boundary_text}), "")[0] == boundary_text
     with pytest.raises(ProviderMalformedResponseError):
-        _parse_prepared_text(json.dumps({"prepared_text": boundary_text + "x"}))
+        _parse_preparation(json.dumps({"prepared_text": boundary_text + "x"}), "")
 
 
 AdapterFactory = Callable[[str, httpx.AsyncClient], GeminiAdapter | OpenAIAdapter]
