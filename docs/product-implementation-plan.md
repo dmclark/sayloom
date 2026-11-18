@@ -49,21 +49,21 @@ implementation, private-data use, spending or activation is authorized here.
 
 ### #197-specific completion gate
 
-**Owner amendment, 2026-11-16:** The later
-[#197 findings contract](unresolved-findings-contract.md) requires controlled
-normal-route supply/application evidence and separately authorized real-provider
-evaluation of intended-text recovery usefulness, latency, and cost before #197
-closes or release readiness is claimed. Evaluation cases and reuse consent,
-provider coverage, usefulness/preservation criteria, latency thresholds, and
-cost/spending ceilings remain deferred pending owner approval.
+**Ordinary-use amendment, November 18, 2026:** The owner's later PRODUCT.md
+decision supersedes the mandatory efficacy component of D010 and P003's
+evaluation-planning prerequisite for #197 completion. Neither is marked passed.
+The owner may try a separately authorized result in ordinary use and retain what
+feels useful without a benchmark, controlled comparison, frozen efficacy cases,
+numerical accuracy threshold, scheduled report or effectiveness sign-off.
 
-This is a narrow exception to this plan's older no-separate-assessment wording
-for #197 only. It does not impose a product-wide effectiveness programme,
-ordinary-use measurement/reporting task, Personal Corrections comparison or
-sign-off, or revival of retired evaluation harnesses. All ordinary-use statements
-below retain that broader boundary, subject to this bounded #197 gate. No
-implementation, provider calls, private-data use, spending, or activation is
-authorized, and no acceptance result is claimed.
+Preserve the [canonical findings contract's](unresolved-findings-contract.md)
+normal-route integration coverage, inspected desktop interactions and owner
+interaction review, along with correctness, safety, privacy, deadline/failure
+behavior and operational/spending safeguards. Unknown usefulness, latency and
+actual cost remain unknown. Native-browser acceptance is currently deferred and
+unpassed, not waived. Do not claim #197 closure or release readiness from offline
+checks. No provider calls, private-data use, spending, integration or activation
+is authorized here.
 
 **Interim history boundary, owner-confirmed 2026-11-16:**
 [The retention clarification](https://ampcode.com/threads/T-01a1e5ce-f1b1-7556-bf85-87f9de86c90c)
@@ -71,9 +71,21 @@ allows #197 implementation before history is delivered. Ordinary use may precede
 history after #197's existing acceptance gates pass, with an explicit warning
 that those sessions are not retained and cannot be recovered later. Prospective
 private history remains required follow-up work under PRODUCT.md and ADR-0003,
-not a prerequisite for this interim route. This does not waive D010/P003 or
-authorize implementation, activation, recording, private-data access, or spending.
+not a prerequisite for this interim route. This does not waive retained
+engineering and operational requirements or authorize implementation, activation,
+recording, private-data access or spending. The mandatory efficacy component is
+superseded above; optional formal evaluation still requires its own approved
+purpose and permissions.
 History's contract must still be settled before recording is activated.
+
+**Local inspection implementation, November 18, 2026:** The unpushed
+`feat/196-safe-inspection` branch contains bounded normal-route findings and
+chosen-alternative application, occurrence-sensitive lifecycle, failure-only
+Retry and memory-only Original Undo/Redo. Its reported 227 offline checks do not
+establish native-browser acceptance, usefulness, cost or release readiness.
+Browser acceptance is deferred. This is not a statement that these capabilities
+are merged or activated. Broader saved-correction and prospective-history
+obligations remain outstanding.
 
 ### Implementation order
 
@@ -112,6 +124,30 @@ History's contract must still be settled before recording is activated.
 5. **Verify, then separately authorize integration and activation.** Begin with
    synthetic isolated evidence. Private-data use, provider spending, migrations,
    controlled restart, integration and owner acceptance remain separately gated.
+
+### Correction authority and ordinary-use amendment — 2026-11-18
+
+PRODUCT.md governs correction and prompting improvements. Preserve #193 and the
+existing #196/#197 increment, including later lifecycle, immediate application
+and failure-only Retry. #197 remains the single end-to-end findings/application
+issue; it does not complete #188 or #192. Useful saved-correction influence,
+prospective history, accessible review and managed backup/deletion remain broader
+obligations.
+
+Automatic Prepared changes require stricter eligibility and abstention than
+suggestions, especially for consequential wording. Every lexical change must be
+discoverable directly from Prepared, including previous wording for
+removals/replacements; unresolved findings are a separate review layer. Preserve
+clean CART, manual editing/copying, exact Outgoing, stale-response safeguards and
+separate saving/reuse approval. Conservative remains source-preserving until a
+separately authorized versioned change.
+
+Contextual, phonetic, vocabulary and example-based prompting remain possibilities,
+not selected algorithms or promised improvements. Prior-passage reuse and Google
+access are open questions, not new permissions or prerequisites. No extra model
+pass, request stream, provider, retrieval or storage mechanism is selected.
+Retain existing bounds, operational checks and separately authorized operations
+without recreating an efficacy study under an operational label.
 
 ### Bounded delivery acceptance
 
@@ -158,7 +194,9 @@ historical sentences and occurrence history do not enter later processing
 requests. Reprocessing selection and authorization remain to be designed, not an
 exception to those existing boundaries. Evaluation and training remain possible
 future purposes, neither ruled out nor approved; each needs separate purpose/scope
-approval and applicable data-use/provider/spending permission. P003 remains deferred.
+approval and applicable data-use/provider/spending permission. P003 remains
+deferred for any separately requested formal evaluation and is not a prerequisite
+for ordinary use or #197 completion.
 
 History should distinguish accepted findings/alternatives, server-derived
 complete/partial/unavailable status, user actions, and bounded failure, rejection
@@ -366,9 +404,11 @@ changes and uncertainty assistance.
 ### Confirmed local-proof contract
 
 The implemented baseline uses an explicit Smart path for least-change
-intended-word repairs and then applies Conservative preparation. The automatic
-prototype may replace that implementation with the evidence-selected
-multi-method strategy without adding a new user-visible mode. Original, optional
+intended-word repairs and then applies Conservative preparation. Future separately
+authorized correction work may improve the bounded Smart method without adding a
+new user-visible mode or requiring an evidence-selected multi-method strategy.
+The older prototype comparison programme remains deferred provenance, not an
+ordinary-use prerequisite. Original, optional
 request-scoped task context, and approved user knowledge are untrusted evidence,
 not instructions. Ambiguous wording is preserved instead of guessed, and any
 provider, deadline, validation, or malformed-response failure leaves Original
@@ -383,6 +423,9 @@ The review interaction follows these rules:
   learning from it.
 - Every lexical addition, removal, and replacement appears in Prepared and in a
   compact repair queue with sentence context and a short inspection reason.
+  Normal review makes previous wording for removals and replacements discoverable
+  directly from Prepared. Retained repair inspection does not require uncertain
+  highlighting; show Location unavailable when its location is unreliable.
 - The review signal makes no claim about model confidence or source audio.
 - Editing or regenerating Original invalidates obsolete repairs, confirmations,
   and memory proposals.

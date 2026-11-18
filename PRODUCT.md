@@ -6,7 +6,7 @@
 - **Audience:** Product, design, engineering, research, and delivery contributors
 - **Authority:** This document is the sole authority for Sayloom's product
   vision, positioning, roadmap direction, audience, and scope.
-- **Confirmed:** 2026-10-01; owner direction amended 2026-11-12
+- **Confirmed:** 2026-10-01; owner direction amended 2026-11-18
 
 ## Authority and supersession
 
@@ -126,8 +126,9 @@ Mapping fields remain editable. Choosing some or none preserves confirmed
 Prepared; retries preserve the approval and selection. Manual reviews work
 with preparation Off when a current Prepared exists.
 
-Manual review is bound to that confirmed snapshot. Original changes, another
-correction opening, or Regenerate invalidate it; settings changes do not.
+Manual review is bound to that confirmed snapshot. Original changes or another
+correction opening invalidate it; settings changes do not. Failure recovery must
+not clear the current correction or confirmation.
 Manual review calls no provider and records user-confirmed provenance without a
 processing prompt. Complete-loop additions/removals and successful Smart-repair
 saving below are target requirements, not claims about that bounded delivery.
@@ -136,16 +137,17 @@ saving below are target requirements, not claims about that bounded delivery.
   Original makes an open correction stale and prevents confirmation. A
   previously confirmed replacement becomes unavailable for copying or
   delivery; Outgoing falls back to current Original.
-- While editing or a confirmed replacement is current, generation requires an
-  explicit **Regenerate** action. Correction-mode or Smart-guidance changes
-  affect the next generation but cannot interrupt editing or overwrite the
-  confirmed wording while Original is unchanged.
+- While editing or a confirmed replacement is current, automatic generation
+  cannot interrupt editing or overwrite confirmed wording while Original is
+  unchanged. Mode or guidance changes affect the next eligible generation.
+  Failure-only Retry respects these protections and visibly explains a block.
 - Cancelling discards unconfirmed edits and preserves the previously current
   Prepared and Outgoing selection. If no current Prepared existed, Original
   remains available. Cancellation does not revive or restart generation.
-- Regenerate uses Original, not the confirmed replacement. Starting it removes
-  the replacement's delivery eligibility; current Original remains usable
-  while processing is pending or fails.
+- Failure-only Retry uses current Original in the currently selected enabled
+  mode, not confirmed Prepared. It cannot cancel an open correction or clear
+  confirmation to create a retry opportunity. Original remains usable while
+  eligible generation is pending or fails.
 - With no current Prepared, Original remains editable and explicitly available
   for copying/delivery, including when preparation is Off or fails. The valid
   bound Original-edit capture path may offer Personal Correction review.
@@ -164,7 +166,7 @@ The product supports two correction stages. A user may select Cleanup alone or
 Smart followed by Cleanup. A remembered default and per-text override are
 future product behavior.
 
-- **Cleanup:** The account-independent, proven baseline. Each version freezes
+- **Cleanup:** The account-independent correction baseline. Each version freezes
   determinate eligibility and abstention rules for presentation fixes, spelling,
   and contextually obvious, effectively unambiguous misrecognitions. Cleanup
   may use a model, but its permitted behavior does not depend on a user account,
@@ -179,10 +181,32 @@ future product behavior.
 
 The current source-preserving **Conservative preparation** is an incomplete
 implementation stage of Cleanup, not a permanent third mode. A Smart behavior
-may graduate into a new Cleanup version only after a separately frozen rule,
-evidence slice, safety thresholds, and Cleanup regression coverage establish
-that it is determinate and account-independent. Cleanup and Smart versions do
-not change during a registered evaluation or silently inside a released result.
+may graduate into a new Cleanup version under an explicit, versioned eligibility
+and abstention rule that remains determinate and account-independent, with
+correctness and safety regression checks. A systematic efficacy evaluation is
+not a prerequisite for trying or adopting improvements in the owner's ordinary
+use. Cleanup and Smart versions do not change silently inside a released result
+or during any separately authorized registered evaluation.
+
+### Automatic repair, suggestions and abstention
+
+Automatic changes to generated Prepared require a substantially stricter bar
+than suggestions. They follow narrowly defined eligibility and abstention rules;
+model confidence alone does not establish intended wording. Preparing text does
+not automatically copy or deliver it or require approval for every changed word.
+
+Where interpretations compete, offer a short set of meaningfully distinct,
+passage-supported alternatives when useful, with keeping current wording always
+available. A specific reason for inspection may support a finding without a
+replacement. Do not fill a list merely to supply choices. Awkwardness alone does
+not justify a repair or finding; unusual but intended wording remains valid.
+
+Apply a higher automatic-repair bar where a mistaken change could materially
+alter a person, quantity, date, negation, commitment or instruction. Prefer review
+when that stricter bar is not met, without categorically prohibiting repairs to
+these kinds of wording. Meaning-bearing punctuation also warrants caution.
+Exact eligibility rules remain open; these principles do not establish a
+validated automatic correction method.
 
 ## Smart writing domains and contextual input
 
@@ -217,6 +241,35 @@ broader rewriting.
 
 **Deferred:** Availability and implementation timing of these optional inputs,
 their exact sources and controls, and domain configuration and UI mechanics.
+
+### Evidence and prompting possibilities
+
+Keep possible evidence sources and prompting approaches open for exploration:
+whole-passage meaning, optional task context, vocabulary, explicitly saved
+Personal Corrections, corrected earlier passages and relevant documents.
+Earlier passages may support continuity within a task or conversation, or
+persistent personalization across sessions; neither reuse mechanism is selected.
+Prior content can expand candidate alternatives, but is not definitive authority
+and does not by itself make an automatic change permissible. A correction
+establishes intended wording for that earlier occurrence, not every later use.
+
+Candidate strategies include contextual interpretation, possible sound-alike
+words or phrase-boundary confusions, relevant examples, localized edits and
+explicit no-change outcomes. Grammar can be a clue, not permission for prose
+polishing. No strategy is selected or promised to improve accuracy, and no extra
+model passes are presumed. Prompting must distinguish recognition repair from
+rewriting and contextual evidence from instructions or replacement commands.
+
+Google access is an open research possibility with no selected purpose.
+Vocabulary support, document context and document storage are distinct possible
+uses to compare with simpler alternatives; storage alone is not an accuracy
+improvement. Compare evidence sources and approaches by potential repair value,
+availability, privacy, retention, provider disclosure, cost and user effort.
+Research recommendations are not confirmed features or authority to connect an
+account, collect text or reuse private history. Existing Personal Corrections
+and activity-history reuse boundaries remain in force. This exploration does
+not reopen the out-of-scope Voiceitt API switch or assume unavailable audio,
+earlier recognition, confidence or N-best inputs.
 
 ### Vocabulary and recurring misrecognitions
 
@@ -378,10 +431,12 @@ changes already made. Findings explain possible issues and optionally offer
 alternatives; no replacement is required for inspection. Editor, hover, focus
 and storage mechanics are not selected here.
 
-When Original is visible, the review experience identifies every word addition,
-removal, or replacement and emphasizes uncertainty. AI confidence is assistance,
-not proof; the user can edit Original and regenerate or explicitly confirm
-intended wording as Prepared.
+When Original is visible, normal review makes every word addition, removal or
+replacement discoverable directly from Prepared, including the previous wording
+for removals and replacements, and emphasizes uncertainty. Highlighting only the
+resulting word is insufficient. Exact visual treatment remains open. AI
+confidence is assistance, not proof; the user can edit Original and regenerate
+or explicitly confirm intended wording as Prepared.
 
 When Original is hidden, the workspace is in CART-style display mode. Prepared
 or fail-open text uses the available output space without inline correction
@@ -401,9 +456,11 @@ new authorization for the edited mapping.
 
 Private correction profiles and Correction memory may inform inspection-first
 assistance and Smart correction, but never core Cleanup. Core Cleanup remains
-independently usable and evaluable without an account or user-specific state. Any future profile-backed
-Cleanup extension requires its own versioned contract and evaluation and may
-not weaken the anonymous Cleanup baseline.
+independently usable and evaluable without an account or user-specific state.
+Any future profile-backed Cleanup extension requires its own versioned contract
+and correctness, safety and privacy verification and may not weaken the
+account-independent Cleanup baseline. It does not require a systematic efficacy
+evaluation for ordinary-use adoption.
 
 In the local application, personalization stays in private state owned by
 `local`. Personalization does not imply model training, cross-user learning,
@@ -483,9 +540,38 @@ accepted capabilities. Generic grammar/style improvement cannot replace recovery
 Response availability, historical records or successful source preservation
 alone establish neither usefulness nor owner acceptance.
 
+### Ordinary-use adoption
+
+**Owner amendment, 2026-11-18:** The owner will try correction and prompting
+approaches in ordinary use and keep what feels useful. This extends the November
+12 ordinary-use boundary beyond inspection-first assistance: systematic efficacy
+evaluation, benchmarks, controlled comparisons, numerical accuracy thresholds,
+scheduled effort reports and effectiveness sign-off are not prerequisites for
+trying or adopting improvements. This supersedes earlier mandatory efficacy
+qualification and graduation gates; it does not describe unmeasured behavior as
+proven or evidence-backed.
+
+Consider intended wording recovered, correct wording preserved, missed repairs,
+harmful changes and total review burden separately, without requiring the owner
+to collect measurements. Fluency alone is not success. Correctness, safety,
+privacy and operational verification remain required. Methods and unresolved
+accuracy questions stay open rather than becoming claims or mandatory research
+work. This product direction does not activate experiments, private-data reuse,
+provider calls or runtime changes; each remains subject to its applicable
+authorization boundary. Any formal evaluation remains separately authorized.
+
 ## Capabilities and Constraints
 
 ### Current implementation boundary
+
+**Local inspection implementation, November 18, 2026:** The unpushed
+`feat/196-safe-inspection` branch contains bounded normal-route findings and
+chosen-alternative application, occurrence-sensitive lifecycle, failure-only
+Retry and memory-only Original Undo/Redo. Its reported 227 offline checks do not
+establish native-browser acceptance, usefulness, cost or release readiness.
+Browser acceptance is deferred. This is not a statement that these capabilities
+are merged or activated. Broader saved-correction and prospective-history
+obligations remain outstanding.
 
 The published phrase-alternatives trial branch is experimental source, not a
 main delivery, completed trial or proof of benefit. Inspection-first findings,
@@ -502,7 +588,7 @@ versions, inspectable failures, and local target commands.
 Current automatic Cleanup is the Conservative implementation stage and rejects
 lexical additions, removals, substitutions, duplication, or reordering. The
 checkout also contains a single-method experimental Smart path and review
-machinery, but not the evidence-selected automatic Smart strategy described by
+machinery, but not the broader automatic Smart strategy described by
 this contract. The expanded Cleanup baseline, user-scoped learning, hosted
 accounts, hosted provider management, and the hosted service are not
 implemented unless later technical evidence says otherwise.
@@ -552,6 +638,9 @@ The following remain open and must not be presented as committed behavior:
   correction.
 - Exact Cleanup lexical eligibility, abstention, and graduation thresholds.
 - The technical method for detecting and presenting uncertainty.
+- Evidence-source selection and prompting methods, including phonetic support,
+  prior-passage reuse and any Google integration; potential usefulness is not
+  established effectiveness or permission to access private data.
 - The hosted target-integration mechanism.
 - Exact history storage, recording-failure behavior, pause semantics and
   restore-safe deletion mechanics; prospective history itself is selected
@@ -575,6 +664,9 @@ The following remain open and must not be presented as committed behavior:
   [`docs/adr/0002-personal-corrections-ownership-and-state-portability.md`](docs/adr/0002-personal-corrections-ownership-and-state-portability.md).
 - The confirmed Cleanup, Smart, evaluation, and participant-boundary ledger in
   https://ampcode.com/threads/T-3a6a2274-45b0-4568-ae30-9f2f8845818b.
+- The owner-confirmed correction authority, context-candidate and ordinary-use
+  adoption amendments in the
+  [purpose and accuracy interview](https://ampcode.com/threads/T-01a1ebbf-7a02-7407-b156-d275c81ac878).
 - `ref:sayloom-product-contract` in the existing `voiceitt-bridge` Mandrel
   project.
 - The current repository implementation and its technical documentation for

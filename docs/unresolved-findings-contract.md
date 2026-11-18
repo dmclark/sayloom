@@ -2,7 +2,7 @@
 
 - **Status:** Owner-approved planned behavior; findings supply and chosen-alternative application are not implemented by this document.
 - **Scope:** Bounded normal-path findings supply and explicit application under [#197](https://github.com/dmclark/sayloom/issues/197), dependent on [#196](https://github.com/dmclark/sayloom/issues/196).
-- **Confirmed:** 2026-11-16 — D001–D010 and P001, P002, P004; P003 evaluation details remain deferred.
+- **Confirmed:** 2026-11-16 — D001–D010 and P001, P002, P004; amended 2026-11-18 to supersede D010's mandatory efficacy component and P003's completion dependency. Neither is marked passed; optional evaluation details remain deferred.
 - **Product authority:** [PRODUCT.md](../PRODUCT.md); [domain vocabulary](../GLOSSARY.md).
 - **Decision source:** [Owner-approved contract, revision 4](https://ampcode.com/artifacts/197-findings-contract-and-proposed-amendments-a698b85a-5eac-4ca7-b5e6-5cc6987e8e8b). This document records its confirmed technical requirements, not its interview or delivery history.
 - **Retention clarification:** [Owner-confirmed interim delivery boundary](https://ampcode.com/threads/T-01a1e5ce-f1b1-7556-bf85-87f9de86c90c); prospective history remains separate required work, not a #197 implementation prerequisite.
@@ -27,6 +27,27 @@ this document owns the bounded technical contract. It neither completes broader
 [#192](https://github.com/dmclark/sayloom/issues/192) reconciliation nor makes
 withdrawn #198 a prerequisite. Deployed Stable parity remains unverified and is
 not an added prerequisite.
+
+**Local inspection implementation, November 18, 2026:** The unpushed
+`feat/196-safe-inspection` branch contains bounded normal-route findings and
+chosen-alternative application, occurrence-sensitive lifecycle, failure-only
+Retry and memory-only Original Undo/Redo. Its reported 227 offline checks do not
+establish native-browser acceptance, usefulness, cost or release readiness.
+Browser acceptance is deferred. This is not a statement that these capabilities
+are merged or activated. Broader saved-correction and prospective-history
+obligations remain outstanding.
+
+**Correction authority and visibility:** Findings concern suspected recognition
+errors, not general awkwardness or style. Offer meaningfully distinct,
+passage-supported alternatives when useful, or a specific finding without
+replacement; never fill a quota. Automatic Prepared changes retain PRODUCT.md's
+stricter eligibility/abstention and consequential-change requirements. Existing
+Conservative semantics remain unchanged. Normal review must make every lexical
+addition, removal and replacement discoverable directly from Prepared, including
+previous wording for removals and replacements. A historical before/after
+description remains available even if location is unavailable; never guess a
+highlight. CART remains clean. This records a requirement, not a claim of rendered
+compliance.
 
 ## One preparation request, unchanged mode authority
 
@@ -208,6 +229,15 @@ partial edits do not reset all entries.
 The new-passage reset also applies when the replacement wording is identical.
 This does not make old bindings valid again.
 
+**Original edit history:** Preserve the later owner-approved, memory-only
+Original Undo/Redo boundary. Text equality alone cannot revive an obsolete
+finding or make an uncertain occurrence actionable. When an input event lacks
+reliable edit-range identity, conservative whole-text replacement handling
+retires uncertain unresolved findings rather than guessing survivors; retain
+applied repairs with location safeguards and preserve the selected mode. This is
+not persistent activity history, history reuse or automatic Personal Correction
+saving.
+
 Preserve desktop keyboard selection/application/dismissal, manual editing,
 plain-text copying, Outgoing/delivery, and CART's no-inline-marking behavior
 when Original is hidden. Applying, editing, selecting, and Keep do not themselves
@@ -225,9 +255,10 @@ excludes that wording by default.
 ## Completion gates and deferred evaluation
 
 Keep #197 as one end-to-end acceptance issue (P001). Focused implementation
-deliverables may separate supply/validation, application/integration, and later
-evaluation, with handoffs preserving actual code and evidence. Documentation
-approval does not start those phases or create additional issues.
+deliverables may separate supply/validation and application/integration, with
+actual code and evidence transferred between workspaces. Any later formal efficacy
+evaluation is optional and separately authorized, not a required implementation
+phase. Documentation approval starts no operation and creates no issue.
 
 History does not block #197 implementation. Ordinary use may precede history
 after #197's existing acceptance gates pass, with an explicit warning that those
@@ -235,7 +266,9 @@ sessions are not retained and cannot be recovered later. Prospective private
 history remains required follow-up work; the interim route neither activates
 recording nor permits later reconstruction of unretained sessions. Implementation
 and activation still require separate authorization. This sequencing exception
-does not waive D010 or approve deferred P003 evaluation or spending.
+preserves engineering and operational requirements. The November 18 product
+decision supersedes the mandatory efficacy component of D010 and P003's
+completion dependency; it does not approve evaluation, data reuse or spending.
 
 Controlled evidence must exercise the normal preparation HTTP path through
 validation and browser consumption, plus the complete entry selection, explicit
@@ -281,22 +314,26 @@ evidence, not completion. Required coverage includes:
 - Keyboard use, CART suppression, copying/Outgoing, no implicit saving or reuse,
   and owner review of the resulting interaction.
 
-Controlled checks do not establish real detection usefulness, latency, cost,
-or release readiness. Before closing #197 or claiming release readiness, complete
-a separately authorized real-provider evaluation of intended-text recovery
-usefulness, latency, and cost against owner-approved criteria (D010).
+Controlled checks do not establish real detection usefulness, latency,
+affordability or release readiness. Under the owner's November 18 ordinary-use
+policy, systematic efficacy evaluation and effectiveness sign-off are not
+prerequisites for ordinary-use adoption or #197 completion. This supersedes
+D010's mandatory efficacy component; it does not mark it passed or remove
+required correctness, safety, privacy, integration, desktop interaction, owner
+review or operational checks.
 
-**Deferred (P003):** evaluation cases and consent for their reuse, provider
-coverage, usefulness/false-positive/preservation criteria, numerical latency
-thresholds, and per-request/ongoing cost and spending ceilings require owner
-approval before evaluation. Discussion evidence and private repair records are
-not automatically evaluation cases. No corpus, numerical pass thresholds,
-provider run, or spending is approved here. Follow PRODUCT.md before selecting
-cases; do not substitute spelling-only success for intended-text recovery.
+Native-browser acceptance is currently deferred and unpassed. Reported offline
+checks are not native-browser verification. #197 remains open while its retained
+acceptance requirements are outstanding. Private-data access, provider use,
+spending, integration and activation require their applicable separate
+authorization. Neither token ceilings nor offline call-count/deadline checks
+establish actual cost or live provider behavior. Do not recreate the declined
+efficacy study as an operational-check prerequisite.
 
-This is a bounded #197 completion gate, not a product-wide effectiveness
-programme, ordinary-use measurement duty, or revival of retired evaluation
-harnesses. The broader [ordinary-use direction](product-implementation-plan.md#197-specific-completion-gate)
-and separately authorized saving/history work remain unchanged. Keep #197 open
-if evaluation is not authorized or does not pass, even after controlled checks
-are complete. No completion gate is claimed passed by this documentation.
+**Deferred optional evaluation (P003):** If formal evaluation is later requested,
+approve its purpose, cases and reuse consent, coverage, criteria and spending
+separately. Ordinary use, discussion examples, private repairs and Personal
+Corrections grant no evaluation or training permission. No corpus, numerical
+pass threshold, provider run or spending is approved here. Preserve the separate
+saving/history boundaries and interim non-retention warning. No gate is claimed
+passed by this amendment.
