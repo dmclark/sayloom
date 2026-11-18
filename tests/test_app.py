@@ -6,6 +6,7 @@ import sqlite3
 import subprocess
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -111,8 +112,9 @@ def test_provider_traffic_diagnostics_require_an_actively_locked_development_ses
     assert development.provider_traffic_diagnostics_enabled() is False
 
 
-def test_development_page_identifies_development_brand(initialized_settings: Settings) -> None:
-    client = TestClient(create_app(initialized_settings))
+def test_development_page_identifies_development_brand(tmp_path: Path) -> None:
+    settings = Settings(Profile.DEVELOPMENT, database_path=tmp_path / "missing.sqlite3")
+    client = TestClient(create_app(settings))
 
     response = client.get("/")
 
@@ -132,12 +134,12 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'id="workspace-resizer"' in response.text
     assert 'id="select-prepared"' in response.text
     assert 'id="select-original"' in response.text
-    assert '<h2>Prepared</h2>' in response.text
-    assert '>Prepared</button>' in response.text
+    assert "<h2>Prepared</h2>" in response.text
+    assert ">Prepared</button>" in response.text
     assert 'aria-label="Resize Original and Prepared fields"' in response.text
     assert 'aria-valuetext="Original 55 percent, Prepared 45 percent"' in response.text
-    assert '<h2>Cleaned</h2>' not in response.text
-    assert '>Cleaned</button>' not in response.text
+    assert "<h2>Cleaned</h2>" not in response.text
+    assert ">Cleaned</button>" not in response.text
     assert 'id="toggle-original"' not in response.text
     assert 'id="layout-stacked"' in response.text
     assert 'id="layout-side-by-side"' in response.text
@@ -149,17 +151,11 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert 'class="draft-preparation-control" for="draft-preparation-mode" hidden' in response.text
     assert (
         'class="settings-section correction-settings" '
-        'aria-labelledby="correction-settings-title" hidden'
-        in response.text
+        'aria-labelledby="correction-settings-title" hidden' in response.text
     )
     assert '<option value="off">Off — Keep Original</option>' in response.text
-    assert (
-        '<option value="conservative">Conservative — Preserve my words</option>'
-        in response.text
-    )
-    assert (
-        '<option value="smart">Smart — Repair likely wrong words</option>' in response.text
-    )
+    assert '<option value="conservative">Conservative — Preserve my words</option>' in response.text
+    assert '<option value="smart">Smart — Repair likely wrong words</option>' in response.text
     assert 'id="cleanup-enabled"' not in response.text
     assert "Clean automatically" not in response.text
     assert "Experimental Smart correction" not in response.text
@@ -183,7 +179,7 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     assert "This does not save an evaluation corpus." not in response.text
     assert "Type, paste, or dictate here" in response.text
     assert 'aria-keyshortcuts="Meta+Enter Control+Enter"' in response.text
-    assert 'title="Regenerate Prepared from Original (⌘↵)"' in response.text
+    assert 'title="Retry failed preparation (⌘↵)"' in response.text
     assert 'class="page-footer"' not in response.text
     assert "keeps the raw text sendable" not in response.text
     control_rail = response.text.split('class="control-rail"', maxsplit=1)[1].split(
@@ -191,23 +187,25 @@ def test_development_page_identifies_development_brand(initialized_settings: Set
     )[0]
     assert 'id="layout-stacked"' in control_rail
     assert 'id="layout-side-by-side"' in control_rail
-    assert 'id="run-cleanup"' in control_rail
+    assert 'id="run-cleanup"' not in response.text
     assert 'id="clear-text"' in control_rail
-    original_panel = response.text.split('class="text-panel original-panel"', maxsplit=1)[
-        1
-    ].split("</article>", maxsplit=1)[0]
+    original_panel = response.text.split('class="text-panel original-panel"', maxsplit=1)[1].split(
+        "</article>", maxsplit=1
+    )[0]
     assert 'class="panel-footer original-panel-footer"' in original_panel
+    assert 'id="retry-cleanup"' in original_panel.split("<footer", maxsplit=1)[1]
     assert 'id="maximize-original"' not in original_panel
     assert 'id="run-cleanup"' not in original_panel
     assert 'id="clear-text"' not in original_panel
-    prepared_panel = response.text.split('class="text-panel prepared-panel"', maxsplit=1)[
-        1
-    ].split("</article>", maxsplit=1)[0]
+    prepared_panel = response.text.split('class="text-panel prepared-panel"', maxsplit=1)[1].split(
+        "</article>", maxsplit=1
+    )[0]
     assert "readonly" in prepared_panel
     assert 'id="cleanup-disclosure"' in prepared_panel
-    assert 'id="cleanup-disclosure"' not in response.text.split(
-        'class="outgoing-strip"', maxsplit=1
-    )[1]
+    assert (
+        'id="cleanup-disclosure"'
+        not in response.text.split('class="outgoing-strip"', maxsplit=1)[1]
+    )
 
 
 def test_obsolete_capture_and_evidence_collection_interfaces_are_absent(
@@ -247,25 +245,26 @@ def test_obsolete_capture_and_evidence_collection_interfaces_are_absent(
 
 
 def test_status_errors_use_one_accessible_privacy_safe_dialog(
-    initialized_settings: Settings,
+    tmp_path: Path,
 ) -> None:
-    client = TestClient(create_app(initialized_settings))
+    settings = Settings(Profile.DEVELOPMENT, database_path=tmp_path / "missing.sqlite3")
+    client = TestClient(create_app(settings))
 
     page = client.get("/").text
     script = client.get("/static/app.js").text
     stylesheet = client.get("/static/app.css").text
 
-    prepared_header = page.split(
-        'class="text-panel prepared-panel"', maxsplit=1
-    )[1].split("</header>", maxsplit=1)[0]
-    outgoing = page.split('class="outgoing-strip"', maxsplit=1)[1].split(
-        "</section>", maxsplit=1
+    prepared_header = page.split('class="text-panel prepared-panel"', maxsplit=1)[1].split(
+        "</header>", maxsplit=1
     )[0]
+    outgoing = page.split('class="outgoing-strip"', maxsplit=1)[1].split("</section>", maxsplit=1)[
+        0
+    ]
 
     assert 'id="cleanup-status"' in prepared_header
     assert "Cleanup unavailable</button>" in prepared_header
-    assert '<button id="retry-cleanup"' in prepared_header
-    assert "Retry cleanup\n" in prepared_header
+    assert 'id="retry-cleanup"' not in prepared_header
+    assert ">Retry</button>" in page
     assert 'id="cleanup-status"' not in outgoing
     assert 'id="retry-cleanup"' not in outgoing
     assert '<span id="outgoing-kind"' in page
@@ -285,12 +284,12 @@ def test_status_errors_use_one_accessible_privacy_safe_dialog(
     assert 'id="publication-state"' in page and "disabled hidden" in page
     assert 'elements.publication.hidden = nextState !== "error"' in script
 
-    retry_handler = script.split(
-        'elements.retryCleanup.addEventListener("click"', maxsplit=1
-    )[1].split("});", maxsplit=1)[0]
+    retry_handler = script.split("function retryCleanup()", maxsplit=1)[1].split(
+        "async function runCleanup", maxsplit=1
+    )[0]
     assert "runCleanup()" in retry_handler
-    assert 'failedCorrectionMode === "smart"' in retry_handler
-    assert 'applyDraftPreparationMode("conservative")' in retry_handler
+    assert "manualPreparationProtected()" in retry_handler
+    assert "applyDraftPreparationMode" not in retry_handler
     assert "copyOutgoing" not in retry_handler
     assert "requestEvidenceJudgment" not in retry_handler
     assert "publishNow" not in retry_handler
@@ -301,8 +300,7 @@ def test_status_errors_use_one_accessible_privacy_safe_dialog(
         "function validateSmartRepairs", maxsplit=1
     )[0]
     assert all(
-        field in attempt_renderer
-        for field in ("provider", "model", "route_index", "outcome")
+        field in attempt_renderer for field in ("provider", "model", "route_index", "outcome")
     )
     assert all(
         private_field not in attempt_renderer
@@ -779,12 +777,15 @@ def test_openrouter_normal_route_requires_request_and_returns_prepared_text(
         "data_collection": "deny",
     }
     assert payload["messages"][1]["content"] == "<SOURCE_TEXT>\nsynthetic source\n</SOURCE_TEXT>"
-    assert payload["response_format"]["json_schema"]["schema"] == {
-        "type": "object", "required": ["prepared_text"], "additionalProperties": False,
-        "properties": {"prepared_text": {
-            "type": "string", "description": "The prepared version of the supplied Original text."
-        }},
+    schema = payload["response_format"]["json_schema"]["schema"]
+    assert schema["required"] == ["prepared_text", "findings"]
+    assert schema["additionalProperties"] is False
+    assert schema["properties"]["prepared_text"] == {
+        "type": "string",
+        "description": "The prepared version of the supplied Original text.",
     }
+    assert schema["properties"]["findings"]["maxItems"] == 5
+    assert "maxLength" not in json.dumps(schema)
     assert "synthetic-router-key" not in response.text + json.dumps(config)
 
 
@@ -1094,7 +1095,76 @@ def test_cleanup_endpoint_fails_open_when_provider_is_unconfigured(
         "correction_mode": "conservative",
         "error": None,
         "attempts": [],
+        "findings": [],
+        "findings_status": "unavailable",
     }
+
+
+@pytest.mark.parametrize("mode", ["smart", "conservative"])
+def test_cleanup_endpoint_transports_findings_without_storage(monkeypatch, mode) -> None:
+    # In-memory admission avoids both operating-data access and test-schema migrations.
+    monkeypatch.setattr(
+        app_module,
+        "ApplicationDatabase",
+        lambda _path: SimpleNamespace(
+            schema_status=lambda: SimpleNamespace(ready=True),
+        ),
+    )
+    monkeypatch.setattr(
+        app_module,
+        "PromptStore",
+        lambda _database: SimpleNamespace(
+            preparation_default=lambda: app_module.PreparationMode.OFF,
+            active=lambda: SimpleNamespace(id=1, system_text="Synthetic instruction"),
+        ),
+    )
+    finding = {
+        "original_span": {"start": 0, "end": 5, "text": "umber"},
+        "prepared_span": {"start": 0, "end": 5, "text": "Umber"},
+        "reason": "Synthetic ambiguity.",
+        "alternatives": ["amber", "ochre"],
+    }
+
+    def respond(_request):
+        return httpx.Response(
+            200,
+            json={
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": json.dumps(
+                                    {
+                                        "prepared_text": "Umber parcel.",
+                                        "findings": [None, finding],
+                                    }
+                                ),
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+
+    provider_client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    adapter = app_module.OpenAIAdapter("synthetic-key", provider_client)
+    service = CleanupService(adapter, adapter.model, 3)
+    with TestClient(create_app(Settings(Profile.DEVELOPMENT), service)) as client:
+        result = client.post(
+            "/api/cleanup",
+            json={
+                "original_text": "umber parcel",
+                "correction_mode": mode,
+            },
+        ).json()
+    asyncio.run(provider_client.aclose())
+    assert result["prepared_text"] == "Umber parcel."
+    assert result["findings"] == [finding]
+    assert result["findings_status"] == "partial"
+    assert len(result["attempts"]) == 1
 
 
 def test_cleanup_endpoint_returns_provider_result(initialized_settings: Settings) -> None:
@@ -1685,7 +1755,7 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     assert "fauxCaret" not in script.text
     assert 'elements.workspaceResizer.addEventListener("pointerdown"' in script.text
     assert "promptManager" not in script.text
-    assert 'fetch(`/api/prompts/${prompt.id}/activate`' not in script.text
+    assert "fetch(`/api/prompts/${prompt.id}/activate`" not in script.text
     assert "selectedPromptVersionId" not in script.text
     assert "originalOutgoingOverride = true" in script.text
     assert "originalOutgoingOverride = false" in script.text
@@ -1693,9 +1763,9 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
     assert "original_text: originalText" in script.text
     assert "prepared_text: preparedText" in script.text
     assert 'usePrepared ? "prepared" : "original"' in script.text
-    outgoing_selection = script.text.split(
-        "function selectedOutgoingState()", maxsplit=1
-    )[1].split("function renderCountsAndSelection()", maxsplit=1)[0]
+    outgoing_selection = script.text.split("function selectedOutgoingState()", maxsplit=1)[1].split(
+        "function renderCountsAndSelection()", maxsplit=1
+    )[0]
     assert "raw_text:" not in outgoing_selection
     assert "cleaned_text:" not in outgoing_selection
     assert "setCleanupError" in script.text
@@ -1733,9 +1803,10 @@ def test_browser_script_supports_generic_input_and_dictation_compatibility(
 
 
 def test_browser_omits_task_context_and_discards_stale_smart_state(
-    initialized_settings: Settings,
+    tmp_path: Path,
 ) -> None:
-    script = TestClient(create_app(initialized_settings)).get("/static/app.js").text
+    settings = Settings(Profile.DEVELOPMENT, database_path=tmp_path / "missing.sqlite3")
+    script = TestClient(create_app(settings)).get("/static/app.js").text
     harness = r"""
 const vm = require("vm");
 
@@ -1796,8 +1867,13 @@ const fetch = (url, options = {}) => {
   }
   throw new Error(`Unexpected request: ${url}`);
 };
+let prepare;
 const window = {
-  clearTimeout, setTimeout,
+  clearTimeout,
+  setTimeout(callback, delay) {
+    if (delay === 700) { prepare = callback; return 0; }
+    return setTimeout(callback, delay);
+  },
   requestAnimationFrame(callback) { callback(); },
   addEventListener() {},
 };
@@ -1815,11 +1891,11 @@ async function settle() {
   const prepared = elements["#prepared-text"];
   original.value = "send teh memo";
   await original.dispatch("input", { isTrusted: true });
-  const staleRun = elements["#run-cleanup"].dispatch("click");
+  const staleRun = prepare();
   await settle();
   original.value = "send teh report";
   await original.dispatch("input", { isTrusted: true });
-  const currentRun = elements["#run-cleanup"].dispatch("click");
+  const currentRun = prepare();
   await settle();
   cleanupResolvers[1](response({
     prepared_text: "Send the report.", status: "prepared", lexical_repairs: [{
@@ -1861,10 +1937,9 @@ async function settle() {
     assert observed["repairCount"] == "1"
 
 
-def test_browser_preparation_modes_and_user_confirmed_prepared_lifecycle(
-    initialized_settings: Settings,
-) -> None:
-    script = TestClient(create_app(initialized_settings)).get("/static/app.js").text
+def test_browser_preparation_modes_and_user_confirmed_prepared_lifecycle() -> None:
+    # Exercise the DOM handlers offline, without creating an application or opening storage.
+    script = (Path(__file__).resolve().parents[1] / "src/local_text/static/app.js").read_text()
     harness = r"""
 const vm = require("vm");
 
@@ -1877,9 +1952,12 @@ class Element {
     this.lastElementChild = { textContent: "" }; this.style = { setProperty() {} };
     this.classList = { add() {}, remove() {}, toggle() {}, contains() { return false; } };
   }
+  set textContent(value) { this.text = value; this.children = []; }
+  get textContent() { return this.text; }
   addEventListener(type, callback) { (this.listeners[type] ||= []).push(callback); }
   async dispatch(type, event = {}) {
-    event.target ||= this; event.preventDefault ||= () => {};
+    event.target ||= this;
+    event.preventDefault ||= () => { event.defaultPrevented = true; };
     for (const callback of this.listeners[type] || []) await callback(event);
   }
   setAttribute(name, value) { this.attributes[name] = String(value); }
@@ -1902,6 +1980,7 @@ const document = {
   activeElement: null,
   querySelector(selector) { return elements[selector] ||= new Element(); },
   createElement() { return new Element(); },
+  createTextNode(text) { const node = new Element(); node.textContent = text; return node; },
   addEventListener() {},
 };
 const requests = [];
@@ -1929,8 +2008,12 @@ const fetch = async (url, options = {}) => {
   if (url === "/api/outgoing-state") return response({ revision: 1 });
   throw new Error(`Unexpected request: ${url}`);
 };
+let prepare;
 const window = {
-  clearTimeout() {}, setTimeout() { return 1; },
+  clearTimeout() {}, setTimeout(callback, delay) {
+    if (delay === 700) prepare = callback;
+    return 1;
+  },
   requestAnimationFrame(callback) { callback(); }, addEventListener() {},
   matchMedia() { return { matches: false, addEventListener() {} }; },
 };
@@ -1948,11 +2031,10 @@ const settle = async () => {
   const original = elements["#original-text"];
   const defaultMode = elements["#default-preparation-mode"];
   const draftMode = elements["#draft-preparation-mode"];
-  const runCleanup = elements["#run-cleanup"];
 
   original.value = "First draft";
   await original.dispatch("input", { isTrusted: true });
-  await runCleanup.dispatch("click"); await settle();
+  await prepare(); await settle();
 
   defaultMode.value = "smart";
   await defaultMode.dispatch("change"); await settle();
@@ -1960,7 +2042,7 @@ const settle = async () => {
 
   original.value = "First draft edited";
   await original.dispatch("input", { isTrusted: true });
-  await runCleanup.dispatch("click"); await settle();
+  await prepare(); await settle();
 
   draftMode.value = "smart";
   await draftMode.dispatch("change"); await settle();
@@ -1980,7 +2062,7 @@ const settle = async () => {
   await original.dispatch("beforeinput", { isTrusted: true });
   original.value = "Replacement draft";
   await original.dispatch("input", { isTrusted: true });
-  await runCleanup.dispatch("click"); await settle();
+  await prepare(); await settle();
 
   process.stdout.write(JSON.stringify({
     cleanupCountAfterSave,
@@ -2043,9 +2125,7 @@ const settle = async () => {
   assert.equal(elements["#prepared-origin"].textContent, "User-confirmed");
   assert.equal(cleanupCount(), beforeConfirm);
 
-  // Replacing all of Original with identical text is not a new revision.
-  original.selectionStart = 0; original.selectionEnd = original.value.length;
-  await original.dispatch("beforeinput", { isTrusted: true });
+  // An input event without an edit preserves confirmed Prepared.
   await original.dispatch("input", { isTrusted: true });
   assert.equal(prepared.value, exact);
   assert.equal(elements["#select-prepared"].disabled, false);
@@ -2058,13 +2138,17 @@ const settle = async () => {
   assert.equal(intended.value, exact); assert.equal(elements["#confirm-prepared"].disabled, false);
   await cancel(); assert.equal(prepared.value, exact);
 
-  // Regenerate consumes Original and immediately revokes manual delivery eligibility.
+  // Retry cannot discard confirmed wording; an Original edit revokes its eligibility.
+  await elements["#retry-cleanup"].dispatch("click");
+  assert.equal(prepared.value, exact);
+  assert.match(elements["#retry-cleanup-state"].textContent, /Retry blocked/);
+  original.value = "Replacement draft edited"; await original.dispatch("input");
   holdCleanup = true;
-  const pending = runCleanup.dispatch("click"); await settle();
+  const pending = prepare(); await settle();
   assert.equal(elements["#select-prepared"].disabled, true);
   assert.match(elements["#outgoing-kind"].textContent, /Using Original/);
   assert.equal(requests.filter((item) => item.url === "/api/cleanup").at(-1).body.original_text,
-    "Replacement draft");
+    "Replacement draft edited");
   assert.equal(elements["#correct-prepared"].hidden, true);
   await open(); assert.equal(dialog.open, false);
   original.value = "Newer revision"; await original.dispatch("input");
@@ -2075,7 +2159,7 @@ const settle = async () => {
   assert.equal(elements["#correct-prepared"].hidden, true);
   holdCleanup = false;
   original.value = "Replacement draft"; await original.dispatch("input");
-  await runCleanup.dispatch("click"); await settle();
+  await prepare(); await settle();
   await open(); await confirm("Manual wins.");
   assert.equal(prepared.value, "Manual wins.");
   assert.equal(published().outgoing_text, "Manual wins.");
@@ -2094,7 +2178,8 @@ const settle = async () => {
   // Busy entry is blocked without cancelling the active generation; cancellation keeps its result.
   await mode("conservative");
   holdCleanup = true;
-  const pendingCancel = runCleanup.dispatch("click"); await settle();
+  await original.dispatch("input");
+  const pendingCancel = prepare(); await settle();
   await open(); assert.equal(dialog.open, false);
   releaseCleanup(response({ prepared_text: "Late after cancel", status: "prepared",
     lexical_repairs: [] }));
@@ -2105,7 +2190,8 @@ const settle = async () => {
   assert.equal(cleanupCount(), beforeCancel);
 
   // Failure stays fail-open and does not offer correction of an Original fallback.
-  const failed = runCleanup.dispatch("click"); await settle();
+  await original.dispatch("input");
+  const failed = prepare(); await settle();
   releaseCleanup(response({}, 503)); await failed; await settle();
   assert.equal(elements["#select-prepared"].disabled, true);
   assert.equal(elements["#correct-prepared"].hidden, true);
@@ -2116,12 +2202,244 @@ const settle = async () => {
   assert.equal(elements["#select-prepared"].disabled, true);
   assert.match(elements["#outgoing-kind"].textContent, /Using Original/);
   assert.equal(requests.some((item) => item.url.startsWith("/api/personal-corrections")), false);
+
+  // Original owns history: native events/shortcuts replay recorded edits, not text guesses.
+  holdCleanup = false;
+  defaultMode.value = "off"; await defaultMode.dispatch("change");
+  const list = elements["#smart-repair-list"];
+  const putFindings = async (spans, alternatives = []) => {
+    await original.dispatch("inspection-findings", { detail: {
+      original_text: original.value, revision: Number(original.dataset.revision),
+      prepared_text: prepared.value,
+      prepared_generation: Number(prepared.dataset.generation),
+      findings: spans.map((span, index) => ({ original_span: span, prepared_span: span,
+        reason: `Occurrence ${index + 1}`, alternatives: index ? [] : alternatives })),
+    }});
+  };
+  const seedFindings = async (text = "📝 umber parcel tail", spans = [
+      { start: 2, end: 7, text: "umber" },
+      { start: 8, end: 14, text: "parcel" },
+  ]) => {
+    await elements["#clear-text"].dispatch("click");
+    original.value = text; await original.dispatch("input");
+    await mode("conservative");
+    await putFindings(spans);
+    assert.equal(list.children.length, 2);
+    await list.children[0].children[0].dispatch("click");
+    original.setSelectionRange(0, original.value.length);
+    assert.equal(list.children.length, 2, "selection alone must retain Inspection");
+  };
+  const editOriginal = async (start, end, text, inputType = "insertText") => {
+    const chars = Array.from(original.value);
+    const prefix = chars.slice(0, start).join("");
+    original.setSelectionRange(prefix.length, chars.slice(0, end).join("").length);
+    await original.dispatch("beforeinput", { inputType });
+    original.value = prefix + text + chars.slice(end).join("");
+    original.setSelectionRange(prefix.length + text.length, prefix.length + text.length);
+    await original.dispatch("input", { inputType });
+  };
+  const history = async (inputType) => {
+    // Current selection must never supply the range for an Undo/Redo operation.
+    original.setSelectionRange(0, original.value.length);
+    const event = { inputType, cancelable: true };
+    await original.dispatch("beforeinput", event);
+    assert.equal(event.defaultPrevented, true, "native history must be prevented");
+  };
+  const assertPending = (count) => {
+    assert.equal(draftMode.value, "conservative", "history must not restore the Off default");
+    assert.equal(list.children.length, count, "retain only unaffected findings");
+    for (const card of list.children) {
+      assert.equal(card.children[1].disabled, true, "retained Keep must await recheck");
+      assert.equal(card.children[2].children[1].textContent, "Awaiting recheck");
+    }
+    assert.equal(elements["#prepared-highlights"].hidden, true);
+  };
+  const repeated = [
+    { start: 2, end: 7, text: "umber" }, { start: 8, end: 13, text: "umber" },
+  ];
+  // Both deletions produce identical text, but a different finding must survive each one.
+  for (const removed of [0, 1]) {
+    await seedFindings("📝 umber umber tail", repeated);
+    const before = cleanupCount();
+    await editOriginal(removed ? 8 : 2, removed ? 14 : 8, "", "deleteByCut");
+    assert.equal(original.value, "📝 umber tail");
+    assertPending(1);
+    const survivor = `Occurrence ${removed ? 1 : 2}`;
+    assert.equal(list.children[0].children[2].children[2].textContent, survivor);
+    await history("historyUndo");
+    assert.equal(original.value, "📝 umber umber tail");
+    assertPending(1); // Restored wording must not resurrect the removed finding.
+    assert.equal(list.children[0].children[2].children[2].textContent, survivor);
+    await history("historyRedo");
+    assert.equal(original.value, "📝 umber tail");
+    assertPending(1);
+    assert.equal(list.children[0].children[2].children[2].textContent, survivor);
+    await history("historyUndo");
+    await prepare(); await settle();
+    await putFindings(repeated);
+    assert.equal(list.children.length, 2, "fresh findings replace the same retained occurrence");
+    await history("historyRedo");
+    assertPending(1);
+    assert.equal(list.children[0].children[2].children[2].textContent, survivor);
+    assert.equal(cleanupCount(), before + 1, "only explicit debounce flush may prepare");
+  }
+  // Without beforeinput, identical resulting text cannot identify which repeat survived.
+  for (const removed of [0, 1]) {
+    await seedFindings("📝 umber umber tail", repeated);
+    const before = cleanupCount();
+    original.value = "📝 umber tail";
+    original.setSelectionRange(removed ? 9 : 3, removed ? 9 : 3);
+    await original.dispatch("input", { inputType: "deleteByCut", isTrusted: true });
+    assertPending(0); // Neither old occurrence has reliable identity.
+    await history("historyUndo");
+    assert.equal(original.value, "📝 umber umber tail"); assertPending(0);
+    await prepare(); await settle();
+    await putFindings(repeated);
+    assert.equal(list.children.length, 2);
+    await history("historyRedo");
+    assert.equal(original.value, "📝 umber tail"); assertPending(0);
+    await history("historyUndo");
+    assert.equal(original.value, "📝 umber umber tail"); assertPending(0);
+    assert.equal(cleanupCount(), before + 1);
+  }
+  // An input-only replacement with identical wording supplies no occurrence identity either.
+  await seedFindings();
+  const revisionBeforeUntracked = Number(original.dataset.revision);
+  await original.dispatch("input", { inputType: "insertReplacementText", isTrusted: true });
+  assertPending(0);
+  assert.equal(Number(original.dataset.revision), revisionBeforeUntracked + 1);
+  await history("historyUndo"); assertPending(0);
+  await history("historyRedo"); assertPending(0);
+  assert.equal(original.value, "📝 umber parcel tail");
+  // Keyboard shortcuts are scoped to Original, including Windows Redo and Mac Shift+Z.
+  await seedFindings();
+  const beforeHistory = cleanupCount();
+  await editOriginal(0, 0, "🟠 ");
+  await original.dispatch("keydown", { key: "z", ctrlKey: true });
+  assert.equal(original.value, "📝 umber parcel tail"); assertPending(2);
+  assert.deepEqual([original.selectionStart, original.selectionEnd], [0, 0]);
+  await original.dispatch("keydown", { key: "y", ctrlKey: true });
+  assert.equal(original.value, "🟠 📝 umber parcel tail"); assertPending(2);
+  assert.deepEqual([original.selectionStart, original.selectionEnd], [3, 3]);
+  await original.dispatch("keydown", { key: "z", metaKey: true });
+  await original.dispatch("keydown", { key: "Z", metaKey: true, shiftKey: true });
+  assert.equal(original.value, "🟠 📝 umber parcel tail");
+  const otherUndo = { key: "z", ctrlKey: true };
+  await intended.dispatch("keydown", otherUndo);
+  assert.equal(otherUndo.defaultPrevented, undefined, "other editors retain native history");
+  assert.equal(cleanupCount(), beforeHistory);
+  // A fresh edit after Undo drops Redo, rather than replaying it over different text.
+  await history("historyUndo");
+  await editOriginal(19, 19, "!");
+  await history("historyRedo");
+  assert.equal(original.value, "📝 umber parcel tail!");
+  // Native fallback without a cancelable beforeinput must not inject guessed history edits.
+  original.value = "Native history result must not win";
+  await original.dispatch("input", { inputType: "historyUndo" });
+  assert.equal(original.value, "📝 umber parcel tail"); assertPending(2);
+  const uncancelable = { inputType: "historyRedo", cancelable: false };
+  await original.dispatch("beforeinput", uncancelable);
+  assert.equal(uncancelable.defaultPrevented, undefined);
+  original.value = "Another native history result";
+  await original.dispatch("input", { inputType: "historyRedo" });
+  assert.equal(original.value, "📝 umber parcel tail!"); assertPending(2);
+  // A same-word replacement still touches that occurrence on Undo/Redo after a fresh check.
+  await seedFindings();
+  await editOriginal(2, 7, "umber"); assertPending(1);
+  await prepare(); await settle();
+  await putFindings([
+    { start: 2, end: 7, text: "umber" }, { start: 8, end: 14, text: "parcel" },
+  ]);
+  await history("historyUndo"); assertPending(1);
+  assert.equal(original.value, "📝 umber parcel tail");
+  await history("historyRedo"); assertPending(1);
+  // Applying a chosen alternative is undoable, but its old finding/binding never returns.
+  await seedFindings();
+  await putFindings([
+    { start: 2, end: 7, text: "umber" }, { start: 8, end: 14, text: "parcel" },
+  ], ["amber", "ochre"]);
+  const nonFirstRadio = list.children[0].children[2].children[0].children[2].children[0];
+  nonFirstRadio.checked = true; await nonFirstRadio.dispatch("change");
+  assert.equal(original.value, "📝 ochre parcel tail");
+  assert.equal(list.children.length, 2);
+  const appliedReason = () => list.children[1].children[1].children[1].textContent;
+  assert.equal(appliedReason(), "Applied in Original.");
+  await history("historyUndo");
+  assert.equal(original.value, "📝 umber parcel tail");
+  assert.equal(list.children.length, 2, "keep the repair, not its dismissed finding");
+  assert.equal(list.children[1].children[1].children[0].textContent, "Location unavailable");
+  await history("historyRedo");
+  assert.equal(original.value, "📝 ochre parcel tail");
+  assert.equal(appliedReason(), "Applied in Original.");
+  assert.equal(list.children[1].children[1].children[0].textContent, "Location unavailable");
+  // Input-only edits retire uncertain findings, not the retained applied repair or mode.
+  original.value += "!";
+  await original.dispatch("input", { isTrusted: true });
+  assert.equal(list.children.length, 1);
+  assert.equal(list.children[0].children[1].children[0].textContent, "Location unavailable");
+  assert.equal(list.children[0].children[1].children[1].textContent, "Applied in Original.");
+  assert.equal(draftMode.value, "conservative");
+  await history("historyUndo");
+  assert.equal(original.value, "📝 ochre parcel tail");
+  assert.equal(list.children.length, 1);
+  await history("historyRedo");
+  assert.equal(original.value, "📝 ochre parcel tail!");
+  assert.equal(list.children.length, 1);
+  // One composition is one undo unit, including non-BMP characters before findings.
+  await seedFindings();
+  await original.dispatch("compositionstart");
+  await editOriginal(0, 0, "🟠", "insertCompositionText");
+  await editOriginal(0, 1, "🟠 ", "insertCompositionText");
+  await original.dispatch("compositionend");
+  await history("historyUndo");
+  assert.equal(original.value, "📝 umber parcel tail"); assertPending(2);
+  await history("historyRedo");
+  assert.equal(original.value, "🟠 📝 umber parcel tail"); assertPending(2);
+  // Undo/Redo is an Original edit: it invalidates confirmation, not its unrelated editor.
+  await prepare(); await settle(); await open();
+  intended.value = "Keep this open correction.";
+  const protectedCount = cleanupCount();
+  await history("historyUndo");
+  assert.equal(dialog.open, true);
+  assert.equal(intended.value, "Keep this open correction.");
+  assert.equal(elements["#confirm-prepared"].disabled, true);
+  assert.equal(cleanupCount(), protectedCount);
+  await cancel(); await mode("conservative"); await open(); await confirm("Confirmed wording.");
+  assert.equal(prepared.value, "Confirmed wording.");
+  await history("historyRedo");
+  assert.notEqual(prepared.value, "Confirmed wording.");
+  assert.equal(elements["#select-prepared"].disabled, true);
+  // E1 still resets for actual replacement, even with identical wording, and deletion.
+  for (const [inputType, updated] of [
+    ["insertText", "📝 umber parcel tail"], ["deleteContentBackward", ""],
+  ]) {
+    await seedFindings();
+    await original.dispatch("beforeinput", { inputType });
+    original.value = updated;
+    await original.dispatch("input", { inputType });
+    assert.equal(list.children.length, 0);
+    assert.equal(draftMode.value, "off");
+    assert.equal(elements["#smart-repair-review"].dataset.findingsStatus, "");
+    await history("historyUndo");
+    assert.equal(original.value, "📝 umber parcel tail");
+    assert.equal(list.children.length, 0, "Undo must not restore old Inspection bindings");
+  }
+  // Clear discards both stacks, and Off stays request-free even when history is used.
+  await elements["#clear-text"].dispatch("click");
+  const clearedCount = cleanupCount();
+  await history("historyUndo"); await history("historyRedo");
+  assert.equal(original.value, "");
+  await editOriginal(0, 0, "Local text");
+  await history("historyUndo"); assert.equal(original.value, "");
+  await history("historyRedo"); assert.equal(original.value, "Local text");
+  assert.equal(cleanupCount(), clearedCount);
 })().catch((error) => { process.stderr.write(error.stack); process.exit(1); });
 """
 
     result = subprocess.run(
-        ["node", "-e", harness, script], check=True, capture_output=True, text=True
+        ["node", "-e", harness, script], capture_output=True, text=True
     )
+    assert result.returncode == 0, result.stderr
     observed = json.loads(result.stdout)
 
     assert observed == {
@@ -2144,9 +2462,10 @@ const settle = async () => {
 
 
 def test_browser_failed_smart_recovery_uses_latest_original_and_safe_attempt_details(
-    initialized_settings: Settings,
+    tmp_path: Path,
 ) -> None:
-    script = TestClient(create_app(initialized_settings)).get("/static/app.js").text
+    settings = Settings(Profile.DEVELOPMENT, database_path=tmp_path / "missing.sqlite3")
+    script = TestClient(create_app(settings)).get("/static/app.js").text
     harness = r"""
 const vm = require("vm");
 
@@ -2238,8 +2557,12 @@ const fetch = async (url, options = {}) => {
   }
   throw new Error(`Unexpected request: ${url}`);
 };
+let prepare;
 const window = {
-  clearTimeout() {}, setTimeout() { return 1; },
+  clearTimeout() {}, setTimeout(callback, delay) {
+    if (delay === 700) prepare = callback;
+    return 1;
+  },
   requestAnimationFrame(callback) { callback(); }, addEventListener() {},
   matchMedia() { return { matches: false, addEventListener() {} }; },
 };
@@ -2256,21 +2579,24 @@ const settle = async () => {
   vm.runInNewContext(process.argv[1], context); await settle();
   elements["#original-text"].value = "Original one";
   await elements["#original-text"].dispatch("input", { isTrusted: true });
-  await elements["#run-cleanup"].dispatch("click"); await settle();
+  await prepare(); await settle();
 
   const smartFailure = {
     cleanupDetailsVisible: !elements["#cleanup-recovery"].hidden,
-    recoveryLabel: elements["#retry-cleanup"].textContent,
+    retryVisible: !elements["#retry-cleanup"].hidden,
     prepared: elements["#prepared-text"].value,
     outgoing: elements["#outgoing-kind"].textContent,
     details: elements["#cleanup-attempt-list"].children.map((item) => item.textContent),
   };
 
-  holdConservative = true;
+  // Retry stays in Smart. An explicit user mode change selects Conservative.
   await elements["#retry-cleanup"].dispatch("click"); await settle();
+  holdConservative = true;
+  elements["#draft-preparation-mode"].value = "conservative";
+  const held = elements["#draft-preparation-mode"].dispatch("change"); await settle();
   elements["#original-text"].value = "Original two";
   await elements["#original-text"].dispatch("input", { isTrusted: true });
-  resolveConservative(); await settle();
+  resolveConservative(); await held; await settle();
   const stale = {
     prepared: elements["#prepared-text"].value,
     outgoing: elements["#outgoing-kind"].textContent,
@@ -2280,7 +2606,8 @@ const settle = async () => {
   holdConservative = false;
   elements["#draft-preparation-mode"].value = "smart";
   await elements["#draft-preparation-mode"].dispatch("change"); await settle();
-  await elements["#retry-cleanup"].dispatch("click"); await settle();
+  elements["#draft-preparation-mode"].value = "conservative";
+  await elements["#draft-preparation-mode"].dispatch("change"); await settle();
   const backup = {
     mode: elements["#draft-preparation-mode"].value,
     prepared: elements["#prepared-text"].value,
@@ -2291,7 +2618,8 @@ const settle = async () => {
   await elements["#select-prepared"].dispatch("click"); await settle();
 
   primarySuccess = true;
-  await elements["#run-cleanup"].dispatch("click"); await settle();
+  await elements["#original-text"].dispatch("input");
+  await prepare(); await settle();
   await elements["#select-prepared"].dispatch("click"); await settle();
   const primary = {
     prepared: elements["#prepared-text"].value,
@@ -2321,7 +2649,7 @@ const settle = async () => {
     assert json.loads(result.stdout) == {
         "smartFailure": {
             "cleanupDetailsVisible": True,
-            "recoveryLabel": "Try Conservative",
+            "retryVisible": True,
             "prepared": "Original one",
             "outgoing": "Using Original",
             "details": ["Route 1: provider-a · model-a — Failed"],
@@ -2348,6 +2676,7 @@ const settle = async () => {
             "details": ["Route 1: provider-a · model-a — Succeeded"],
         },
         "cleanupRequests": [
+            {"original_text": "Original one", "enabled": True, "correction_mode": "smart"},
             {"original_text": "Original one", "enabled": True, "correction_mode": "smart"},
             {
                 "original_text": "Original one",
@@ -2388,9 +2717,10 @@ const settle = async () => {
 
 
 def test_browser_smart_repair_queue_selects_span_and_does_not_gate_outgoing(
-    initialized_settings: Settings,
+    tmp_path: Path,
 ) -> None:
-    script = TestClient(create_app(initialized_settings)).get("/static/app.js").text
+    settings = Settings(Profile.DEVELOPMENT, database_path=tmp_path / "missing.sqlite3")
+    script = TestClient(create_app(settings)).get("/static/app.js").text
 
     assert "function validateSmartRepairs" in script
     assert "function invalidateSmartRepairReview" in script
@@ -2430,6 +2760,9 @@ class Element {
     this.lastElementChild = { textContent: "" };
     this.selectionStart = 0; this.selectionEnd = 0;
   }
+  // Rendering replaces children when textContent is assigned, as in a real browser.
+  set textContent(value) { this._textContent = value; this.children = []; }
+  get textContent() { return this._textContent; }
   addEventListener(type, callback) { (this.listeners[type] ||= []).push(callback); }
   async dispatch(type, event = {}) {
     event.target ||= this; event.preventDefault ||= () => {};
@@ -2489,8 +2822,12 @@ const fetch = async (url, options = {}) => {
   }
   throw new Error(`Unexpected request: ${url}`);
 };
+let prepare;
 const window = {
-  clearTimeout() {}, setTimeout() { return 1; }, requestAnimationFrame(callback) { callback(); },
+  clearTimeout() {}, setTimeout(callback, delay) {
+    if (delay === 700) prepare = callback;
+    return 1;
+  }, requestAnimationFrame(callback) { callback(); },
   addEventListener() {},
 };
 const navigator = { clipboard: { async writeText(text) { copied.push(text); } } };
@@ -2499,7 +2836,8 @@ async function settle() { await new Promise((resolve) => setImmediate(resolve));
 (async () => {
   vm.runInNewContext(process.argv[1], context); await settle(); await settle();
   elements["#original-text"].value = "send teh report";
-  await elements["#run-cleanup"].dispatch("click"); await settle();
+  await elements["#original-text"].dispatch("input");
+  await prepare(); await settle();
   await elements["#select-prepared"].dispatch("click"); await settle();
   const queue = elements["#smart-repair-list"];
   const before = {
@@ -2529,7 +2867,8 @@ async function settle() { await new Promise((resolve) => setImmediate(resolve));
   };
   await elements["#copy-outgoing"].dispatch("click");
   malformed = true;
-  await elements["#run-cleanup"].dispatch("click");
+  await elements["#original-text"].dispatch("input");
+  await prepare();
   const cleanupTrigger = elements["#cleanup-status"];
   await cleanupTrigger.dispatch("click");
   const malformedResult = {
@@ -2657,7 +2996,7 @@ async function run(originalValue) {
   const selectors = {
     "#original-text": original,
     "#prepared-text": new Element(), "#cleanup-enabled": new Element(),
-    "#run-cleanup": new Element(), "#clear-text": new Element(),
+    "#clear-text": new Element(),
     "#toggle-original": new Element(), "#original-count": new Element(),
     "#prepared-count": new Element(), "#outgoing-kind": new Element(),
     "#select-prepared": new Element(), "#select-original": new Element(),
