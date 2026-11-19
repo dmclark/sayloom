@@ -784,7 +784,9 @@ def test_openrouter_normal_route_requires_request_and_returns_prepared_text(
         "type": "string",
         "description": "The prepared version of the supplied Original text.",
     }
-    assert schema["properties"]["findings"]["maxItems"] == 5
+    assert schema["properties"]["findings"]["type"] == "array"
+    # OpenRouter omits unsupported wire constraints; server validation enforces the bounds.
+    assert "maxItems" not in json.dumps(schema)
     assert "maxLength" not in json.dumps(schema)
     assert "synthetic-router-key" not in response.text + json.dumps(config)
 
