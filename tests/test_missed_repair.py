@@ -210,7 +210,6 @@ def test_browser_capture_contract_covers_binding_limits_staleness_and_no_save(
     assert 'length > 500' in script
     assert 'binding.preEdit' in script and 'binding.postEdit' in script
     assert 'binding.postRevision === draftRevision' in script
-    assert 'invocation !== "automatic"' in script
     assert 'missedRepairBinding = null;' in script
     assert 'fetch("/api/personal-corrections/candidates"' in script
     assert 'fetch("/api/personal-corrections/episodes"' in script
@@ -236,6 +235,7 @@ def test_browser_optional_review_uses_frozen_editor_text_and_preserves_prepared_
     script = TestClient(create_app(initialized_settings)).get("/static/app.js").text
     harness = r"""
 const vm = require("vm");
+const assert = require("node:assert/strict");
 class Element {
   constructor() {
     this.value = ""; this.checked = true; this.disabled = false; this.hidden = false;
@@ -273,7 +273,9 @@ const document = {
   addEventListener() {},
 };
 const requests = [];
-const timers = [];
+const timers = new Map();
+let timerSequence = 0;
+let cleanupFailure = false;
 let candidateFailure = false;
 let candidateStale = false;
 const response = (body, ok = true, status = 200) => ({ ok, status, json: async () => body });
@@ -285,10 +287,15 @@ const fetch = async (url, options = {}) => {
     cleanup_configuration: { status: "unavailable", routes: [], disclosure: {} },
   });
   if (url === "/api/outgoing-state") return response({ revision: requests.length });
-  if (url === "/api/cleanup") return response({
-    prepared_text: body.original_text, status: "unchanged", provider: "test", model: "test",
-    correction_mode: body.correction_mode, lexical_repairs: [], attempts: [],
-  });
+  if (url === "/api/cleanup") {
+    if (cleanupFailure) return response({ detail: {
+      code: "cleanup_failure", message: "Preparation failed.", retry_action: "Retry.",
+    } }, false, 503);
+    return response({
+      prepared_text: body.original_text, status: "unchanged", provider: "test", model: "test",
+      correction_mode: body.correction_mode, lexical_repairs: [], attempts: [],
+    });
+  }
   if (url === "/api/personal-corrections/candidates") {
     if (candidateStale) return response({ detail: {
       code: "stale_personal_correction_result", message: "The result is stale.",
@@ -321,8 +328,10 @@ const fetch = async (url, options = {}) => {
   throw new Error(`Unexpected request: ${url}`);
 };
 const window = {
-  clearTimeout() {},
-  setTimeout(callback, delay) { timers.push({ callback, delay }); return timers.length; },
+  clearTimeout(id) { timers.delete(id); },
+  setTimeout(callback, delay) {
+    const id = ++timerSequence; timers.set(id, { callback, delay }); return id;
+  },
   requestAnimationFrame(callback) { callback(); },
   addEventListener() {}, confirm() { return true; },
 };
@@ -343,6 +352,19 @@ async function confirmReview(text) {
   await original.dispatch("input", { isTrusted: true });
   elements["#draft-preparation-mode"].value = "conservative";
   await elements["#draft-preparation-mode"].dispatch("change"); await settle();
+  const cleanupCount = () => requests.filter((item) => item.url === "/api/cleanup").length;
+  assert.equal(cleanupCount(), 1);
+  assert.equal(elements["#retry-cleanup"].hidden, true);
+  await elements["#retry-cleanup"].dispatch("click"); await settle();
+  assert.equal(cleanupCount(), 1, "successful preparation does not permit routine regeneration");
+  await elements["#correct-prepared"].dispatch("click");
+  elements["#intended-prepared"].value = "Unconfirmed editor wording";
+  await elements["#retry-cleanup"].dispatch("click"); await settle();
+  assert.equal(cleanupCount(), 1, "Retry must not discard an open manual correction");
+  assert.equal(elements["#prepared-correction-dialog"].open, true);
+  assert.equal(elements["#intended-prepared"].value, "Unconfirmed editor wording");
+  assert.match(elements["#prepared-correction-state"].textContent, /Retry blocked/);
+  await elements["#cancel-prepared-correction"].dispatch("click");
   await confirmReview("Before. Carry amber parcel now. After.");
   const candidateRequest = requests.filter((item) => item.url.endsWith("/candidates")).at(-1).body;
   const overLimit = elements["#missed-repair-review-state"].dataset.state;
@@ -352,6 +374,10 @@ async function confirmReview(text) {
     .map((item) => item.children[0].checked);
   await elements["#select-original"].dispatch("click");
   await elements["#copy-outgoing"].dispatch("click");
+  await elements["#retry-cleanup"].dispatch("click"); await settle();
+  assert.equal(cleanupCount(), 1, "Retry must preserve confirmed Prepared and its review");
+  assert.equal(elements["#prepared-text"].value, "Before. Carry amber parcel now. After.");
+  assert.equal(elements["#missed-repair-review-state"].dataset.state, afterRemoval);
   original.value += " More.";
   await original.dispatch("input", { isTrusted: true });
   const stale = elements["#missed-repair-review-state"].dataset.state;
@@ -359,7 +385,21 @@ async function confirmReview(text) {
   await elements["#dismiss-missed-repair"].dispatch("click");
   original.value = "Before. Carry umber parcel. After.";
   await original.dispatch("input", { isTrusted: true });
-  await elements["#run-cleanup"].dispatch("click"); await settle();
+  // Normal edits prepare via debounce. Only a failed preparation permits Retry.
+  cleanupFailure = true;
+  const pendingPreparation = [...timers.entries()].find(([, timer]) => timer.delay === 700);
+  assert.ok(pendingPreparation, "Original edit must schedule normal preparation");
+  timers.delete(pendingPreparation[0]);
+  await pendingPreparation[1].callback(); await settle();
+  assert.equal(cleanupCount(), 2);
+  assert.equal(elements["#retry-cleanup"].hidden, false);
+  cleanupFailure = false;
+  await elements["#retry-cleanup"].dispatch("click"); await settle();
+  assert.equal(cleanupCount(), 3);
+  assert.equal(elements["#prepared-text"].value, original.value);
+  assert.equal(elements["#retry-cleanup"].hidden, true);
+  assert.equal(requests.filter((item) => item.url === "/api/cleanup").at(-1).body.correction_mode,
+    "conservative");
   candidateFailure = true;
   await confirmReview("Before. Carry amber parcel now. After.");
   const failureState = elements["#missed-repair-review-state"].dataset.state;
@@ -403,6 +443,6 @@ async function confirmReview(text) {
         "failureState": "error",
         "preparedAfterFailure": "Before. Carry amber parcel now. After.",
         "promptChangeState": "stale",
-        "cleanupPromptVersionIds": [7, 7],
+        "cleanupPromptVersionIds": [7, 7, 7],
         "personalWrites": 0,
     }
