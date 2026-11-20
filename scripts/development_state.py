@@ -37,16 +37,11 @@ ALLOWED_ENVIRONMENT_KEYS = {
     "LOCAL_TEXT_OPENROUTER_ENDPOINTS",
     "LOCAL_TEXT_CLEANUP_TIMEOUT_SECONDS",
 }
-APPLICATION_ENVIRONMENT_KEYS = ALLOWED_ENVIRONMENT_KEYS | {
+CREDENTIAL_ENVIRONMENT_KEYS = {
     "GEMINI_API_KEY",
     "GOOGLE_API_KEY",
     "OPENAI_API_KEY",
     "OPENROUTER_API_KEY",
-    "LOCAL_TEXT_DATABASE_PATH",
-    "LOCAL_TEXT_DEVELOPMENT_STATE_NAME",
-    "LOCAL_TEXT_PROFILE",
-    "LOCAL_TEXT_PROVIDER_TRAFFIC_DIAGNOSTICS_FILE",
-    "LOCAL_TEXT_STATE_DIRECTORY",
 }
 ENVIRONMENT_LINE = re.compile(r"([A-Z][A-Z0-9_]*)=(.*)")
 
@@ -192,6 +187,7 @@ def available_port(
 def port_is_available(port: int) -> bool:
     try:
         with socket.socket() as candidate:
+            candidate.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             candidate.bind(("127.0.0.1", port))
     except OSError:
         return False
@@ -285,7 +281,10 @@ def state_configuration(state: State) -> dict[str, str]:
 
 def clean_environment() -> dict[str, str]:
     return {
-        key: value for key, value in os.environ.items() if key not in APPLICATION_ENVIRONMENT_KEYS
+        key: value
+        for key, value in os.environ.items()
+        if (not key.startswith(("LOCAL_TEXT_", "UV_", "PYTHON", "PYTEST_")) or key == "UV_OFFLINE")
+        and key not in CREDENTIAL_ENVIRONMENT_KEYS
     }
 
 
@@ -295,6 +294,7 @@ def state_environment(state: State, *, load_configuration: bool = False) -> dict
         environment.update(state_configuration(state))
     environment["LOCAL_TEXT_STATE_DIRECTORY"] = state.state_directory
     environment["LOCAL_TEXT_PROFILE"] = "development"
+    environment["LOCAL_TEXT_PORT"] = str(state.port)
     environment["LOCAL_TEXT_PROVIDER_TRAFFIC_DIAGNOSTICS_FILE"] = str(
         Path(state.state_directory) / ".provider-traffic-diagnostics"
     )

@@ -3,6 +3,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import plistlib
 import signal
 import socket
 import subprocess
@@ -236,7 +237,24 @@ def test_state_root_migration_stops_only_registered_services_before_copy_and_cle
     events: list[str] = []
     plist = tmp_path / "LaunchAgents" / f"{state.label}.plist"
     plist.parent.mkdir()
-    plist.write_text(str(source_root))
+    plist.write_bytes(
+        plistlib.dumps(
+            {
+                "Label": state.label,
+                "ProgramArguments": [
+                    str(Path(state.repository_root) / "scripts/run-development.sh"),
+                    "--state-root",
+                    str(source_root),
+                    "--state",
+                    state.name,
+                    "--label",
+                    state.label,
+                    "--port",
+                    str(state.port),
+                ],
+            }
+        )
+    )
 
     monkeypatch.setattr(module, "service_is_loaded", lambda candidate: loaded[candidate.label])
 
@@ -852,6 +870,19 @@ def test_create_allocates_unique_ports_and_accepts_an_override(tmp_path: Path) -
     )
     assert overridden.returncode == 0
     assert json.loads((other_root / "explicit/state.json").read_text())["port"] == requested_port
+
+    with socket.socket() as listener:
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        occupied_port = listener.getsockname()[1]
+        refused = run_dev(
+            tmp_path / "occupied-states", "create", "occupied", "--port", str(occupied_port)
+        )
+        assert refused.returncode != 0
+        assert "occupied by an unregistered process" in refused.stderr
+        assert not (tmp_path / "occupied-states/occupied").exists()
+        assert listener.getsockname()[1] == occupied_port
 
 
 def test_list_prune_and_remove_manage_only_registered_state_data(tmp_path: Path) -> None:
@@ -1866,6 +1897,116 @@ def test_restart_preflights_configuration_before_repository_verification(
         module.restart(selected)
 
 
+def test_development_never_stops_same_label_loaded_from_another_state_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = load_dev_module("sayloom_dev_service_ownership")
+    root = tmp_path / "selected-states"
+    assert run_dev(root, "create", "selected").returncode == 0
+    selected = module.load_state(root, "selected")
+    arguments = [
+        str(REPOSITORY_ROOT / "scripts/run-development.sh"),
+        "--state-root",
+        str(tmp_path / "other-states"),
+        "--state",
+        selected.name,
+        "--label",
+        selected.label,
+        "--port",
+        str(selected.port),
+    ]
+    monkeypatch.setattr(sys, "platform", "darwin")
+
+    def launchctl(command, **kwargs):
+        if command[1] == "print":
+            return subprocess.CompletedProcess(
+                command, 0, "arguments = {\n" + "\n".join(arguments) + "\n}\n", ""
+            )
+        pytest.fail("must not stop a service loaded from another state root")
+
+    monkeypatch.setattr(module.subprocess, "run", launchctl)
+    with pytest.raises(SystemExit, match="does not belong to the selected state"):
+        module.stop_service(selected)
+
+
+@pytest.mark.parametrize("other_root", [False, True])
+def test_remove_only_owns_the_selected_state_roots_service_plist(
+    tmp_path: Path,
+    other_root: bool,
+) -> None:
+    root = tmp_path / "states"
+    home = tmp_path / "synthetic-home"
+    assert run_dev(root, "create", "selected").returncode == 0
+    manifest = json.loads((root / "selected/state.json").read_text())
+    plist = home / "Library/LaunchAgents" / f"{manifest['label']}.plist"
+    plist.parent.mkdir(parents=True)
+    plist.write_bytes(
+        plistlib.dumps(
+            {
+                "Label": manifest["label"],
+                "ProgramArguments": [
+                    str(REPOSITORY_ROOT / "scripts/run-development.sh"),
+                    "--state-root",
+                    str(tmp_path / "another-root" if other_root else root),
+                    "--state",
+                    "selected",
+                    "--label",
+                    manifest["label"],
+                    "--port",
+                    str(manifest["port"]),
+                ],
+            }
+        )
+    )
+    before = plist.read_bytes()
+    result = run_dev(root, "remove", "--yes")
+    if other_root:
+        assert result.returncode != 0
+        assert "does not belong to the selected state" in result.stderr
+        assert plist.read_bytes() == before
+        assert (root / "selected/state.json").is_file()
+    else:
+        assert result.returncode == 0, result.stderr
+        assert not plist.exists()
+        assert not (root / "selected").exists()
+
+
+@pytest.mark.parametrize("other_installation", [False, True])
+def test_development_database_commands_ignore_other_installation_paths(
+    tmp_path: Path,
+    other_installation: bool,
+) -> None:
+    home = tmp_path / "home"
+    other = home / ".config/local-text/stable/environment.json"
+    if other_installation:
+        other.parent.mkdir(parents=True)
+        other.write_text("not valid Stable configuration\n")
+    root = tmp_path / "states"
+    environment = {
+        **os.environ,
+        "HOME": str(home),
+        "LOCAL_TEXT_PROFILE": "release",
+        "LOCAL_TEXT_DATABASE_PATH": str(tmp_path / "other.sqlite3"),
+        "LOCAL_TEXT_RAYCAST_DIRECTORY": str(other),
+        "UV_PROJECT_ENVIRONMENT": str(tmp_path / "other-venv"),
+        "PYTHONPATH": str(tmp_path / "other-source"),
+    }
+    created = run_dev(root, "create", "selected", environment=environment)
+    assert created.returncode == 0, created.stderr
+    initialized = run_dev(root, "db", "init", environment=environment)
+    assert initialized.returncode == 0, initialized.stderr
+    status = run_dev(root, "status", environment=environment)
+    assert status.returncode == 0, status.stderr
+    assert '"state": "current"' in status.stdout
+    assert (root / "selected/local-text.sqlite3").is_file()
+    assert not (tmp_path / "other.sqlite3").exists()
+    assert not (tmp_path / "other-venv").exists()
+    assert other.exists() is other_installation
+    if other_installation:
+        assert other.read_text() == "not valid Stable configuration\n"
+
+
 @pytest.mark.parametrize(
     "providers", [("GEMINI",), ("OPENAI",), ("OPENROUTER",), ("GEMINI", "OPENAI", "OPENROUTER")]
 )
@@ -1908,6 +2049,9 @@ def test_runtime_environment_passes_supported_runtime_configuration(
     for provider in ("GEMINI", "OPENAI", "OPENROUTER"):
         monkeypatch.setenv(f"LOCAL_TEXT_{provider}_API_KEY", "ambient-must-not-leak")
     monkeypatch.setenv("OPENROUTER_API_KEY", "ambient-must-not-leak")
+    for key in ("LOCAL_TEXT_RAYCAST_DIRECTORY", "UV_PROJECT_ENVIRONMENT", "PYTHONPATH"):
+        monkeypatch.setenv(key, str(tmp_path / "irrelevant-other-installation"))
+    monkeypatch.setenv("PYTEST_ADDOPTS", "-k unrelated_selection")
 
     scripts = str(REPOSITORY_ROOT / "scripts")
     sys.path.insert(0, scripts)
@@ -1962,6 +2106,11 @@ def test_runtime_environment_passes_supported_runtime_configuration(
     assert "LOCAL_TEXT_DATABASE_PATH" not in captured_environment
     assert "LOCAL_TEXT_CLEANUP_ROUTE_ORDRE" not in captured_environment
     assert "LOCAL_TEXT_CLEANUP_ROUTE_ORDER" not in captured_environment
+    assert "LOCAL_TEXT_RAYCAST_DIRECTORY" not in captured_environment
+    assert "UV_PROJECT_ENVIRONMENT" not in captured_environment
+    assert "PYTHONPATH" not in captured_environment
+    assert "PYTEST_ADDOPTS" not in captured_environment
+    assert captured_environment["LOCAL_TEXT_PORT"] == str(manifest["port"])
     warnings = capsys.readouterr().err
     assert warnings.splitlines() == [
         "warning: ignoring unknown environment variable LOCAL_TEXT_DATABASE_PATH "

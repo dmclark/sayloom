@@ -21,7 +21,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from urllib import error, request
 
-STABLE_PROTOCOL = 1
+STABLE_PROTOCOL = 2
 PORT = 7532
 UPSTREAM = "https://github.com/dmclark/sayloom.git"
 DEFAULT_ROOT = Path.home() / ".local/share/local-text/stable-runtime"
@@ -131,7 +131,7 @@ def environment(installed: dict, source: Path, database: Path | None = None) -> 
     values = {
         key: value
         for key, value in os.environ.items()
-        if not key.startswith(("LOCAL_TEXT_", "UV_", "PYTHON"))
+        if (not key.startswith(("LOCAL_TEXT_", "UV_", "PYTHON", "PYTEST_")) or key == "UV_OFFLINE")
         and key not in {"GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"}
     }
     values.update(configuration(Path(installed["configuration"])))
@@ -140,6 +140,7 @@ def environment(installed: dict, source: Path, database: Path | None = None) -> 
         PYTHONPATH=str(source / "src"),
         LOCAL_TEXT_DATABASE_PATH=str(database or installed["database"]),
         LOCAL_TEXT_RAYCAST_DIRECTORY=installed["raycast_directory"],
+        LOCAL_TEXT_PORT=str(installed.get("port", PORT)),
         PYTHONDONTWRITEBYTECODE="1",
     )
     return values
@@ -149,7 +150,7 @@ def load_installation(root: Path) -> dict:
     if not (root / "installation.json").is_file():
         fail("Stable is not installed; use install to review defaults or select external paths")
     installed = read_json(root / "installation.json")
-    if installed["protocol"] != STABLE_PROTOCOL:
+    if installed["protocol"] not in {1, STABLE_PROTOCOL}:
         fail("unsupported Stable installation protocol")
     return installed
 
@@ -268,38 +269,39 @@ def service_status(root: Path, installed: dict) -> dict:
     return {"state": "loaded", "owned": owned, "pid": pid}
 
 
-def require_free_port() -> None:
+def require_free_port(port: int) -> None:
     import socket
 
     with socket.socket() as listener:
         listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
-            listener.bind(("127.0.0.1", PORT))
+            listener.bind(("127.0.0.1", port))
         except OSError:
-            fail("Stable port 7532 is occupied; refusing to stop an unverified listener")
+            fail(f"Stable port {port} is occupied; refusing to stop an unverified listener")
 
 
-def listener_pids() -> set[str]:
-    result = run("lsof", "-nP", f"-iTCP:{PORT}", "-sTCP:LISTEN", "-t", check=False)
+def listener_pids(port: int) -> set[str]:
+    result = run("lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t", check=False)
     if result.returncode not in {0, 1}:
         fail("could not verify Stable listener ownership")
     return set(result.stdout.split())
 
 
 def stop_service(root: Path, installed: dict) -> None:
+    port = installed.get("port", PORT)
     state = service_status(root, installed)
     if state["state"] == "unavailable":
         fail("launchctl is required for Stable lifecycle operations")
-    listeners = listener_pids()
+    listeners = listener_pids(port)
     if listeners and (not state["owned"] or listeners != {str(state["pid"])}):
-        fail("Stable port 7532 has an unverified listener; no service was stopped")
+        fail(f"Stable port {port} has an unverified listener; no service was stopped")
     if state["state"] == "loaded":
         if not state["owned"]:
             fail("loaded Stable service does not belong to this installation")
         run("launchctl", "bootout", service_target(installed))
     for _ in range(30):
         try:
-            require_free_port()
+            require_free_port(port)
             if service_status(root, installed)["state"] == "stopped":
                 return
         except RuntimeError:
@@ -332,24 +334,25 @@ def write_plist(root: Path, installed: dict) -> Path:
 
 
 def start_service(root: Path, installed: dict) -> None:
+    port = installed.get("port", PORT)
     state = service_status(root, installed)
     if state["state"] == "loaded":
         if not state["owned"]:
             fail("loaded Stable service does not belong to this installation")
         if state["pid"]:
-            if health()["ready"]:
-                if listener_pids() == {str(state["pid"])}:
+            if health(port)["ready"]:
+                if listener_pids(port) == {str(state["pid"])}:
                     return
             fail("Stable is running but not healthy; inspect status before restart")
         run("launchctl", "bootout", service_target(installed))
-    require_free_port()
+    require_free_port(port)
     plist = write_plist(root, installed)
     run("launchctl", "bootstrap", f"gui/{os.getuid()}", str(plist))
     for _ in range(30):
         state = service_status(root, installed)
-        if state["owned"] and state["pid"] and health()["ready"]:
+        if state["owned"] and state["pid"] and health(port)["ready"]:
             # The listening PID must be the launched uvicorn process, not another release app.
-            if listener_pids() == {str(state["pid"])}:
+            if listener_pids(port) == {str(state["pid"])}:
                 return
         time.sleep(1)
     fail(f"Stable did not become healthy; inspect {root / 'service-error.log'}")
@@ -384,7 +387,7 @@ def launch(root: Path, installed: dict) -> None:
             "--host",
             "127.0.0.1",
             "--port",
-            str(PORT),
+            str(installed.get("port", PORT)),
         ],
         environment(installed, source),
     )
@@ -394,7 +397,7 @@ def raycast_commands(installed: dict, source: Path) -> dict:
     script = """
 import json
 from pathlib import Path
-from local_text.config import Profile
+from local_text.config import Profile, load_settings
 from local_text.database import ApplicationDatabase
 from local_text.target_store import TargetStore
 from local_text.targets import INITIAL_TARGETS, command_filename, generate_command
@@ -405,7 +408,7 @@ if database.path.exists():
 else:
     definitions = INITIAL_TARGETS
 print(json.dumps({command_filename(key, Profile.RELEASE):
-                 generate_command(key, value, Profile.RELEASE).content
+                 generate_command(key, value, Profile.RELEASE, port=load_settings().port).content
                  for key, value in definitions}))
 """
     commands = json.loads(
@@ -413,11 +416,16 @@ print(json.dumps({command_filename(key, Profile.RELEASE):
             installed["python"], "-c", script, cwd=source, env=environment(installed, source)
         ).stdout
     )
-    commands["stable-open-sayloom.sh"] = (source / "raycast/stable/open-sayloom.sh").read_text()
+    endpoint = f"http://127.0.0.1:{installed.get('port', PORT)}"
+    commands["stable-open-sayloom.sh"] = (
+        (source / "raycast/stable/open-sayloom.sh")
+        .read_text()
+        .replace("http://127.0.0.1:7532", endpoint)
+    )
     for name, contents in commands.items():
         if (
             Path(name).name != name
-            or "http://127.0.0.1:7532" not in contents
+            or endpoint not in contents
             or "http://127.0.0.1:7523" in contents
             or "/health" not in contents
         ):
@@ -445,6 +453,8 @@ def install(root: Path, arguments: argparse.Namespace) -> None:
             selected = getattr(arguments, option)
             if selected is not None and selected.expanduser().resolve() != Path(installed[option]):
                 fail("Stable is already installed; refusing changed paths; use status/update")
+        if arguments.port is not None and arguments.port != installed.get("port", PORT):
+            fail("Stable is already installed; refusing changed port; use status/update")
         if arguments.initialize:
             fail("--initialize cannot be used with an existing installation")
         print(f"Existing Stable installation: {root}; configuration: {installed['configuration']}")
@@ -496,10 +506,14 @@ def install(root: Path, arguments: argparse.Namespace) -> None:
     if arguments.initialize and database.exists():
         fail("--initialize is only for a new database; existing data requires explicit review")
     commit = git(checkout, "rev-parse", "HEAD")
+    port = arguments.port if arguments.port is not None else PORT
+    if not 1024 <= port <= 65535 or port == 7523:
+        fail("Stable port must be between 1024 and 65535 and not development port 7523")
     label = "local.local-text.stable." + hashlib.sha256(str(root).encode()).hexdigest()[:12]
     installed = {
         "protocol": STABLE_PROTOCOL,
         "commit": commit,
+        "port": port,
         "checkout": str(checkout),
         "upstream": arguments.upstream,
         "database": str(database),
@@ -515,7 +529,13 @@ def install(root: Path, arguments: argparse.Namespace) -> None:
             print("Existing Stable files preserved; installation cancelled.")
             return
     require_checkout(installed)
-    require_free_port()
+    controller = git(checkout, "show", f"{commit}:scripts/stable.py")
+    if assignment(controller, "STABLE_PROTOCOL") != STABLE_PROTOCOL:
+        fail(
+            "Stable installation requires port-aware source with launcher protocol "
+            f"{STABLE_PROTOCOL}"
+        )
+    require_free_port(port)
     if not confirm("Prepare Stable installation (does not start it)?", arguments.yes):
         return
     if not config.exists():
@@ -726,7 +746,7 @@ def update(root: Path, installed: dict, arguments: argparse.Namespace) -> None:
     require_checkout(installed)
     fetched = availability(Path(installed["checkout"]), installed["upstream"], installed["commit"])
     if fetched["updates"] == "current":
-        print(json.dumps({"updates": "current", "health": health()}))
+        print(json.dumps({"updates": "current", "health": health(installed.get("port", PORT))}))
         return
     if fetched["updates"] != "behind":
         fail(f"cannot update: upstream state is {fetched['updates']}")
@@ -901,9 +921,9 @@ def recover(root: Path, installed: dict, arguments: argparse.Namespace) -> None:
     print("Stable recovery verified; recovery material retained.")
 
 
-def health() -> dict:
+def health(port: int) -> dict:
     try:
-        with request.urlopen(f"http://127.0.0.1:{PORT}/health", timeout=2) as response:
+        with request.urlopen(f"http://127.0.0.1:{port}/health", timeout=2) as response:
             result = json.load(response)
         return {"ready": result.get("status") == "ok" and result.get("profile") == "release"}
     except (OSError, ValueError, error.URLError):
@@ -965,7 +985,8 @@ def status(root: Path, checkout: Path, upstream: str) -> dict:
         "maintenance": read_json(root / "maintenance.json")
         if (root / "maintenance.json").exists()
         else None,
-        "health": health() if installed else {"ready": False},
+        "health": health(installed.get("port", PORT)) if installed else {"ready": False},
+        "port": installed.get("port", PORT) if installed else PORT,
         "service": service_status(root, installed) if installed else None,
         "schema": schema,
         **availability(checkout, upstream, commit),
@@ -987,6 +1008,7 @@ def main() -> None:
         help="Stable main checkout directory, not a branch name",
     )
     installer.add_argument("--database", type=Path, help=f"default: {DEFAULT_DATABASE}")
+    installer.add_argument("--port", type=int, help=f"installation loopback port (default: {PORT})")
     installer.add_argument("--configuration", type=Path, help=f"default: {DEFAULT_CONFIGURATION}")
     installer.add_argument(
         "--raycast-directory", type=Path, help="default: ~/.config/raycast/scripts"

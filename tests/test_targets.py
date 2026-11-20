@@ -111,7 +111,10 @@ def test_adapter_refuses_unrelated_links_without_mutation(tmp_path: Path) -> Non
     assert unrelated.read_text() == "unrelated\n"
 
 
-def test_release_target_commands_are_isolated_from_development(initialized_settings, tmp_path):
+@pytest.mark.parametrize("port", [None, 18473])
+def test_release_target_commands_are_isolated_from_development(
+    initialized_settings, tmp_path, port
+):
     directory = tmp_path / "shared-commands"
     development = TestClient(
         create_app(
@@ -127,6 +130,7 @@ def test_release_target_commands_are_isolated_from_development(initialized_setti
                 initialized_settings,
                 profile=Profile.RELEASE,
                 raycast_directory=directory,
+                port=port,
             )
         )
     )
@@ -137,7 +141,7 @@ def test_release_target_commands_are_isolated_from_development(initialized_setti
     assert installed.status_code == 200
     stable_command = directory / "stable-sayloom-target-amp.sh"
     assert stable_command.read_text() == installed.json()["preview"]
-    assert "http://127.0.0.1:7532" in stable_command.read_text()
+    assert f"http://127.0.0.1:{port or 7532}" in stable_command.read_text()
     assert "http://127.0.0.1:7523" not in stable_command.read_text()
     assert "/health" in stable_command.read_text()
     assert dev_command.read_text() == original
