@@ -1,6 +1,6 @@
 # Sayloom product implementation plan
 
-- **Status:** Bounded saved-correction contract owner-approved; no saved-correction build work selected; implementation and operational decisions outstanding
+- **Status:** Bounded saved-correction contract and provider-free Original review/save technical design owner-approved; no saved-correction build work selected; broader design and operational decisions outstanding
 - **Audience:** Product, design, engineering, research, and delivery contributors
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
@@ -57,18 +57,24 @@ common management/privacy lifecycle. No provider, extra request stream, model
 pass, history-reuse mechanism or broader Smart programme is selected.
 
 Provider-free Original review/save is the recommended first increment for later
-consideration, not the completed contribution or a selected ticket. Exact
-schema/API/event representation still requires design from current main.
+build selection, now covered by the [owner-approved technical design](personal-corrections-implementation-spec.md#approved-provider-free-original-reviewsave-technical-design).
+It defines all three repair types, independent mapping identity/state,
+source-specific v2 Original/Prepared bindings, atomic approvals/reconciliation,
+capture events and migration direction from verified main. It is not the
+completed contribution, a selected ticket or permission to implement. Broader
+reuse, management/export representation and implementation remain separate work.
 Personal Corrections backup policy and saved-correction/history activation
 sequencing remain explicit owner decisions before applicable activation. The
 existing interim history exception is scoped to #197 and is not silently
 extended to saved corrections. Ordinary-use adoption requires no efficacy study.
 
-Contract approval authorizes no source-document application, tracker publication,
-implementation, migration execution, private-data access, provider calls/spending,
-integration or activation. Any later document delivery records the contract only
-and must not mark these operations authorized or acceptance passed. Browser
-acceptance remains deferred/unpassed, not a prerequisite to contract agreement.
+Contract and technical-design approval alone authorize no source-document
+application, tracker publication, implementation, migration execution,
+private-data access, provider calls/spending, integration or activation. The
+separately authorized local documentation edits record those approvals for
+review; they authorize no commit, push or publication and establish no passed
+acceptance. Browser acceptance remains deferred/unpassed, not a prerequisite
+to contract agreement.
 
 ### #197-specific completion gate
 
@@ -127,9 +133,12 @@ obligations remain outstanding.
 3. **Retain the approved bounded contract without selecting build work.**
    The specification owns Original review/save, contextual reuse/abstention,
    anchored repair types, management, Cleanup independence and Prepared/CART
-   protections. Resolve exact schema/API/event representation in separately
-   authorized technical design. Personal Corrections backup policy and its
-   history activation sequence remain open; no default is selected. History
+   protections. Its [approved provider-free first-increment design](personal-corrections-implementation-spec.md#approved-provider-free-original-reviewsave-technical-design)
+   now owns manual review/save representation, source-specific APIs, capture
+   events and migration direction. Broader reuse and management/export design
+   remain separate work; no implementation is selected. Personal Corrections
+   backup policy and its history activation sequence remain open; no default
+   is selected. History
    still requires passage identity, event ordering, stale/late responses,
    crash/retry recovery, recording-failure behavior, pause/private semantics,
    deletion and managed-backup restore before recording activation. Obtain
@@ -265,8 +274,10 @@ Saved-correction influence is selected product scope with an owner-approved
 [bounded contract](personal-corrections-implementation-spec.md#approved-bounded-inspection-first-contract),
 not selected build work or activated implementation. Separate authorization is
 required before technical implementation, document/tracker publication or
-operations. Exact representation, backup policy and saved-correction/history
-activation sequencing remain open as described above. The historical umbrella
+operations. The [approved first-increment design](personal-corrections-implementation-spec.md#approved-provider-free-original-reviewsave-technical-design)
+settles provider-free manual review/save representation. Broader representation,
+backup policy and saved-correction/history activation sequencing remain open as
+described above. The historical umbrella
 and child graph are not resumed. Broader requirements and unrelated continuity
 work remain retained references, not authority to activate operations.
 
@@ -548,7 +559,9 @@ The heading retains the broader capability scope. Useful saved-correction
 influence is selected for inspection-first delivery under
 [PRODUCT.md](../PRODUCT.md#personal-corrections-and-research-boundary); its bounded
 contract is approved in the specification, without build selection or implementation
-activation. Exact representation and the identified operational decisions remain open.
+activation. The [provider-free review/save technical design](personal-corrections-implementation-spec.md#approved-provider-free-original-reviewsave-technical-design)
+is also approved; broader representation and the identified operational decisions
+remain open.
 
 ### Outcome
 

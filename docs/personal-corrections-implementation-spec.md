@@ -1,6 +1,6 @@
 # Personal Corrections implementation specification
 
-- **Status:** Bounded inspection-first contract owner-approved; no build work selected or implementation activated
+- **Status:** Bounded inspection-first contract and provider-free Original review/save technical design owner-approved; no build work selected or implementation activated
 - **Scope:** Private, single-user Personal Corrections; retained Smart-specific technical references
 - **Execution authority:** [Personal corrections execution guide](personal-corrections-execution-guide.md)
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
@@ -38,7 +38,9 @@ The owner approved the [bounded contract](https://ampcode.com/artifacts/saved-co
 without selecting build work. The approved contract below governs that selected
 contribution. Retained schema, API, event and Smart-specific sections remain
 references where compatible; they are not a ready-to-run implementation plan.
-Exact columns, wire versions and migrations still require technical design.
+The [approved first-increment technical design](#approved-provider-free-original-reviewsave-technical-design)
+settles provider-free Original review/save; broader reuse, management/export
+representation and implementation details outside that increment remain separate work.
 Backup policy and saved-correction/history activation sequencing remain open.
 
 **Owner amendment, 2026-11-12:** Initial inspection and explicit alternative
@@ -234,14 +236,432 @@ isolated synthetic data and the normal HTTP-to-browser path with inspected
 desktop interactions. These are correctness/privacy/operational checks, not a
 mandatory effectiveness study or evidence of verified speech.
 
-The first increment recommended for later consideration is provider-free
-Original-selected manual review/save. Resolve anchored representation and
-distinct-restriction identity before authorizing writes; do not present a new
-replacement-only model as complete delivery. This increment alone establishes
-neither contextual contribution nor management/privacy completion. No build
+The recommended first increment is provider-free Original-selected manual
+review/save, now covered by the [owner-approved technical design](#approved-provider-free-original-reviewsave-technical-design).
+Its anchored representation and distinct-restriction identity are settled for
+that increment; do not present a replacement-only model as complete delivery.
+This increment alone establishes neither contextual contribution nor
+management/privacy completion. No build
 work is selected. Real-data activation, operations and Git delivery retain
 their separate authorization boundaries. Browser acceptance remains deferred
 and unpassed, not a prerequisite to agreeing this contract.
+
+## Approved provider-free Original review/save technical design
+
+**Status: owner-approved technical design; no build work selected.** The owner
+approved the revised design in the [design and approval thread](https://ampcode.com/threads/T-21f6b7a5-3d3b-4c43-bdea-dbaa9b59dcc6),
+without authorizing publication or implementation. The later document-preparation
+authorization permits local edits for review only, not commit, push, publication,
+migration execution, private-data access or runtime activation.
+
+**Verified design baseline:** [PR #202's merge commit](https://github.com/dmclark/sayloom/commit/177079420f0093afe0e2bc86f598438627435739).
+The approved bounded contract above, PRODUCT.md and ADR-0002 govern product
+behavior. This section owns the first increment's technical choices where
+retained schema, API, capture, event, migration and acceptance references below
+differ. It does not settle broader contextual reuse or management/history design.
+
+### Outcome and scope
+
+The owner can select current Original wording, supply Intended wording, inspect
+individual changes and explicitly save selected Personal Corrections. This works
+with preparation Off, without Prepared, without a finding and without a provider
+request.
+
+Saving does not apply wording, regenerate, confirm Prepared, change Outgoing,
+copy or deliver. It authorizes approved mappings for later contextual reuse,
+but this increment does not implement that reuse.
+
+Included:
+
+- Original-selected manual review, with replacements and anchored additions/removals.
+- Atomic approval of 1–20 selected mappings.
+- Restriction-sensitive identity and independent mapping state.
+- Immutable approval outcomes, retries and reconciliation.
+- Read-only inspection of saved fields and approval details.
+- Preservation of existing Prepared confirmation and separate saving review.
+
+Excluded:
+
+- Retrieval, prompting, personalized findings or automatic correction.
+- Full management editing, deletion, export or registered-state purge.
+- Activity-history recording, prior-passage reuse or inheritance.
+- Provider changes, efficacy studies and ordinary-use activation.
+
+The read-only management surface serves this isolated engineering increment,
+not the complete approved contribution.
+
+### Individual changes and reusable phrases
+
+Use these names consistently in the UI, API and domain records:
+
+| Field | Meaning |
+| --- | --- |
+| `operation` | `replacement`, `addition` or `removal`. |
+| `reusable_before_text` | Nonempty approved phrase that becomes the future trigger. |
+| `reusable_intended_text` | Nonempty approved intended phrase, retaining any unchanged anchor. |
+| `before_change_span` | Individual changed range within the reusable before phrase. |
+| `after_change_span` | Corresponding range within the reusable intended phrase. |
+
+Changed wording is obtained from the spans; no second stored text copy is needed.
+
+| Operation | Individual before change | Individual after change |
+| --- | --- | --- |
+| Replacement | Nonempty | Nonempty |
+| Addition | Empty | Nonempty |
+| Removal | Nonempty | Empty |
+
+A removal has empty individual after wording, not an empty reusable intended
+phrase. The latter retains unchanged anchor wording. All spans are half-open
+Unicode code-point ranges and must slice their corresponding phrase exactly.
+The server independently validates the operation; submitted spans do not
+establish its classification.
+
+### Opening and editing Original review
+
+A desktop-accessible **Review for Personal Corrections** action requires a
+nonempty selection in current Original. Before focus moves, capture in browser
+memory passage identity, draft revision, exact frozen Original, initial selection
+offsets and selected wording, and a new review identity.
+
+The review labels its source **Selected Original**. Intended begins empty; the
+owner supplies it. An explicitly adopted, already available alternative may
+populate it only after its occurrence and revision are revalidated. Adoption
+makes no provider request.
+
+Empty Intended is valid input for proposing a removal. It becomes saveable only
+after a nonempty reusable anchored pair is established.
+
+Derive ordered candidates using the existing lexical-operation vocabulary. Each
+candidate shows the individual operation and changed wording, reusable before
+and intended phrases, any expansion beyond the initial selection, and a
+selection checkbox, initially unchecked.
+
+Use one applicability restriction for the selected batch, matching the existing
+approval surface. Separate approvals can save different restrictions.
+Per-candidate restriction editing is deferred. Optional Observed and Intended
+sentences are episode-level fields; each can be independently edited or removed.
+
+Editing a candidate unchecks that candidate. Changing the shared restriction or
+sentence fields unchecks all candidates. Saving requires explicit selection
+after those changes. More than 20 candidates may remain visible, but only 1–20
+may be selected. Never silently save or discard a prefix.
+
+### Constructing and validating anchors
+
+Candidate construction:
+
+1. Compare frozen selected wording with the owner's Intended wording.
+2. Use existing ordered lexical alignment to identify individual operations.
+3. Construct each candidate independently: its intended phrase contains only
+   that operation, not neighboring unselected changes.
+4. Preserve exact punctuation and separators. Lexical token spans alone are not
+   a complete character-edit script.
+
+For each candidate, the unchanged prefix and suffix surrounding its individual
+change must be identical on both sides. Replacing the before-change range with
+the after-change wording must reproduce the complete reusable intended phrase
+exactly.
+
+For every submitted mapping, the server independently derives lexical changes
+from the reusable phrase pair using the existing lexical vocabulary. Require
+exactly one lexical change corresponding to the declared operation, valid
+change spans locating that repair, exact reconstruction of the intended phrase,
+and compliance with the applicable anchor rule. Reject pairs with no lexical
+change, mislabeled operations, pairs containing additional lexical changes,
+and a purported replacement that merely encloses an addition/removal in
+unchanged wording. Submitted spans cannot bypass operation classification.
+
+For an addition/removal, the owner can expand the before range within frozen
+Original. Display the expanded phrase before approval. Construct the intended
+phrase by applying only the selected individual operation to that expanded
+source range. Expansion must not cross another changed range or silently
+incorporate another repair.
+
+An addition/removal pair must contain at least one complete unchanged adjacent
+lexical token. This is a mechanical minimum, not a claim of sufficient context
+in every passage. The owner reviews and explicitly selects the displayed anchor.
+If alignment cannot isolate the operation without choosing among ambiguous
+locations or incorporating another change, mark it unsaveable and explain that
+its source range or Intended wording must be narrowed or adjusted. Do not search
+for another occurrence, invent an anchor or relabel the operation. Replacement
+candidates require nonempty changed wording on both sides, but no unchanged anchor.
+
+Bounds:
+
+- Each reusable phrase side: at most 200 code points.
+- Shared restriction: at most 500 code points.
+- Each optional sentence: at most 500 code points.
+- Full transient source revisions: retain the existing 100,000-code-point request bound.
+
+Convert browser UTF-16 selection offsets explicitly to and from code-point
+offsets. Validate source slices before displaying or approving candidates.
+HTML `maxlength` is not authoritative because it counts UTF-16 units. Client
+validation must permit otherwise-valid text within the code-point bounds;
+server validation remains authoritative. Retain field-specific private-text
+and control-character validation. Never silently truncate durable fields.
+Over-limit sentence previews must be edited or removed.
+
+### Mapping identity and independent state
+
+One entry represents one reusable mapping. Distinct before phrases do not share
+an enable/edit/revision unit merely because their Intended wording matches.
+Identity is local owner, operation, normalized reusable before, normalized
+reusable intended, and exact approved restriction. Use existing NFKC,
+apostrophe, casefold and whitespace normalization for phrase keys. Significant
+punctuation remains significant.
+
+Absent or blank-only restrictions become no restriction. Otherwise retain and
+compare exact text; do not casefold, paraphrase or infer semantic equivalence.
+Each mapping owns its enabled state and revision. Saving or managing another
+mapping cannot alter either.
+
+Equivalent saves reuse the mapping and create a new approval episode. Preserve
+canonical mapping display text while recording the exact wording approved in
+the new episode. Differing restrictions remain distinct. Saving an equivalent
+disabled mapping does not re-enable it.
+
+Keep the existing persistence subsystem and episode/event relationships:
+
+- Extend entries with operation and reusable before/intended identity.
+- Existing `intended_term` may remain the physical column for intended phrase
+  text; domain/API names use `reusable_intended_text`.
+- Retain alias rows needed for existing references, without a second independent
+  authorization lifecycle. A new entry has one corresponding before-phrase alias.
+
+Migration splits legacy multi-alias entries into independently controlled
+mappings. Preserve alias IDs, episode/event associations, exact text and
+inherited enablement; reassign entry references coherently. An entry without an
+alias remains explicitly non-reusable. Migration must not invent a trigger.
+
+### Source-specific bindings and API
+
+Extend existing candidate and episode endpoints with `personal-correction-v2`.
+
+**Original selection:** bind review to frozen Original, passage identity, draft
+revision, initial selection and expanded source ranges. Candidate derivation
+accepts the transient Original snapshot and owner-supplied Intended wording.
+
+**Manual Prepared edit:** retain the existing binding to frozen starting
+Prepared and owner-confirmed wording, together with the existing Original
+revision, Prepared identity/generation and confirmation-validity checks.
+Candidate derivation accepts those transient before/after Prepared revisions.
+It does not require or invent an Original selection.
+
+Both variants have a review identity and converge on the same bounded
+mapping/approval representation. Preserve their distinct source labels and
+invalidation rules.
+
+`POST /api/personal-corrections/candidates` accepts the source-specific binding
+and transient text required by that variant. Return echoed review and
+source-binding identifiers, candidates, bounded sentence previews, current
+authorization generation and running application-instance identity.
+
+Candidate derivation writes nothing. Full revisions remain request-scoped,
+with no database retention, request-body logging or echoed private values in
+errors. Manual review requires schema/application readiness, not Smart
+availability or a processing prompt. Its route must not perform the current
+unconditional active-prompt lookup.
+
+`POST /api/personal-corrections/episodes` accepts:
+
+- Approval UUID and review identity.
+- Source discriminator and source-specific bounded binding metadata.
+- Application-instance identity returned during candidate derivation.
+- Manual provenance: `source_mode = user_confirmed`, no processing prompt.
+- Expected authorization generation.
+- Ordered selected mappings, including individual-change spans.
+- Shared restriction and optional approved sentences.
+
+Original-selection binding metadata includes passage/revision and
+initial/expanded source offsets. Manual Prepared binding metadata includes the
+relevant Prepared binding identities/revisions, with no invented
+Original-selection offsets. Approval contains no full Original or Prepared
+snapshots. The server validates bounded representation and transaction
+preconditions. The browser establishes whether its live passage still matches
+the frozen review. Client-supplied metadata is not independent server proof of
+the live draft. Responses identify the approval and review concerned; they
+cannot authorize reopening stale review.
+
+A committed response contains immutable episode/mapping details and affected
+mapping references. Return current mapping/profile state separately from the
+immutable historical approval. Add owner-scoped approval-detail lookup and a
+bounded, paginated recent-approval list in the existing management area. These
+support reload recovery without storing unsaved review in browser storage.
+A missing result is not proof that no save ever occurred. All content-bearing
+responses use `Cache-Control: no-store`. Errors contain no submitted private wording.
+
+### Atomicity, retries and conflicts
+
+Store immutable approved fields in episode and episode-mapping records:
+exact approved wording, restriction and change spans; source-specific binding
+metadata; review identity; expected authorization generation; and
+application-instance identity. Do not add a duplicate full JSON payload store.
+Define canonical serialization of these fields for exact retry comparison.
+Compare ordering and exact approved display text. Phrase normalization determines
+mapping identity, not permission to alter an approval payload.
+
+Serialize approval writers through SQLite's write-transaction boundary before
+reading conflict-sensitive state:
+
+1. Look up the owner-scoped approval UUID.
+2. If committed, compare its immutable payload and return that outcome or conflict.
+3. For a new approval, validate application-instance identity and authorization generation.
+4. Validate all mappings and resolve equivalent identities.
+5. Create missing mappings, episode, ordered approval rows and capture events.
+6. Commit everything together.
+
+Database uniqueness constraints provide a backstop:
+
+- Same ID and payload: return the committed receipt.
+- Same ID with changed payload: HTTP 409, no writes.
+- Invalid representation or operation: HTTP 422, no writes.
+- Stale instance or conflicting authorization generation: HTTP 409, no writes.
+- Transaction failure: roll back the entire batch.
+- Lost transport response: outcome unknown until retry or reconciliation.
+
+Resolve an already committed retry before checking the current instance or
+generation. Its original instance identity remains part of its immutable
+payload. After restart, an identical request can reconcile a commit; changing
+its instance identity under the same approval UUID conflicts.
+
+An absent profile is generation zero. First approved save creates an enabled
+profile at generation zero only when no profile exists. Preserve existing global
+disablement. Every profile toggle or management mutation advances generation
+transactionally and uses an expected-generation/revision check. Ordinary new
+approvals do not advance it, so unrelated saves do not invalidate one another.
+This conservative generation may reject review after an unrelated management
+mutation, but cannot overwrite newer state. If first saves race, the serialized
+second transaction sees the first profile and preserves its state. No save
+resets disablement. Explicit profile enablement cannot create an absent profile;
+first approved save remains the creation boundary.
+
+Collapse exact repeated mappings visibly before approval. If
+normalized-equivalent candidates have incompatible display/change
+representations, require the owner to choose one. Do not choose silently inside
+the save transaction.
+
+### Staleness and uncertain saves
+
+An unsent Original review becomes stale after Original editing, Undo/Redo,
+Clear or passage replacement; replacement with identical text under a new
+passage/revision identity; another review opening; reload or application restart;
+or a conflicting management change. Settings alone do not invalidate manual
+Intended wording. Prepared review retains its existing source-specific validity
+checks.
+
+Late candidate responses cannot reopen dismissed or superseded review. A new
+application-instance identity invalidates old unsaved review rather than silently
+rebinding it. Once Save is sent:
+
+- Freeze the selected payload and approval UUID.
+- Do not permit altered-payload retry under that UUID.
+- Subsequent editing retires browser effects but cannot cancel a server commit.
+- Late success cannot modify Original, Prepared or Outgoing.
+- While review remains current, explicit retry sends the identical approval.
+- After reload or staleness, use management reconciliation rather than
+  reconstructing an altered approval.
+
+No save failure starts processing or a provider retry.
+
+### Prepared compatibility and legacy writes
+
+Keep existing Prepared confirmation and its separate source-validity checks.
+Do not loosen them globally to accommodate Original review. Update both browser
+saving paths to v2. Preserve source labels, unchecked selections and the rule
+that confirming Prepared saves nothing.
+
+Retain read access to legacy records, but not a second v1 saving implementation:
+
+- v1 candidate/approval submissions receive a structured version-conflict
+  response instructing reload; rejected requests write nothing.
+- Existing approvals remain inspectable using their recorded version.
+- Do not invent missing historical fields or promise retroactive v2 retry behavior.
+
+Retire direct `POST /entries` creation and remove the direct-add form. Disable
+the legacy destructive entry-update path for migrated mappings, including
+mappings reused by v2 approval. Protection depends on the mapping and its
+evidence links, not merely an episode version. Until reviewed management is
+separately delivered, mapping fields are inspectable but not editable through
+that legacy path. Global disable/re-enable remains revision-checked;
+independent per-mapping management is later work.
+
+### Events and privacy lifecycle
+
+Retain `alias_observed` for explicit capture. It records the before phrase
+represented in an explicitly approved capture, at most once per approval/mapping.
+It is not a processing encounter, correctness judgment or verified speech.
+Do not create `profile_supplied` or `intended_produced` during manual saving.
+Capture events commit with approval. No additional feedback or activity-history
+capture is introduced.
+
+Only approved bounded wording is durable. Retain no full Original/Prepared
+snapshots or raw provider output, credentials in correction records, or private
+wording in errors, diagnostics or request logs. Development-state databases
+remain independent. Historical sentences never become future processing evidence.
+
+Future hard deletion must cover private approval fields and shared-episode
+consequences. Do not retain hidden receipt copies outside that scope. Deletion
+and post-deletion idempotency behavior belong to later management design; this
+increment promises neither deletion nor indefinite receipt retention.
+
+### Migration and rollback
+
+Add a forward Alembic migration after verified revision
+`0006_confirmed_correction_batches`. Preserve correction content, provenance,
+enablement and historical links. Split legacy multi-alias entries without losing
+or duplicating evidence. Introduce operation and complete mapping-identity
+constraints, immutable v2 approval fields and authorization generation. Preserve
+owner-scoped foreign keys and cascades; create no profile or correction seeds.
+
+Do not derive historic spans or restrictions that were never recorded. Legacy
+records remain explicitly legacy where metadata is unavailable. Unexpected
+collisions or inconsistent references stop migration with a content-free
+diagnostic. Do not silently merge, delete or broaden authorization.
+
+Normal startup reports schema readiness only; it never migrates or seeds.
+Downgrade refuses when the old schema cannot represent stored mappings
+losslessly. Operational backup, export, rollback and migration execution require
+separate authorization.
+
+### Acceptance and remaining gates
+
+Later implementation must verify:
+
+- **Independent entry:** preparation Off, no Prepared/finding and unavailable
+  provider; zero provider calls.
+- **Source variants:** Original selection and manual Prepared review retain
+  their own truthful bindings and validity rules.
+- **Correct binding:** repeated wording, identical-text passage replacement,
+  stale responses and supplementary Unicode.
+- **Operations:** server classification rejects mislabeled, no-change and
+  multi-change pairs; valid anchored pairs reconstruct exactly.
+- **Mixed passages:** selected mappings exclude neighboring unselected repairs.
+- **Identity/state:** equivalent phrases reuse one mapping; restrictions
+  coexist; siblings have independent state; disabled equivalents remain disabled.
+- **Limits:** both sides of code-point limits, including supplementary
+  characters; no truncation.
+- **Transactions:** concurrent first saves, equivalent saves and management
+  races; injected failure leaves no partial records.
+- **Receipts:** lost-response retry creates one episode; changed payload
+  conflicts; restart allows committed reconciliation but rejects new
+  stale-instance approval.
+- **Profile creation:** first save creates an enabled profile; an existing
+  disabled profile remains disabled.
+- **No implicit effects:** opening, editing, dismissing, confirming Prepared,
+  copying and delivery save nothing; saving changes no output.
+- **Compatibility:** Prepared review works through v2; retired endpoints
+  cannot bypass approval or destroy evidence.
+- **Migration:** populated multi-alias state preserves text, authorization and
+  relationships; incompatible downgrade fails; startup never migrates.
+
+Use isolated synthetic data through store, HTTP and desktop-browser paths.
+Inspect affected review and recovery states. These are engineering checks, not
+an efficacy study. Before applicable real-data activation, separately resolve
+Personal Corrections backup policy, saved-correction/history activation
+sequencing, and remaining management/privacy delivery and acceptance.
+#197 browser acceptance remains separately deferred/unpassed and is not a
+prerequisite to approving this design. No acceptance is established by design
+approval or these local documentation edits.
 
 ## Complete-loop design and evidence boundary
 
@@ -304,11 +724,11 @@ The phrase “red cat delivery” → “Raycast delivery” is discussion evide
 contextual judgment, not an unconditional rule or permission to save a mapping.
 No additional private recognition-repair record was inspected or reconstructed.
 
-**Technical work still required:** adapt the replacement-oriented schema,
-payloads, provenance, event detection, and export representation to the approved
-anchored operations and distinct restrictions. The design does not select a new
-migration or exact schema layout. The reference tables below cannot make those
-unresolved implementation details ready to build. Fuzzy/semantic retrieval,
+**Retained broader technical work:** the [approved first-increment design](#approved-provider-free-original-reviewsave-technical-design)
+now owns manual review/save representation, provenance, capture events and the
+forward-migration boundary. Broader contextual reuse, management/export and
+their implementation details remain separate work; the reference tables below
+are not competing first-increment instructions. Fuzzy/semantic retrieval,
 import, outcome ratings, analytics, and post-confirmation typo assistance remain
 deferred. The owner-agreed
 [single-user usefulness assessment](personal-corrections-execution-guide.md#agreed-single-user-usefulness-assessment)
@@ -387,6 +807,11 @@ not a Personal Corrections write path.
   request for idempotent event recording. It contains no text.
 
 ## Durable model requirements and replacement-oriented schema reference
+
+For the first increment, the [approved technical design](#approved-provider-free-original-reviewsave-technical-design)
+supersedes the retained replacement-oriented shapes below, including grouped
+alias authorization, intended-term-only uniqueness and v1-only approval fields.
+These references do not replace its one-entry-per-mapping lifecycle.
 
 All content lives in the existing private application SQLite database. IDs are
 random UUID strings. Timestamps are UTC. Every content-bearing table carries
@@ -567,6 +992,12 @@ larger preview, but the storage limit remains absolute.
 
 ## Capture and approval
 
+The [approved first-increment design](#approved-provider-free-original-reviewsave-technical-design)
+owns Original-selected review and manual Prepared bindings. The retained
+generated-result Original-edit state machine and invalidation list below do
+not impose result/prompt prerequisites on manual review, invalidate manual
+Intended wording on settings changes, or roll back an already committed save.
+
 ### Shared review entry paths
 
 Successful Smart repair review uses that repair's bound before/after values.
@@ -687,6 +1118,13 @@ saved entry revisions; management writes use `expected_revision` and return
 HTTP 409 on conflict. A 409 never overwrites or deletes newer state.
 
 ## API boundary
+
+The [approved first-increment API design](#source-specific-bindings-and-api)
+owns v2 manual candidate/approval requests, source-specific bindings and
+reconciliation. Its [compatibility policy](#prepared-compatibility-and-legacy-writes)
+governs v1 submissions and retired direct/destructive write paths. The broader
+route reference below does not add management, deletion, export or retrieval
+implementation to that increment.
 
 The following replacement-oriented route reference requires payload revision
 for anchored operations and all three review sources; it is not a new API
@@ -925,6 +1363,11 @@ post-creation synchronization; parallel states may diverge.
 
 ## Database migration and rollback
 
+The [approved first-increment migration design](#migration-and-rollback)
+starts after `0006_confirmed_correction_batches`, preserves legacy evidence and
+refuses lossy downgrade. The historical plan below is not its migration baseline
+or an instruction to create already-existing tables.
+
 **Earlier migration plan, not current execution instructions:** the one-revision
 plan below predates the recorded foundation, approval, and manual-confirmation
 migrations. A later implementation design must start from the verified current
@@ -990,6 +1433,11 @@ not mutated.
 
 ## Acceptance checks
 
+The [approved first-increment acceptance scope](#acceptance-and-remaining-gates)
+identifies its isolated engineering checks. Broader reuse, management/export
+and history checks below remain retained obligations, not additional work
+selected by that design or claims of passed acceptance.
+
 The [ordinary-use boundary](personal-corrections-execution-guide.md#ordinary-use-boundary)
 governs the selected inspection-first delivery. The owner will use it normally
 and see how it goes; no separate effectiveness assessment, paired comparison,
@@ -998,8 +1446,9 @@ saved-mapping influence and reduced repeated repairs/total effort remain product
 goals, not a mandatory measurement task.
 
 Observed/supplied/intended-produced events do not represent issue detection,
-useful warnings, owner correctness or causation. Their adaptation is not designed
-here. Passing retained event checks cannot establish inspection-first usefulness.
+useful warnings, owner correctness or causation. The approved first increment
+defines explicit capture events only; processing-event adaptation remains
+separate work. Passing retained event checks cannot establish inspection-first usefulness.
 
 Retain implementation correctness, preservation, authorization, privacy and
 operational checks with synthetic isolated data. The retained checks below
@@ -1092,13 +1541,16 @@ authorized by this reconciliation.
 ## Unresolved choices
 
 The bounded contract above and retained complete-loop product choices are
-confirmed. No build is selected. Exact representation and the following choices
-remain open; approval of the contract alone resolves none of them. In addition,
+confirmed. The [provider-free Original review/save technical design](#approved-provider-free-original-reviewsave-technical-design)
+is owner-approved; no build is selected. Broader representation and the choices
+below remain open outside that increment. In addition,
 saved-correction activation requires an explicit decision on whether an approved
 warned interim history route applies or history must be delivered first.
 
-1. **Anchored operations and identity:** adapt storage, requests, provenance,
-   deduplication, events, and export without narrowing the approved behavior.
+1. **Anchored operations and identity:** manual review/save representation,
+   provenance, deduplication, capture events and migration direction are settled
+   by the approved first-increment design. Broader reuse, management/export
+   representation and implementation remain separate work.
 2. **Managed-backup deletion — Deferred:** a separate policy and verification
    remain required for complete durable deletion, not for agreeing this loop.
 3. **Export surface — Confirmed:** management-area Download, no server copy.
