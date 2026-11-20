@@ -6,6 +6,7 @@ import fcntl
 import hashlib
 import json
 import os
+import plistlib
 import re
 import shutil
 import signal
@@ -334,6 +335,7 @@ def preflight_state_root_migration(
 
     missing: list[tuple[State, Path]] = []
     for state in states:
+        require_owned_plist(state)
         destination = destination_root / state.name
         if destination.exists() or destination.is_symlink():
             verify_migrated_state(state, destination, divergent=True)
@@ -435,21 +437,44 @@ def service_name(state: State) -> str:
     return f"gui/{os.getuid()}/{state.label}"
 
 
+def service_arguments(state: State) -> list[str]:
+    return [
+        str(Path(state.repository_root) / "scripts/run-development.sh"),
+        "--state-root",
+        str(Path(state.state_directory).parent),
+        "--state",
+        state.name,
+        "--label",
+        state.label,
+        "--port",
+        str(state.port),
+    ]
+
+
 def service_is_loaded(state: State) -> bool:
     if sys.platform != "darwin":
         return False
-    return (
-        subprocess.run(
-            ["launchctl", "print", service_name(state)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        ).returncode
-        == 0
+    result = subprocess.run(
+        ["launchctl", "print", service_name(state)],
+        capture_output=True,
+        text=True,
+        check=False,
     )
+    if result.returncode != 0:
+        return False
+    lines = [line.strip() for line in result.stdout.splitlines()]
+    try:
+        arguments = lines[lines.index("arguments = {") + 1 :]
+        arguments = arguments[: arguments.index("}")]
+    except ValueError:
+        fail("loaded development service does not belong to the selected state")
+    if arguments != service_arguments(state):
+        fail("loaded development service does not belong to the selected state")
+    return True
 
 
 def stop_service(state: State) -> bool:
+    require_owned_plist(state)
     if not service_is_loaded(state):
         return False
     subprocess.run(["launchctl", "bootout", service_name(state)], check=True)
@@ -458,6 +483,26 @@ def stop_service(state: State) -> bool:
 
 def plist_path(state: State) -> Path:
     return Path.home() / "Library/LaunchAgents" / f"{state.label}.plist"
+
+
+def require_owned_plist(state: State) -> None:
+    plist = plist_path(state)
+    if not plist.exists() and not plist.is_symlink():
+        return
+    try:
+        if plist.is_symlink() or not plist.is_file():
+            fail("development service plist does not belong to the selected state")
+        contents = plistlib.loads(plist.read_bytes())
+        arguments = contents.get("ProgramArguments")
+        # Activation may change this state's port after unloading its service.
+        if (
+            contents.get("Label") != state.label
+            or not isinstance(arguments, list)
+            or arguments[:-1] != service_arguments(state)[:-1]
+        ):
+            fail("development service plist does not belong to the selected state")
+    except (OSError, ValueError, plistlib.InvalidFileException):
+        fail("development service plist does not belong to the selected state")
 
 
 def prepare_service_files(state: State) -> None:
@@ -608,6 +653,7 @@ def show_logs(state: State, *, lines: int, follow: bool) -> None:
 def install_service(state: State) -> None:
     root = Path(state.repository_root)
     plist = plist_path(state)
+    require_owned_plist(state)
     plist.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     prepare_service_files(state)
     rendered = subprocess.run(

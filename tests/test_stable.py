@@ -2,18 +2,29 @@
 
 import json
 import os
+import runpy
 import shutil
 import signal
 import socket
 import sqlite3
 import subprocess
 import sys
+import time
 from pathlib import Path
+from urllib import request
 
 import pytest
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 SCRIPT = REPOSITORY / "scripts/stable.py"
+
+
+@pytest.fixture(autouse=True)
+def isolated_port(tmp_path: Path):
+    with socket.socket() as candidate:
+        candidate.bind(("127.0.0.1", 0))
+        port = candidate.getsockname()[1]
+    (tmp_path / "port").write_text(str(port))
 
 
 def git(repository: Path, *arguments: str) -> str:
@@ -46,6 +57,8 @@ def stable(
     input: str = "",
     environment: dict | None = None,
 ):
+    if "install" in arguments and "--port" not in arguments:
+        arguments = (*arguments, "--port", (tmp_path / "port").read_text())
     return subprocess.run(
         [
             sys.executable,
@@ -92,9 +105,39 @@ def test_status_fetches_main_without_changing_checkout_and_reports_offline(tmp_p
     assert git(checkout, "remote", "get-url", "origin") == str(upstream)
 
 
+def test_legacy_installation_keeps_default_port_without_rewriting_manifest(tmp_path: Path) -> None:
+    controller = runpy.run_path(str(SCRIPT))
+    configuration = tmp_path / "environment.json"
+    configuration.write_text("{}\n")
+    configuration.chmod(0o600)
+    installed = {
+        "protocol": 1,
+        "configuration": str(configuration),
+        "database": str(tmp_path / "data.sqlite3"),
+        "raycast_directory": str(tmp_path / "commands"),
+    }
+    manifest = tmp_path / "installation.json"
+    manifest.write_text(json.dumps(installed))
+    before = manifest.read_bytes()
+    loaded = controller["load_installation"](tmp_path)
+    assert loaded == installed
+    assert controller["environment"](loaded, tmp_path)["LOCAL_TEXT_PORT"] == "7532"
+    assert manifest.read_bytes() == before
+
+
+@pytest.mark.parametrize("port", ["1023", "65536", "7523"])
+def test_install_rejects_invalid_or_development_port_before_preparing_runtime(tmp_path, port):
+    upstream, checkout = repository_pair(tmp_path)
+    rejected = stable(tmp_path, checkout, upstream, "install", "--initialize", "--port", port)
+    assert rejected.returncode != 0
+    assert "Stable port must be between" in rejected.stderr
+    assert not (tmp_path / "stable/environments").exists()
+    assert not (tmp_path / "home/.config/local-text/stable/environment.json").exists()
+
+
 def application_pair(tmp_path: Path) -> tuple[Path, Path]:
     upstream, checkout = repository_pair(tmp_path)
-    for name in ("src", "migrations", "scripts", "raycast"):
+    for name in ("src", "migrations", "scripts", "raycast", "launchd"):
         shutil.copytree(
             REPOSITORY / name,
             upstream / name,
@@ -165,11 +208,33 @@ def test_default_install_and_existing_installation_preserve_files(tmp_path: Path
         ((), "y\n", True),
         (("--reuse-existing", "--yes"), "", True),
         (("--configuration", str(tmp_path / "other.json"), "--reuse-existing"), "", False),
+        (("--port", "12345", "--reuse-existing"), "", False),
         (("--initialize", "--reuse-existing"), "", False),
     ):
         result = stable(tmp_path, checkout, upstream, "install", *arguments, input=answer)
         assert (result.returncode == 0) is success, result.stderr
         assert {path: path.read_bytes() for path in before} == before
+
+
+def test_install_rejects_older_source_before_preparing_files(tmp_path, monkeypatch):
+    upstream, checkout = application_pair(tmp_path)
+    controller = upstream / "scripts/stable.py"
+    controller.write_text(
+        controller.read_text().replace("STABLE_PROTOCOL = 2", "STABLE_PROTOCOL = 1")
+    )
+    git(upstream, "commit", "-am", "Synthetic older controller protocol")
+    git(checkout, "pull", "--ff-only")
+    monkeypatch.setenv("UV_OFFLINE", "1")
+
+    rejected = stable(tmp_path, checkout, upstream, "install", "--initialize", "--yes")
+
+    assert rejected.returncode != 0
+    assert "requires port-aware source with launcher protocol" in rejected.stderr
+    assert not (tmp_path / "stable/environments").exists()
+    assert not (tmp_path / "stable/installation.json").exists()
+    assert not (tmp_path / "home/.config/local-text/stable/environment.json").exists()
+    assert not (tmp_path / "home/.local/share/local-text/stable/local-text.sqlite3").exists()
+    assert not (tmp_path / "home/.config/raycast/scripts").exists()
 
 
 def test_install_checkout_option_accepts_either_position_and_requires_a_directory(tmp_path):
@@ -401,7 +466,11 @@ def test_update_preview_and_decline_preserve_source_and_data(tmp_path: Path) -> 
     assert (checkout / "collision.sqlite3").read_text() == "owner data"
 
 
-def test_restart_and_confirmed_update_pin_the_previewed_commit(tmp_path, service_environment):
+def test_restart_and_confirmed_update_pin_the_previewed_commit(
+    tmp_path,
+    service_environment,
+    monkeypatch,
+):
     upstream, checkout = application_pair(tmp_path)
     prepared = install(tmp_path, checkout, upstream, "--initialize", "--yes")
     assert prepared.returncode == 0, prepared.stderr
@@ -413,6 +482,8 @@ def test_restart_and_confirmed_update_pin_the_previewed_commit(tmp_path, service
     (upstream / "tracked").write_text("reviewed release\n")
     git(upstream, "commit", "-am", "Reviewed release")
     reviewed = git(upstream, "rev-parse", "HEAD")
+    # A caller's test paths must not govern the nested candidate verification.
+    monkeypatch.setenv("PYTEST_ADDOPTS", f"--basetemp={tmp_path}")
     process = subprocess.Popen(
         [sys.executable, str(SCRIPT), "--root", str(tmp_path / "stable"), "update"],
         env={**os.environ, "HOME": str(tmp_path / "home"), **service_environment},
@@ -442,6 +513,267 @@ def test_restart_and_confirmed_update_pin_the_previewed_commit(tmp_path, service
     status = stable(tmp_path, checkout, upstream, "status", environment=service_environment)
     assert json.loads(status.stdout)["updates"] == "behind"
     assert json.loads(status.stdout)["health"]["ready"] is True
+
+
+@pytest.mark.parametrize("with_development", [False, True])
+def test_stable_runs_independently_with_selected_paths_and_endpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    service_environment: dict,
+    with_development: bool,
+) -> None:
+    upstream, checkout = application_pair(tmp_path)
+    home = tmp_path / "home"
+    development = None
+    development_database = None
+    development_before = None
+    if with_development:
+        dev_checkout = tmp_path / "development-checkout"
+        subprocess.run(
+            ["git", "clone", str(upstream), str(dev_checkout)], check=True, capture_output=True
+        )
+        environment = {**os.environ, "HOME": str(home)}
+        # As with Stable installation, the caller controls offline dependency bootstrap.
+        prepared_development = subprocess.run(
+            ["uv", "sync", "--locked", "--python", sys.executable],
+            cwd=dev_checkout,
+            env=environment,
+            text=True,
+            capture_output=True,
+        )
+        assert prepared_development.returncode == 0, prepared_development.stderr
+        with socket.socket() as candidate:
+            candidate.bind(("127.0.0.1", 0))
+            dev_port = candidate.getsockname()[1]
+        dev_root = home / ".local/share/local-text/dev-states"
+        command = [str(dev_checkout / "scripts/dev.py"), "--state-root", str(dev_root)]
+        for arguments in (("create", "coexisting", "--port", str(dev_port)), ("db", "init")):
+            result = subprocess.run(
+                [*command, *arguments],
+                cwd=dev_checkout,
+                env=environment,
+                text=True,
+                capture_output=True,
+            )
+            assert result.returncode == 0, result.stderr
+        state = json.loads((dev_root / "coexisting/state.json").read_text())
+        development_database = dev_root / "coexisting/local-text.sqlite3"
+        development_before = development_database.read_bytes()
+        development = subprocess.Popen(
+            [
+                str(dev_checkout / "scripts/run-development.sh"),
+                "--state-root",
+                str(dev_root),
+                "--state",
+                "coexisting",
+                "--label",
+                state["label"],
+                "--port",
+                str(dev_port),
+            ],
+            cwd=dev_checkout,
+            env=environment,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    try:
+        if development:
+            for _ in range(100):
+                try:
+                    with request.urlopen(
+                        f"http://127.0.0.1:{dev_port}/health", timeout=1
+                    ) as response:
+                        assert json.load(response)["development_state"] == "coexisting"
+                    break
+                except OSError:
+                    assert development.poll() is None, "synthetic development service exited"
+                    time.sleep(0.05)
+            else:
+                pytest.fail("synthetic development service did not start")
+
+        # An invalid, irrelevant configuration must not become a Stable prerequisite.
+        irrelevant = home / ".config/local-text/development/environment"
+        irrelevant.parent.mkdir(parents=True, exist_ok=True)
+        irrelevant.write_text("invalid development configuration; preserve me\n")
+        for key, value in {
+            "LOCAL_TEXT_PROFILE": "development",
+            "LOCAL_TEXT_STATE_DIRECTORY": str(tmp_path / "irrelevant-state"),
+            "LOCAL_TEXT_DATABASE_PATH": str(tmp_path / "irrelevant.sqlite3"),
+            "LOCAL_TEXT_RAYCAST_DIRECTORY": str(irrelevant),
+            "UV_PROJECT_ENVIRONMENT": str(tmp_path / "irrelevant-venv"),
+            "PYTHONPATH": str(tmp_path / "irrelevant-source"),
+        }.items():
+            monkeypatch.setenv(key, value)
+        prepared = install(tmp_path, checkout, upstream, "--initialize", "--yes")
+        assert prepared.returncode == 0, prepared.stderr
+        installed = json.loads((tmp_path / "stable/installation.json").read_text())
+        port = int((tmp_path / "port").read_text())
+        assert installed["port"] == port
+        for path in (tmp_path / "commands").glob("*.sh"):
+            assert f"http://127.0.0.1:{port}" in path.read_text()
+            assert "http://127.0.0.1:7532" not in path.read_text()
+
+        for operation in ("start", "restart"):
+            result = stable(
+                tmp_path, checkout, upstream, operation, environment=service_environment
+            )
+            assert result.returncode == 0, result.stderr
+        status = stable(
+            tmp_path,
+            tmp_path / "irrelevant-checkout",
+            tmp_path / "irrelevant-upstream",
+            "status",
+            environment=service_environment,
+        )
+        assert status.returncode == 0, status.stderr
+        assert json.loads(status.stdout)["health"]["ready"] is True
+        assert json.loads(status.stdout)["service"]["owned"] is True
+        with request.urlopen(f"http://127.0.0.1:{port}/api/targets", timeout=2) as response:
+            targets = json.load(response)["targets"]
+        assert targets
+        assert all(f"http://127.0.0.1:{port}" in target["preview"] for target in targets)
+        assert irrelevant.read_text() == "invalid development configuration; preserve me\n"
+        assert not (tmp_path / "irrelevant.sqlite3").exists()
+        assert not (tmp_path / "irrelevant-venv").exists()
+        if development:
+            assert development.poll() is None
+            with request.urlopen(f"http://127.0.0.1:{dev_port}/health", timeout=2) as response:
+                assert json.load(response)["development_state"] == "coexisting"
+            assert development_database.read_bytes() == development_before
+    finally:
+        if development:
+            development.terminate()
+            development.wait(timeout=10)
+
+
+def test_development_activation_and_restart_preserve_coexisting_stable(
+    tmp_path: Path, service_environment: dict
+) -> None:
+    if "SYNTHETIC_SERVICE" not in service_environment:
+        pytest.skip("development activation uses the synthetic launchctl boundary")
+    upstream, checkout = application_pair(tmp_path)
+    prepared = install(tmp_path, checkout, upstream, "--initialize", "--yes")
+    assert prepared.returncode == 0, prepared.stderr
+    started = stable(tmp_path, checkout, upstream, "start", environment=service_environment)
+    assert started.returncode == 0, started.stderr
+    installed = json.loads((tmp_path / "stable/installation.json").read_text())
+    preserved = {
+        path: path.read_bytes()
+        for path in (
+            tmp_path / "stable/installation.json",
+            tmp_path / "data.sqlite3",
+            tmp_path / "environment.json",
+            tmp_path / f"synthetic-service-{installed['label']}.json",
+        )
+    }
+
+    dev_checkout = tmp_path / "development-checkout"
+    subprocess.run(
+        ["git", "clone", str(upstream), str(dev_checkout)], check=True, capture_output=True
+    )
+    # Only the disposable checkout's Raycast port changes; real socket guards remain active.
+    with socket.socket() as candidate:
+        candidate.bind(("127.0.0.1", 0))
+        activation_port = candidate.getsockname()[1]
+        with socket.socket() as initial:
+            initial.bind(("127.0.0.1", 0))
+            initial_port = initial.getsockname()[1]
+    state_module = dev_checkout / "scripts/development_state.py"
+    state_module.write_text(
+        state_module.read_text().replace(
+            "DEVELOPMENT_PORT = 7523", f"DEVELOPMENT_PORT = {activation_port}"
+        )
+    )
+    git(dev_checkout, "config", "user.email", "synthetic@example.invalid")
+    git(dev_checkout, "config", "user.name", "Synthetic test")
+    git(dev_checkout, "commit", "-am", "Select disposable Raycast port")
+    environment = {**os.environ, "HOME": str(tmp_path / "home"), **service_environment}
+    dependencies = subprocess.run(
+        ["uv", "sync", "--locked", "--python", sys.executable],
+        cwd=dev_checkout,
+        env=environment,
+        text=True,
+        capture_output=True,
+    )
+    assert dependencies.returncode == 0, dependencies.stderr
+    environment.update(
+        LOCAL_TEXT_PROFILE="release",
+        LOCAL_TEXT_DATABASE_PATH=installed["database"],
+        LOCAL_TEXT_RAYCAST_DIRECTORY=str(tmp_path / "irrelevant-command-path"),
+        PYTEST_ADDOPTS="-k must_not_select_this",
+    )
+    state_root = tmp_path / "development-states"
+    command = [
+        str(dev_checkout / ".venv/bin/python"),
+        "-c",
+        # Exercise the macOS controller boundary with synthetic launchctl on every host.
+        "import runpy, sys; from pathlib import Path; "
+        "sys.argv = sys.argv[1:]; "
+        "sys.path.insert(0, str(Path(sys.argv[0]).parent)); "
+        "controller = runpy.run_path(sys.argv[0]); "
+        "sys.platform = 'darwin'; controller['main']()",
+        str(dev_checkout / "scripts/dev.py"),
+        "--state-root",
+        str(state_root),
+    ]
+    created = subprocess.run(
+        [*command, "create", "coexisting", "--port", str(initial_port)],
+        cwd=dev_checkout,
+        env=environment,
+        text=True,
+        capture_output=True,
+    )
+    assert created.returncode == 0, created.stderr
+    restarted = subprocess.run(
+        [*command, "restart"],
+        cwd=dev_checkout,
+        env=environment,
+        text=True,
+        capture_output=True,
+    )
+    assert restarted.returncode == 0, restarted.stdout + restarted.stderr
+    manifest = state_root / "coexisting/state.json"
+    database = state_root / "coexisting/local-text.sqlite3"
+    before = {path: path.read_bytes() for path in (manifest, database)}
+    services_before = {
+        path: path.read_bytes() for path in tmp_path.glob("synthetic-service-*.json")
+    }
+    assert len(services_before) == 2
+    smoke = dev_checkout / "tests/test_smoke.py"
+    original_smoke = smoke.read_text()
+    smoke.write_text("def test_candidate():\n    assert False, 'synthetic verification failure'\n")
+    blocked = subprocess.run(
+        [*command, "activate"],
+        cwd=dev_checkout,
+        env=environment,
+        text=True,
+        capture_output=True,
+    )
+    assert blocked.returncode != 0
+    assert "synthetic verification failure" in blocked.stdout
+    assert {path: path.read_bytes() for path in before} == before
+    assert {path: path.read_bytes() for path in services_before} == services_before
+    smoke.write_text(original_smoke)
+
+    for operation in ("activate", "restart"):
+        result = subprocess.run(
+            [*command, operation],
+            cwd=dev_checkout,
+            env=environment,
+            text=True,
+            capture_output=True,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert json.loads(manifest.read_text())["port"] == activation_port
+        with request.urlopen(f"http://127.0.0.1:{activation_port}/health", timeout=2) as response:
+            health = json.load(response)
+        assert health["profile"] == "development"
+        assert health["development_state"] == "coexisting"
+        with request.urlopen(f"http://127.0.0.1:{installed['port']}/health", timeout=2) as response:
+            assert json.load(response)["profile"] == "release"
+        assert {path: path.read_bytes() for path in preserved} == preserved
+    assert list((state_root / "coexisting/backups").glob("*.sqlite3"))
+    assert not (tmp_path / "irrelevant-command-path").exists()
 
 
 def test_code_only_activation_failure_recovers_previous_runtime(tmp_path, service_environment):
@@ -503,7 +835,14 @@ def service_environment(tmp_path: Path):
 import json, os, plistlib, signal, subprocess, sys
 from pathlib import Path
 state = Path(os.environ['SYNTHETIC_SERVICE'])
+failure = state.with_suffix('.fail')
 command = sys.argv[1]
+if command == 'bootstrap':
+    plist = plistlib.loads(Path(sys.argv[3]).read_bytes())
+    label = plist['Label']
+else:
+    label = sys.argv[2].rsplit('/', 1)[-1]
+state = state.with_name(state.stem + '-' + label + state.suffix)
 if command == 'print':
     if not state.exists():
         sys.exit(3)
@@ -513,11 +852,9 @@ if command == 'print':
     print('}')
     print('pid = ' + str(installed['pid']))
 elif command == 'bootstrap':
-    failure = state.with_suffix('.fail')
     if failure.exists():
         failure.unlink()
         sys.exit(5)
-    plist = plistlib.loads(Path(sys.argv[3]).read_bytes())
     with open(plist['StandardOutPath'], 'a') as output, \\
          open(plist['StandardErrorPath'], 'a') as errors:
         process = subprocess.Popen(plist['ProgramArguments'], stdout=output, stderr=errors)
@@ -535,12 +872,20 @@ else:
 """
     )
     executable.chmod(0o700)
+    validator = directory / "plutil"
+    validator.write_text(
+        f"#!{sys.executable}\n"
+        "import plistlib, sys\n"
+        "from pathlib import Path\n"
+        "plistlib.loads(Path(sys.argv[2]).read_bytes())\n"
+    )
+    validator.chmod(0o700)
     state = tmp_path / "synthetic-service.json"
     yield {
         "PATH": str(directory) + os.pathsep + os.environ["PATH"],
         "SYNTHETIC_SERVICE": str(state),
     }
-    if state.exists():
+    for state in tmp_path.glob("synthetic-service-*.json"):
         try:
             os.kill(json.loads(state.read_text())["pid"], signal.SIGTERM)
         except ProcessLookupError:
@@ -773,12 +1118,13 @@ def test_foreign_listener_and_interrupted_activation_cannot_start_stable(tmp_pat
     before = (tmp_path / "data.sqlite3").read_bytes()
     with socket.socket() as listener:
         listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        listener.bind(("127.0.0.1", 7532))
+        port = int((tmp_path / "port").read_text())
+        listener.bind(("127.0.0.1", port))
         listener.listen()
         blocked = stable(tmp_path, checkout, upstream, "start")
         assert blocked.returncode != 0
         assert "occupied" in blocked.stderr
-        assert listener.getsockname()[1] == 7532
+        assert listener.getsockname()[1] == port
     root = tmp_path / "stable"
     (root / "maintenance.json").write_text(
         json.dumps(

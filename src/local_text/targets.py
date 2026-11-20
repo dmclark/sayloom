@@ -54,12 +54,16 @@ def command_filename(target_id: str, profile: Profile = Profile.DEVELOPMENT) -> 
     return f"{prefix}sayloom-target-{target_id}.sh"
 
 
-def _fetch_and_clipboard_library(profile: Profile) -> str:
+def _fetch_and_clipboard_library(profile: Profile, port: int | None) -> str:
     endpoint = (
         "LOCAL_TEXT_BASE_URL=http://127.0.0.1:7532\n"
         if profile is Profile.RELEASE
         else "LOCAL_TEXT_BASE_URL=${LOCAL_TEXT_BASE_URL:-http://127.0.0.1:7523}\n"
     )
+    if port is not None:
+        if isinstance(port, bool) or not isinstance(port, int) or not 1024 <= port <= 65535:
+            raise ValueError("invalid loopback port")
+        endpoint = f"LOCAL_TEXT_BASE_URL=http://127.0.0.1:{port}\n"
     health_check = (
         """/usr/bin/curl --fail --silent --connect-timeout 1 --max-time 2 \\
   "$LOCAL_TEXT_BASE_URL/health" --output "$state_file" \\
@@ -111,7 +115,11 @@ LC_ALL=C /usr/bin/grep -q '[^[:space:]]' "$outgoing_file" \\
 
 
 def generate_command(
-    target_id: str, definition: TargetDefinition, profile: Profile = Profile.DEVELOPMENT
+    target_id: str,
+    definition: TargetDefinition,
+    profile: Profile = Profile.DEVELOPMENT,
+    *,
+    port: int | None = None,
 ) -> GeneratedCommand:
     filename = command_filename(target_id, profile)
     title = definition.display_name.replace("\n", " ")
@@ -162,7 +170,7 @@ end run
 APPLESCRIPT
 """
     success_message = shlex.quote(f"Sent to {title} without submitting")
-    content = header + _fetch_and_clipboard_library(profile) + delivery
+    content = header + _fetch_and_clipboard_library(profile, port) + delivery
     content += f"printf '%s\\n' {success_message}\n"
     return GeneratedCommand(content=content, sha256=hashlib.sha256(content.encode()).hexdigest())
 
