@@ -708,9 +708,10 @@ def test_development_activation_and_restart_preserve_coexisting_stable(
         "-c",
         # Exercise the macOS controller boundary with synthetic launchctl on every host.
         "import runpy, sys; from pathlib import Path; "
-        "sys.platform = 'darwin'; sys.argv = sys.argv[1:]; "
+        "sys.argv = sys.argv[1:]; "
         "sys.path.insert(0, str(Path(sys.argv[0]).parent)); "
-        "runpy.run_path(sys.argv[0], run_name='__main__')",
+        "controller = runpy.run_path(sys.argv[0]); "
+        "sys.platform = 'darwin'; controller['main']()",
         str(dev_checkout / "scripts/dev.py"),
         "--state-root",
         str(state_root),
