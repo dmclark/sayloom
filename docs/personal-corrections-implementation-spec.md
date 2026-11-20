@@ -1,6 +1,6 @@
 # Personal Corrections implementation specification
 
-- **Status:** Inspection-first save entry and ordinary-use direction confirmed; technical/operational contract pending, no implementation activated
+- **Status:** Bounded inspection-first contract owner-approved; no build work selected or implementation activated
 - **Scope:** Private, single-user Personal Corrections; retained Smart-specific technical references
 - **Execution authority:** [Personal corrections execution guide](personal-corrections-execution-guide.md)
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
@@ -32,13 +32,14 @@ replacement first. No implementation phase is activated.
 
 ## Purpose
 
-This specification retains the Personal Corrections model, review/save lifecycle,
-Smart retrieval, history, deletion, export, migration and acceptance references.
-Inspection-first findings and optional suggestions extend the permitted reuse
-surface. The owner approved an Original-bound supplied-Intended save entry and
-ordinary use instead of a separate effectiveness assessment. Exact technical
-mechanics and applicable operational requirements remain unresolved. The retained
-Smart contract does not define issue detection.
+This specification owns the approved bounded Personal Corrections contract for
+Original-first review/save and contextual influence in inspection-first assistance.
+The owner approved the [bounded contract](https://ampcode.com/artifacts/saved-correction-contribution-proposal-9482cb13-748a-42ee-b86a-30c16a4e93f4)
+without selecting build work. The approved contract below governs that selected
+contribution. Retained schema, API, event and Smart-specific sections remain
+references where compatible; they are not a ready-to-run implementation plan.
+Exact columns, wire versions and migrations still require technical design.
+Backup policy and saved-correction/history activation sequencing remain open.
 
 **Owner amendment, 2026-11-12:** Initial inspection and explicit alternative
 application target current Original, without requiring generated Prepared.
@@ -49,8 +50,9 @@ source, individual operation, reusable anchored phrase pair, applicability
 restriction and optional bounded sentences, with unchecked selections. Only
 Save selected authorizes durable reuse; saving need not apply wording and
 ordinary editing/application/dismissal saves nothing. Existing Prepared review
-and broader Smart paths remain intact. Exact state, schema/API/event and
-stale/conflict mechanics require a separately approved technical contract.
+and broader Smart paths remain intact. The approved bounded contract below
+settles the selected review, reuse and conflict semantics without selecting
+exact schema/API/event spellings or authorizing implementation.
 
 This document does not authorize implementation, migration, private-data
 access, provider traffic, GitHub mutation, or operation of the stable
@@ -58,13 +60,198 @@ application. State-root migration and Evidence Collection retirement precede
 this phase and are recorded complete in the execution guide. Personal
 Corrections still precede new-state inheritance.
 
+## Approved bounded inspection-first contract
+
+### Scope and precedence
+
+The approved contribution combines explicit Original-first review/save,
+contextual cross-session reuse and complete management/privacy boundaries for
+replacements and anchored additions/removals. It does not require broader
+automatic Smart completion or a separate effectiveness assessment. Storage,
+retrieval or extra highlights alone do not complete the contribution.
+
+This section governs the selected contribution where older generated-result
+state machines, replacement-only schema/API/events or Smart-only assessment
+references below differ. Existing Prepared-confirmation behavior remains
+intact. No historical issue graph, build prompt or assessment is activated.
+
+### Original-bound review and independent save
+
+Separate review starts from a nonempty selection in current Original. Freeze
+exact Original, draft revision, selection offsets and selected Observed wording.
+It works without a finding, successful processing result or Prepared, including
+with preparation Off. The owner supplies Intended wording or explicitly adopts
+and may edit an offered alternative. A finding alone supplies no Intended.
+
+Show source, individual operation, reusable before/intended pair, applicability
+restriction and all optional durable sentence text. Selections start unchecked;
+one Save selected approves 1–20 selected mappings atomically. Bound each reusable
+phrase side to 200 Unicode code points, applicability text to 500 and each
+optional containing sentence to 500. Sentence previews are independently
+editable/removable; never silently truncate or retain surrounding documents.
+
+An addition/removal needs a reviewed, nonempty before/intended phrase pair with
+enough unchanged wording to anchor the change. Review may expand the selection
+within frozen Original, visibly showing the expanded Observed pair. Store the
+individual operation separately from its reusable anchored pair. No empty
+trigger, context-free insertion or delete-everywhere rule is saveable for reuse.
+
+Saving does not apply wording, regenerate, confirm Prepared, change Outgoing,
+copy or deliver. Inspection, editing, alternative application, dismissal and
+inaction save no Personal Correction. Existing Prepared and retained Smart
+review paths identify their own before/after sources and share this explicit
+approval boundary. Applying wording first changes Original and requires a newly
+bound review, not relocation of an obsolete one.
+
+### Identity, authorization and transaction semantics
+
+Equivalent mappings share owner, operation, normalized reusable before/intended
+pair and the same approved restriction. Intended term alone is not identity.
+Differing restriction text remains separate; do not infer semantic equivalence,
+merge meanings, overwrite another mapping or broaden authorization silently.
+Preserve exact approved display text, operation, provenance, revisions and
+episode/history links for every repair type.
+
+First approved save creates an enabled profile only if absent. Respect existing
+global disablement. Saving an equivalent disabled mapping does not silently
+re-enable it; show its state and require explicit re-enable. Adapt or retire
+direct-create paths that bypass reviewed approval.
+
+Original-first review has manual provenance and no processing prompt. Bind it
+to frozen Original/selection and review identity, not Prepared. Settings alone
+do not invalidate owner-supplied wording; revalidate an offered alternative
+before adoption. Original edits, Clear/new passage, replacement even with
+identical text, another review, reload/restart or a conflicting management
+revision invalidate review. Never revive validity by text equality or searching
+for another occurrence. Stale responses cannot reopen review or alter output.
+
+Save is one transaction with an approval ID and immutable selected payload.
+Same-ID/same-payload retries return the committed outcome; changed payloads
+conflict. Validation/transaction failure leaves no partial batch. Management
+writes are owner-scoped and revision-checked; conflicts preserve newer state.
+
+An edit after an explicitly authorized Save is sent cannot reliably reverse a
+server commit. Retire stale browser effects without claiming rollback. Make
+the exact approval outcome reconcilable in management; do not resave altered
+content under the same approval ID. Reload loses unsaved review, not a committed
+mapping. Save failure never triggers provider retries.
+
+### Contextual influence in the existing Smart request
+
+Server-owned retrieval supplies only matched, enabled, approved mappings to
+the existing Smart request's untrusted evidence frame. Add no model pass,
+detector service, provider choice, request stream or automatic retry. Public
+callers do not supply profile rows or owner IDs. Original-first review/save
+does not require Smart availability.
+
+Conservative/Cleanup receives no Personal Corrections in its prompt, request,
+eligibility, validation or fallback. Its independent findings remain possible.
+The minimum uses Smart findings and the retained bounded Smart repair path;
+personalized Conservative findings would require a new reconciliation that
+preserves Cleanup independence and the single-request contract.
+
+Retain exact NFKC/apostrophe/casefold/whitespace normalization, lexical boundaries,
+significant punctuation, deterministic ordering, duplicate handling and the
+50-unique-mapping bound. Addition/removal retrieval matches approved anchored
+before wording. Overflow or retrieval failure omits the entire mapping set,
+exposes a content-free diagnostic and preserves usable processing/Original.
+
+Supply only reusable before/intended pairs, operations and approved restrictions.
+Historical sentences, occurrence history/counts, unrelated mappings, local IDs
+and exports never enter assistance. Judge applicability using current draft,
+approved restriction and selected Writing domain where available; do not invent
+a domain or require a new domain UI for this slice.
+
+A trigger match alone justifies neither warning nor replacement. Require
+passage-supported recognition concern; preserve literal, contradictory,
+inappropriate, already-correct or unresolved ambiguous wording. Counts, recency
+and retrieval order cannot choose intent. Independent qualified findings may
+remain when a mapping is inapplicable. Findings may have no replacement and
+remain hypotheses, not verified speech.
+
+Retain the findings contract's limits, statuses, independently validated
+code-point spans and explicit chosen-alternative application at the bound
+Original occurrence. Automatic Smart changes retain PRODUCT.md's stricter
+eligibility and complete lexical-change visibility. Keep CART clean, Outgoing
+exact and manual editing/copying/delivery uninterrupted.
+
+Track mapping/profile revisions in request-local state. Edit initiation,
+disablement, revision or deletion retires outstanding mapping-bearing results
+and actionable suggestions; later processing uses current authorized state.
+Do not guess how to subtract a mapping's influence from a mixed result.
+Management itself never regenerates or rewrites current Prepared.
+
+### Complete management and separate history boundaries
+
+One management area exposes all durable mapping fields, anchors, restrictions,
+enabled state, revisions and linked bounded episodes/minimized history.
+Beginning an edit persistently suspends reuse; cancellation leaves old wording
+disabled. Reviewed Save authorizes revised wording; explicit re-enable restores
+unchanged authorization only. Ordinary edits must not silently delete historical
+evidence by replacing all alias rows.
+
+Retain the hard-delete cascade, including shared linked episodes and their
+sentence evidence, without deleting unrelated surviving entries. Disclose lost
+shared history before confirmation. Alias deletion follows the same rule at
+alias scope. UI deletion is current-state live-database deletion; registered-state
+purge is a separate preview-and-confirm administration action. Do not scan
+unregistered locations or remove user exports silently.
+
+Download private export is a coherent versioned snapshot supporting every
+operation/restriction and minimized history, with no server-managed copy.
+Import stays deferred. Keep local ownership, no-store responses, privacy-safe
+errors/logs, credential separation and independent development states. Start
+later migration design from verified current schema, not the retained 0003
+reference; normal startup never migrates or seeds. New-state inheritance remains
+later work after Personal Corrections, with no backfill or synchronization.
+
+Distinguish trigger observed, mapping supplied and intended repair produced
+for all operations. Inspection supply is not a produced repair; explicit
+application is a user action, not proof of correctness or mapping causation.
+Exact revised event names remain technical design. Add no raw model output,
+efficacy feedback or content-rich activity capture to these minimized events.
+
+Personal Corrections backup policy remains undecided among the retained omit,
+purge and disclosed-retention options. Select and verify it before complete
+durable-deletion acceptance or activation of a complete contribution; assume no
+default. This does not weaken ADR-0003's restore-safe activity-history deletion.
+
+Prospective activity history and accessible review remain separately contracted
+obligations. Before saved-correction activation, decide explicitly whether an
+approved warned interim route applies or history must arrive first; #197's
+exception alone does not answer this. No recording, prior-passage reuse,
+historical import, research reuse, training, Google access or capture expansion
+is selected. These decisions do not block isolated engineering after separate
+authorization.
+
+### Verification and later increment boundary
+
+Later authorized work must verify explicit/no-write boundaries, all anchored
+operations, coexistence, atomic retries/conflicts, contextual influence and
+abstention, cross-session persistence, Cleanup isolation, management/deletion/
+export, late results, Prepared/CART and the applicable backup policy. Use
+isolated synthetic data and the normal HTTP-to-browser path with inspected
+desktop interactions. These are correctness/privacy/operational checks, not a
+mandatory effectiveness study or evidence of verified speech.
+
+The first increment recommended for later consideration is provider-free
+Original-selected manual review/save. Resolve anchored representation and
+distinct-restriction identity before authorizing writes; do not present a new
+replacement-only model as complete delivery. This increment alone establishes
+neither contextual contribution nor management/privacy completion. No build
+work is selected. Real-data activation, operations and Git delivery retain
+their separate authorization boundaries. Browser acceptance remains deferred
+and unpassed, not a prerequisite to agreeing this contract.
+
 ## Complete-loop design and evidence boundary
 
 The owner confirmed the retained Smart-loop design in [the complete-loop design session](https://ampcode.com/threads/T-01a12c59-2533-768a-810a-3458f41436b1).
 The [closed design decision's resolution](https://github.com/dmclark/sayloom/issues/163#issuecomment-6113213278)
 is provenance for that scope, not approval of flag-only assistance or runtime
 acceptance. PRODUCT.md explicitly extends contextual mapping use to inspection-first
-assistance; this package does not design the technical adaptation.
+assistance; the approved bounded contract above defines the selected adaptation.
+The following Smart-loop requirements retain their broader scope without
+making automatic Smart completion a prerequisite for inspection-first delivery.
 
 The contract is **repair → review → explicitly save → contextual reuse**:
 
@@ -904,8 +1091,11 @@ authorized by this reconciliation.
 
 ## Unresolved choices
 
-The complete-loop product choices are confirmed; technical reconciliation is
-still needed before affected implementation work is ready:
+The bounded contract above and retained complete-loop product choices are
+confirmed. No build is selected. Exact representation and the following choices
+remain open; approval of the contract alone resolves none of them. In addition,
+saved-correction activation requires an explicit decision on whether an approved
+warned interim history route applies or history must be delivered first.
 
 1. **Anchored operations and identity:** adapt storage, requests, provenance,
    deduplication, events, and export without narrowing the approved behavior.

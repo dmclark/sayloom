@@ -79,7 +79,12 @@ automatic preparation scheduling or provider-level retry policy and adds no
 automatic extra request.
 
 Preserve provider selection, routing, timeouts, and retry policy. Introduce no
-independent detector service, engine/provider choice, or retrieval mechanism.
+independent detector service, engine/provider choice, or retrieval mechanism
+under #197. The separately approved
+[#192 bounded contract](personal-corrections-implementation-spec.md#approved-bounded-inspection-first-contract)
+defines server-owned saved-mapping retrieval inside the existing Smart request,
+with Cleanup independent and no extra request stream or model pass. That contract
+does not select build work, enlarge #197's scope or authorize implementation.
 Selective adaptation of #187 prompt/validation ideas is permitted, but not its
 trial lifecycle, storage, fixed provider, or separate requests (D008). Its
 one-to-three-alternative and UTF-16 contracts must not replace this contract's

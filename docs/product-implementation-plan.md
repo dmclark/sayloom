@@ -1,6 +1,6 @@
 # Sayloom product implementation plan
 
-- **Status:** Inspection-first save entry and ordinary-use direction confirmed; technical/operational reconciliation and implementation outstanding
+- **Status:** Bounded saved-correction contract owner-approved; no saved-correction build work selected; implementation and operational decisions outstanding
 - **Audience:** Product, design, engineering, research, and delivery contributors
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
@@ -46,6 +46,29 @@ a separate effectiveness assessment. The
 [ordinary-use boundary](personal-corrections-execution-guide.md#ordinary-use-boundary)
 distinguishes that decision from required engineering verification. No
 implementation, private-data use, spending or activation is authorized here.
+
+### Approved #192 bounded contract, no build selection
+
+The owner approved the [bounded saved-correction contract](personal-corrections-implementation-spec.md#approved-bounded-inspection-first-contract)
+without selecting build work. It covers Original-selected manual review/save
+without a finding or Prepared; replacements and anchored additions/removals;
+contextual Smart-request influence/abstention with Cleanup independent; and the
+common management/privacy lifecycle. No provider, extra request stream, model
+pass, history-reuse mechanism or broader Smart programme is selected.
+
+Provider-free Original review/save is the recommended first increment for later
+consideration, not the completed contribution or a selected ticket. Exact
+schema/API/event representation still requires design from current main.
+Personal Corrections backup policy and saved-correction/history activation
+sequencing remain explicit owner decisions before applicable activation. The
+existing interim history exception is scoped to #197 and is not silently
+extended to saved corrections. Ordinary-use adoption requires no efficacy study.
+
+Contract approval authorizes no source-document application, tracker publication,
+implementation, migration execution, private-data access, provider calls/spending,
+integration or activation. Any later document delivery records the contract only
+and must not mark these operations authorized or acceptance passed. Browser
+acceptance remains deferred/unpassed, not a prerequisite to contract agreement.
 
 ### #197-specific completion gate
 
@@ -101,17 +124,20 @@ obligations remain outstanding.
    read-back verified; Project fields were deliberately unchanged. This completes
    earlier scoped document/issue reconciliation, not inspection-first
    technical/acceptance reconciliation or approval of implementation or activation.
-3. **Set the bounded technical and operational contract before implementation
-   selection.** Preserve the approved save-entry and ordinary-use direction; do
-   not require a separate inspection effectiveness assessment. Retain explicit
-   saving, contextual reuse/abstention, all anchored repair types, management,
-   Cleanup independence and Prepared/CART protections. Specify passage identity,
-   event ordering, stale/late responses, crash/retry recovery, recording failure,
-   pause/private passages, deletion and managed-backup restore. Obtain approval
-   for exact private destinations and provider/cost configuration. Do not invent
-   silent fallbacks when history cannot be recorded. For the interim #197 route,
-   unresolved history mechanics do not block implementation selection; they
-   remain prerequisites for recording activation, not findings implementation.
+3. **Retain the approved bounded contract without selecting build work.**
+   The specification owns Original review/save, contextual reuse/abstention,
+   anchored repair types, management, Cleanup independence and Prepared/CART
+   protections. Resolve exact schema/API/event representation in separately
+   authorized technical design. Personal Corrections backup policy and its
+   history activation sequence remain open; no default is selected. History
+   still requires passage identity, event ordering, stale/late responses,
+   crash/retry recovery, recording-failure behavior, pause/private semantics,
+   deletion and managed-backup restore before recording activation. Obtain
+   applicable approval for exact private destinations and operational/provider
+   cost configuration. Preserve accepted OpenAI Direct routing; do not reopen
+   provider selection or invent silent recording fallbacks. The interim #197
+   route remains distinct: unresolved history mechanics do not block its
+   implementation selection or establish saved-correction activation permission.
 4. **Adapt retained source deliberately.** The published #187 branch is a source
    candidate, not evidence of issue detection or personal reuse and not a
    wholesale merge instruction. Remove trial randomization,
@@ -235,12 +261,14 @@ under another gate name.
 
 ## Deferred Personal Corrections sequence
 
-Saved-correction influence required by the selected boundary is selected product
-scope, not activated implementation. Its bounded technical contribution and
-applicable acceptance requirements must be reconciled before build selection.
-The historical umbrella and child graph are not automatically resumed. Broader
-Personal Corrections requirements and unrelated residual continuity work remain
-retained references, not authority to activate operations.
+Saved-correction influence is selected product scope with an owner-approved
+[bounded contract](personal-corrections-implementation-spec.md#approved-bounded-inspection-first-contract),
+not selected build work or activated implementation. Separate authorization is
+required before technical implementation, document/tracker publication or
+operations. Exact representation, backup policy and saved-correction/history
+activation sequencing remain open as described above. The historical umbrella
+and child graph are not resumed. Broader requirements and unrelated continuity
+work remain retained references, not authority to activate operations.
 
 The [dependable single-user workflow map](https://github.com/dmclark/sayloom/issues/159)
 indexes overall sequencing. The [combined dependable-preparation acceptance gate](https://github.com/dmclark/sayloom/issues/162#issuecomment-6112233798)
@@ -519,7 +547,8 @@ a real multi-user, device-sync, or hosting boundary exists.
 The heading retains the broader capability scope. Useful saved-correction
 influence is selected for inspection-first delivery under
 [PRODUCT.md](../PRODUCT.md#personal-corrections-and-research-boundary); its bounded
-technical and acceptance reconciliation is pending, not implementation activation.
+contract is approved in the specification, without build selection or implementation
+activation. Exact representation and the identified operational decisions remain open.
 
 ### Outcome
 
