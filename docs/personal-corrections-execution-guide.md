@@ -1,9 +1,9 @@
 # Personal Corrections execution guide
 
-- **Status:** Bounded inspection-first contract owner-approved; no build work selected
+- **Status:** Bounded inspection-first contract and provider-free Original review/save technical design owner-approved; no build work selected
 - **Active phase:** None; no implementation phase active
 - **Initial user:** One implicit private local user
-- **Last confirmed:** Owner approval of the bounded #192 contract, without selecting build work; ordinary-use and no-assessment boundaries retained
+- **Last confirmed:** Owner approval of the provider-free Original review/save technical design, without selecting build work; ordinary-use and no-assessment boundaries retained
 - **Product authority:** [`PRODUCT.md`](../PRODUCT.md)
 - **Architecture decision:** [ADR-0002](adr/0002-personal-corrections-ownership-and-state-portability.md)
 - **Domain vocabulary:** [`GLOSSARY.md`](../GLOSSARY.md)
@@ -23,9 +23,12 @@ influence from explicitly saved Personal Corrections, alongside prospective
 private activity history and accessible review under the
 [product implementation plan](product-implementation-plan.md). The bounded
 [technical contract](personal-corrections-implementation-spec.md#approved-bounded-inspection-first-contract)
-is owner-approved without selecting build work. Exact schema/API design,
-Personal Corrections backup policy and saved-correction/history activation
-sequencing remain separate work. Ordinary use requires no effectiveness assessment.
+and the [provider-free Original review/save technical design](personal-corrections-implementation-spec.md#approved-provider-free-original-reviewsave-technical-design)
+are owner-approved without selecting build work. The latter settles the first
+increment's representation, source-specific APIs, capture events and migration
+direction, not broader reuse or management/export design. Personal Corrections
+backup policy and saved-correction/history activation sequencing remain separate
+work. Ordinary use requires no effectiveness assessment.
 The historical umbrella and child graph are not automatically
 resumed. Audit residual continuity WIP only for necessary protections, not
 wholesale integration.
@@ -137,16 +140,23 @@ supplies no Intended wording. The
 [approved bounded contract](personal-corrections-implementation-spec.md#approved-bounded-inspection-first-contract)
 settles Original/selection binding, manual provenance, atomic/idempotent saving,
 distinct restriction identity, in-flight commit reconciliation and invalidation
-of outstanding mapping-bearing results after management changes. Exact schema,
-wire versions and migration design remain implementation-contract details, not
-selected build work. Existing Prepared-confirmation review remains intact.
+of outstanding mapping-bearing results after management changes. The
+[approved first-increment technical design](personal-corrections-implementation-spec.md#approved-provider-free-original-reviewsave-technical-design)
+now specifies manual review/save representation, v2 Original/Prepared bindings,
+immutable approvals, capture events and the forward-migration boundary. Broader
+technical design remains separate; no build work is selected. Existing
+Prepared-confirmation review remains intact.
 
 The minimum integrates server-selected saved evidence in the existing Smart
 request, never Conservative/Cleanup, with no extra request stream or model pass.
 It includes anchored additions/removals, contextual abstention and the complete
 management/privacy lifecycle. The recommended first increment for later
-consideration is provider-free Original-selected review/save; that increment
-alone is not complete contextual delivery or authority for real-data activation.
+build selection is the owner-approved provider-free Original-selected
+review/save design; its read-only reconciliation surface is an isolated
+engineering increment, not complete contextual or management/privacy delivery
+or authority for real-data activation. Its v2/manual validity and compatibility
+rules govern that increment over retained generated-result capture references
+below. Those references and historical execution prompts do not activate a phase.
 The historical umbrella and child graph remain inactive. Backup policy and the
 applicability of any warned interim history route remain explicit owner choices.
 
@@ -309,7 +319,7 @@ resumed, advance a marker only after its exit gate and recorded evidence.
 | 1 | Complete | Development-state root migration | An explicit, verified migration moves registered state data to `${XDG_DATA_HOME:-~/.local/share}/local-text/dev-states/`; normal startup never migrates. |
 | 2a | Complete | Evidence Collection Workspace/runtime retirement | UI, APIs, session behavior, arming, leases, receipts, delivery gates, runtime exposure, and dedicated runtime tests are removed while ordinary preparation, Copy, and delivery remain. |
 | 2b | Complete | Participant-package retirement | Issue #143 removed package creation, validation, administration, configuration, and dedicated package tests while preserving historical docs and Git. |
-| 3 | Bounded contract approved; no build selected or active implementation | Personal Corrections | Deliver the approved bounded contract only after separate build authorization: explicit Original review/save, all anchored repair types, durable `local` ownership, contextual Smart influence/abstention, Cleanup independence, management, current-state deletion, registered-state purge and private export. Preserve Prepared/CART and late-result protections. Verify the selected managed-backup policy before complete durable-deletion acceptance or complete-contribution activation; decide saved-correction/history activation sequencing explicitly. The broader Smart flywheel is not resumed. |
+| 3 | Bounded contract and first-increment technical design approved; no build selected or active implementation | Personal Corrections | The [provider-free Original review/save design](personal-corrections-implementation-spec.md#approved-provider-free-original-reviewsave-technical-design) defines the recommended isolated first increment, not completed contextual or management/privacy delivery. Deliver the broader bounded contract only after separate build authorization: explicit Original review/save, all anchored repair types, durable `local` ownership, contextual Smart influence/abstention, Cleanup independence, management, current-state deletion, registered-state purge and private export. Preserve Prepared/CART and late-result protections. Verify the selected managed-backup policy before complete durable-deletion acceptance or complete-contribution activation; decide saved-correction/history activation sequencing explicitly. The broader Smart flywheel is not resumed. |
 | 4 | Blocked by phase 3 | New-state inheritance | A new state inherits and verifies a transactional snapshot from the explicitly activated eligible source; failures prevent activation, no-source creation reports empty, and existing states remain untouched. |
 
 ### Existing partial implementation evidence
