@@ -326,6 +326,25 @@ Confirmation rereads the allowlisted source and rejects a stale digest. The writ
 scripts/check
 ```
 
+This remains the full check: locked dependency sync, Ruff, the complete pytest
+suite, then JavaScript syntax checking. Each phase reports its duration and total
+elapsed seconds, followed by the final exit status. Pytest reports failures as
+they happen without stopping the remaining tests. Immediate notices include the
+test name (without parameter values), phase, duration, known exception type, and
+test definition location; messages and assertion values remain in pytest's normal
+end-of-run diagnostics rather than being repeated in these notices.
+
+Stable lifecycle tests share a disposable, session-scoped `XDG_CACHE_HOME` for uv
+downloads and build dependencies. Before controller installations, one explicit
+locked sync prepares that cache in a disposable seed environment, then removes
+the seed environment. Preparation reports its own duration and a progress-log
+path; failure stops the session once with a nonzero status instead of repeating
+failed installs. Preparation can still fail on slow/unavailable downloads; it
+does not fix network performance or extend the existing 300-second sync limit.
+Each installation still has its own home, environment, configuration, database,
+port, and service identity. The cache is not an installed runtime and does not
+change production environment filtering.
+
 Do not use hot reload for validated coding tasks. Use the controlled
 `scripts/dev.py restart` workflow described above.
 

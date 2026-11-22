@@ -19,6 +19,85 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 SCRIPT = REPOSITORY / "scripts/stable.py"
 
 
+@pytest.fixture(scope="session")
+def dependency_cache_home(
+    tmp_path_factory: pytest.TempPathFactory, request: pytest.FixtureRequest
+) -> Path:
+    preparation = tmp_path_factory.mktemp("dependency-cache")
+    cache = preparation / "cache"
+    config = preparation / "configuration.json"
+    config.write_text("{}\n")
+    config.chmod(0o600)
+    controller = runpy.run_path(str(SCRIPT))
+    values = controller["environment"](
+        {
+            "configuration": str(config),
+            "database": str(preparation / "unused.sqlite3"),
+            "raycast_directory": str(preparation / "unused-commands"),
+        },
+        REPOSITORY,
+    )
+    seed_environment = preparation / "environment"
+    values.update(
+        HOME=str(preparation / "home"),
+        XDG_CONFIG_HOME=str(preparation / "config"),
+        XDG_DATA_HOME=str(preparation / "data"),
+        XDG_CACHE_HOME=str(cache),
+        UV_PROJECT_ENVIRONMENT=str(seed_environment),
+    )
+    reporter = request.config.pluginmanager.get_plugin("terminalreporter")
+    capture = request.config.pluginmanager.get_plugin("capturemanager")
+    log = preparation / "preparation.log"
+    if reporter is not None:
+        with capture.global_and_fixture_disabled():
+            reporter.write_line(
+                f"[lifecycle cache] Preparing locked dependencies; progress log: {log}"
+            )
+            reporter.flush()
+    started = time.monotonic()
+    failure = None
+    with log.open("w") as output:
+        try:
+            result = subprocess.run(
+                [
+                    "uv", "sync", "--locked", "--no-editable", "--python", sys.executable,
+                    "--project", str(REPOSITORY),
+                ],
+                env=values,
+                stdout=output,
+                stderr=subprocess.STDOUT,
+                timeout=300,
+            )
+            if result.returncode:
+                failure = f"exit {result.returncode}"
+        except (OSError, subprocess.TimeoutExpired) as error:
+            failure = type(error).__name__
+    elapsed = time.monotonic() - started
+    # No test uses the seed environment, only its downloaded/built cache inputs.
+    if seed_environment.exists():
+        shutil.rmtree(seed_environment)
+    if failure is not None:
+        pytest.exit(
+            f"Lifecycle cache preparation failed after {elapsed:.2f}s ({failure}); "
+            f"see {log}. No controller install was attempted.",
+            returncode=1,
+        )
+    if reporter is not None:
+        with capture.global_and_fixture_disabled():
+            reporter.write_line(
+                f"[lifecycle cache] Prepared in {elapsed:.2f}s; seed environment removed"
+            )
+            reporter.flush()
+    return cache
+
+
+@pytest.fixture(autouse=True)
+def shared_dependency_cache(dependency_cache_home: Path, monkeypatch: pytest.MonkeyPatch):
+    # Stable strips UV_* overrides. uv honors XDG_CACHE_HOME on Unix, including macOS.
+    # Only downloads/build inputs are shared; HOME and installed environments stay disposable.
+    monkeypatch.setenv("XDG_CACHE_HOME", str(dependency_cache_home))
+
+
 @pytest.fixture(autouse=True)
 def isolated_port(tmp_path: Path):
     with socket.socket() as candidate:
@@ -302,6 +381,33 @@ def test_existing_configuration_requires_reuse_and_legacy_is_preserved(tmp_path:
     assert prepared.returncode == 0, prepared.stderr
     assert config.read_text() == '{"LOCAL_TEXT_OPENAI_MODEL": "synthetic-model"}\n'
     assert legacy.read_text() == "SYNTHETIC_OWNER_SETTING=preserve\n"
+
+
+def test_isolated_installations_reuse_dependencies_offline(tmp_path: Path) -> None:
+    installations = []
+    for index in range(2):
+        directory = tmp_path / str(index)
+        directory.mkdir()
+        (directory / "port").write_text(str(18000 + index))
+        upstream, checkout = application_pair(directory)
+        prepared = stable(
+            directory, checkout, upstream, "install", "--initialize", "--yes",
+            environment={"UV_OFFLINE": "1"},
+        )
+        assert prepared.returncode == 0, prepared.stderr
+        installed = json.loads((directory / "stable/installation.json").read_text())
+        assert not (checkout / ".venv").exists()
+        prefix = subprocess.check_output(
+            [installed["python"], "-c", "import sys; print(sys.prefix)"], text=True
+        ).strip()
+        assert Path(prefix) == Path(installed["python"]).parent.parent
+        installations.append(installed)
+
+    for key in ("python", "database", "configuration", "port", "label", "plist"):
+        assert installations[0][key] != installations[1][key]
+    first_config = Path(installations[0]["configuration"])
+    first_config.write_text('{"LOCAL_TEXT_OPENAI_MODEL": "first-only"}\n')
+    assert Path(installations[1]["configuration"]).read_text() == "{}\n"
 
 
 def test_legacy_configuration_can_be_reused_without_conversion(tmp_path: Path) -> None:

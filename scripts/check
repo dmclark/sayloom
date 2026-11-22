@@ -1,11 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-uv sync --locked
-uv run ruff check .
+started=$SECONDS
+trap 'result=$?; printf "[check] Finished: exit %s (%ss elapsed)\n" "$result" "$((SECONDS - started))"' EXIT
+
+phase() {
+    local name=$1
+    shift
+    local phase_started=$SECONDS
+    printf '[check] %s started (%ss elapsed)\n' "$name" "$((SECONDS - started))"
+    local result=0
+    "$@" || result=$?
+    printf '[check] %s finished: exit %s (%ss phase, %ss elapsed)\n' \
+        "$name" "$result" "$((SECONDS - phase_started))" "$((SECONDS - started))"
+    return "$result"
+}
+
+phase Dependencies uv sync --locked
+phase Lint uv run ruff check .
 
 # Amp orb commands inherit SIGINT as ignored, but the test suite exercises SIGINT handling.
-uv run python -c '
+phase Pytest uv run python -c '
 import os
 import signal
 
@@ -13,4 +28,4 @@ signal.signal(signal.SIGINT, signal.SIG_DFL)
 os.execvp("uv", ["uv", "run", "pytest"])
 '
 
-node --check src/local_text/static/app.js
+phase JavaScript node --check src/local_text/static/app.js
