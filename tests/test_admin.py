@@ -6,6 +6,7 @@ import os
 import plistlib
 import signal
 import socket
+import sqlite3
 import subprocess
 import sys
 import time
@@ -966,6 +967,57 @@ def test_list_prune_and_remove_manage_only_registered_state_data(tmp_path: Path)
     assert all_removed.returncode == 0
     assert not (current_root / "legacy-one").exists()
     assert not (current_root / "legacy-two").exists()
+
+
+def test_explicit_remove_and_recreate_resets_only_selected_disposable_state(tmp_path: Path) -> None:
+    root = tmp_path / "states"
+    environment = {**os.environ, "HOME": str(tmp_path / "home")}
+    created = run_dev(root, "create", "selected", environment=environment)
+    assert created.returncode == 0, created.stderr
+    initialized = run_dev(root, "init", "--state", "selected", environment=environment)
+    assert initialized.returncode == 0, initialized.stderr
+    selected = root / "selected"
+    with sqlite3.connect(selected / "local-text.sqlite3") as connection:
+        connection.execute(
+            "INSERT INTO app_settings VALUES ('synthetic_saved', '\"keep until removal\"', "
+            "CURRENT_TIMESTAMP)"
+        )
+    (selected / "environment").write_text("LOCAL_TEXT_OPENAI_MODEL=synthetic-model\n")
+    (selected / "backups").mkdir()
+    (selected / "backups/synthetic.sqlite3").write_bytes(b"synthetic backup")
+    (selected / "logs").mkdir()
+    (selected / "logs/service.log").write_text("synthetic log\n")
+    peer = write_foreign_state(
+        root, name="peer", repository=tmp_path / "peer-checkout", port=unused_port()
+    )
+    (peer.parent / "environment").write_text("LOCAL_TEXT_OPENAI_MODEL=peer-model\n")
+    shared = tmp_path / "home/.config/local-text/development/environment"
+    shared.parent.mkdir(parents=True, exist_ok=True)
+    shared.write_text("LOCAL_TEXT_GEMINI_MODEL=synthetic-shared\n")
+    shared.chmod(0o600)
+    preserved = {path: path.read_bytes() for path in (peer, peer.parent / "environment", shared)}
+
+    refused = run_dev(root, "remove", "--state", "selected", environment=environment)
+    assert refused.returncode != 0
+    assert "requires confirmation" in refused.stderr
+    assert (selected / "local-text.sqlite3").exists()
+    removed = run_dev(root, "remove", "--state", "selected", "--yes", environment=environment)
+    assert removed.returncode == 0, removed.stderr
+    assert not selected.exists()
+    assert {path: path.read_bytes() for path in preserved} == preserved
+
+    recreated = run_dev(root, "create", "selected", environment=environment)
+    assert recreated.returncode == 0, recreated.stderr
+    initialized = run_dev(root, "init", "--state", "selected", environment=environment)
+    assert initialized.returncode == 0, initialized.stderr
+    assert not (selected / "environment").exists()
+    assert not (selected / "backups").exists()
+    assert not (selected / "logs").exists()
+    with sqlite3.connect(selected / "local-text.sqlite3") as connection:
+        assert connection.execute(
+            "SELECT value_json FROM app_settings WHERE key = 'synthetic_saved'"
+        ).fetchone() is None
+    assert {path: path.read_bytes() for path in preserved} == preserved
 
 
 def test_list_orders_and_aligns_states_with_short_paths_and_prune_status(

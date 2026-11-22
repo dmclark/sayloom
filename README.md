@@ -291,17 +291,30 @@ scripts/dev.py init
 ```
 
 Use `scripts/dev.py restart` for a development update rather than running
-migration steps individually. It runs all checks, makes an online SQLite backup,
-migrates, applies the deterministic seed release, and restarts only the current
-checkout's state-scoped service.
+migration steps individually. Restart and activation run `scripts/check --quick`
+(locked dependency readiness, Ruff, JavaScript syntax, diff and shell checks),
+validate selected configuration and read-only schema compatibility, then make an
+online SQLite backup before controlled migration/seeding and restart. Health
+verification follows startup. A supported pending migration preserves existing
+records; unknown, incompatible or unversioned populated schemas are refused before
+service/port changes. Quick-check failure leaves state and services unchanged.
 
-Development does not require a Stable installation. Its full-repository checks
-include isolated Stable lifecycle tests; those tests allocate disposable ports,
-not the installed Stable port. Restart still runs the complete check suite before
-stopping any service; inherited pytest options cannot narrow its checks.
+Development does not require a Stable installation. Ordinary restart/activation
+does not run pytest: an unrelated failing test does not block it. Run
+`scripts/check --full` explicitly for the complete suite, including isolated Stable
+lifecycle tests on disposable ports, not the installed Stable port.
 A loaded development service must match the selected
 checkout, state root, name, label, and port before it can be stopped. Existing
 plists from another state root are not replaced or removed, even when unloaded.
+
+Restart preserves development records; it never resets data. To deliberately
+replace a disposable state, select it with `scripts/dev.py remove --state NAME`
+and confirm removal, then `scripts/dev.py create NAME`. Removal deletes that
+selected state's database, backups, logs, registration and state-local
+configuration; recreation follows the normal creation/inheritance rules, not a
+guaranteed empty Personal Corrections profile. Other states and shared
+configuration are not cleared. There is no data-only reset command; retaining
+state-local configuration while clearing data would require a separate design.
 
 ### One-time configuration import
 
@@ -324,10 +337,14 @@ Confirmation rereads the allowlisted source and rejects a stale digest. The writ
 
 ```sh
 scripts/check
+scripts/check --full
+scripts/check --quick
 ```
 
-This remains the full check: locked dependency sync, Ruff, the complete pytest
-suite, then JavaScript syntax checking. Each phase reports its duration and total
+Bare `scripts/check` and `--full` run locked dependency sync, Ruff, the complete
+pytest suite, JavaScript syntax, diff and shell checks. `--quick` skips only pytest;
+selected configuration/schema readiness is checked by the development controller,
+not by this state-independent repository command. Each phase reports its duration and total
 elapsed seconds, followed by the final exit status. Pytest reports failures as
 they happen without stopping the remaining tests. Immediate notices include the
 test name (without parameter values), phase, duration, known exception type, and

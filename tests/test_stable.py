@@ -840,26 +840,107 @@ def test_development_activation_and_restart_preserve_coexisting_stable(
     assert restarted.returncode == 0, restarted.stdout + restarted.stderr
     manifest = state_root / "coexisting/state.json"
     database = state_root / "coexisting/local-text.sqlite3"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "INSERT INTO app_settings VALUES ('synthetic_saved', '\"Café 73\"', CURRENT_TIMESTAMP)"
+        )
+        connection.execute("UPDATE targets SET enabled = 0 WHERE id = 'amp'")
     before = {path: path.read_bytes() for path in (manifest, database)}
     services_before = {
         path: path.read_bytes() for path in tmp_path.glob("synthetic-service-*.json")
     }
     assert len(services_before) == 2
+    alias = tmp_path / "home/.config/raycast/scripts/dev-open-sayloom.sh"
+    alias.parent.mkdir(parents=True)
+    previous_target = tmp_path / "previous-checkout/raycast/open-sayloom.sh"
+    alias.symlink_to(previous_target)
+    for configuration in (
+        tmp_path / "home/.config/local-text/development/environment",
+        state_root / "coexisting/environment",
+    ):
+        configuration.parent.mkdir(parents=True, exist_ok=True)
+        configuration.write_text("LOCAL_TEXT_CLEANUP_TIMEOUT_SECONDS=not-a-number\n")
+        configuration.chmod(0o600)
+        configured = configuration.read_bytes()
+        backups_before = list((state_root / "coexisting/backups").glob("*.sqlite3"))
+        for operation in ("activate", "restart"):
+            blocked = subprocess.run(
+                [*command, operation],
+                cwd=dev_checkout,
+                env=environment,
+                text=True,
+                capture_output=True,
+            )
+            assert blocked.returncode != 0
+            assert "could not convert string to float" in blocked.stderr
+            assert {path: path.read_bytes() for path in before} == before
+            assert {path: path.read_bytes() for path in services_before} == services_before
+            assert {path: path.read_bytes() for path in preserved} == preserved
+            assert configuration.read_bytes() == configured
+            assert alias.readlink() == previous_target
+            assert list((state_root / "coexisting/backups").glob("*.sqlite3")) == backups_before
+        configuration.unlink()
+    javascript = dev_checkout / "src/local_text/static/app.js"
+    original_javascript = javascript.read_text()
+    javascript.write_text("const invalid = ;\n")
+    for operation in ("activate", "restart"):
+        blocked = subprocess.run(
+            [*command, operation],
+            cwd=dev_checkout,
+            env=environment,
+            text=True,
+            capture_output=True,
+        )
+        assert blocked.returncode != 0
+        assert "JavaScript finished: exit 1" in blocked.stdout
+        assert {path: path.read_bytes() for path in before} == before
+        assert {path: path.read_bytes() for path in services_before} == services_before
+        assert {path: path.read_bytes() for path in preserved} == preserved
+    javascript.write_text(original_javascript)
+
+    for mutation, message in (
+        (
+            "UPDATE alembic_version SET version_num = 'unknown_revision'",
+            "no supported upgrade path",
+        ),
+        ("INSERT INTO alembic_version VALUES ('unknown_revision')", "incompatible"),
+        ("DROP TABLE alembic_version", "incompatible"),
+    ):
+        with sqlite3.connect(database) as connection:
+            connection.execute(mutation)
+        incompatible = database.read_bytes()
+        for operation in ("activate", "restart"):
+            blocked = subprocess.run(
+                [*command, operation],
+                cwd=dev_checkout,
+                env=environment,
+                text=True,
+                capture_output=True,
+            )
+            assert blocked.returncode != 0
+            assert f"{message}; database preserved" in blocked.stderr
+            assert database.read_bytes() == incompatible
+            assert manifest.read_bytes() == before[manifest]
+            assert {path: path.read_bytes() for path in services_before} == services_before
+            assert {path: path.read_bytes() for path in preserved} == preserved
+        database.write_bytes(before[database])
+
+    # An unrelated failing test must not run during either ordinary operation.
     smoke = dev_checkout / "tests/test_smoke.py"
-    original_smoke = smoke.read_text()
-    smoke.write_text("def test_candidate():\n    assert False, 'synthetic verification failure'\n")
-    blocked = subprocess.run(
-        [*command, "activate"],
+    smoke.write_text(
+        "def test_candidate():\n    raise AssertionError('synthetic pytest failure')\n"
+    )
+    add_schema_release(dev_checkout)
+    full = subprocess.run(
+        [str(dev_checkout / "scripts/check"), "--full"],
         cwd=dev_checkout,
-        env=environment,
+        env={**environment, "PYTEST_ADDOPTS": ""},
         text=True,
         capture_output=True,
     )
-    assert blocked.returncode != 0
-    assert "synthetic verification failure" in blocked.stdout
-    assert {path: path.read_bytes() for path in before} == before
-    assert {path: path.read_bytes() for path in services_before} == services_before
-    smoke.write_text(original_smoke)
+    assert full.returncode == 1, full.stdout + full.stderr
+    assert "Pytest finished: exit 1" in full.stdout
+    assert "synthetic pytest failure" in full.stdout
 
     for operation in ("activate", "restart"):
         result = subprocess.run(
@@ -870,7 +951,20 @@ def test_development_activation_and_restart_preserve_coexisting_stable(
             capture_output=True,
         )
         assert result.returncode == 0, result.stdout + result.stderr
+        assert "Pytest started" not in result.stdout
+        assert "Schema ready for controlled initialization/upgrade" in result.stdout
+        assert f"{1 if operation == 'activate' else 0} pending migration(s)" in result.stdout
         assert json.loads(manifest.read_text())["port"] == activation_port
+        with sqlite3.connect(database) as connection:
+            assert connection.execute(
+                "SELECT value_json FROM app_settings WHERE key = 'synthetic_saved'"
+            ).fetchone() == ('"Café 73"',)
+            assert connection.execute(
+                "SELECT enabled FROM targets WHERE id = 'amp'"
+            ).fetchone() == (0,)
+            assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
+                "0007_synthetic_release",
+            )
         with request.urlopen(f"http://127.0.0.1:{activation_port}/health", timeout=2) as response:
             health = json.load(response)
         assert health["profile"] == "development"
@@ -878,7 +972,14 @@ def test_development_activation_and_restart_preserve_coexisting_stable(
         with request.urlopen(f"http://127.0.0.1:{installed['port']}/health", timeout=2) as response:
             assert json.load(response)["profile"] == "release"
         assert {path: path.read_bytes() for path in preserved} == preserved
-    assert list((state_root / "coexisting/backups").glob("*.sqlite3"))
+    backup_revisions = set()
+    for backup in (state_root / "coexisting/backups").glob("*.sqlite3"):
+        with sqlite3.connect(backup) as connection:
+            backup_revisions.add(
+                connection.execute("SELECT version_num FROM alembic_version").fetchone()
+            )
+    assert ("0006_confirmed_correction_batches",) in backup_revisions
+    assert alias.resolve() == dev_checkout / "raycast/open-sayloom.sh"
     assert not (tmp_path / "irrelevant-command-path").exists()
 
 

@@ -11,8 +11,9 @@ import pytest
 REPOSITORY = Path(__file__).resolve().parents[1]
 
 
+@pytest.mark.parametrize("mode", ["", "--full", "--quick"])
 @pytest.mark.parametrize("failure", ["", "ruff", "pytest", "node"])
-def test_full_check_phases_and_exit_status(tmp_path: Path, failure: str) -> None:
+def test_check_phases_and_exit_status(tmp_path: Path, failure: str, mode: str) -> None:
     # Fake only the external commands here; reporting below runs real pytest.
     executable = tmp_path / "command"
     executable.write_text(
@@ -30,17 +31,19 @@ def test_full_check_phases_and_exit_status(tmp_path: Path, failure: str) -> None
     for name in ("uv", "node"):
         (tmp_path / name).symlink_to(executable)
     result = subprocess.run(
-        ["bash", str(REPOSITORY / "scripts/check")],
+        ["bash", str(REPOSITORY / "scripts/check"), *([mode] if mode else [])],
+        cwd=REPOSITORY,
         env={**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}", "FAIL_CHECK": failure},
         capture_output=True,
         text=True,
         timeout=30,
     )
-    assert result.returncode == (7 if failure else 0), result.stderr
+    selected_failure = failure and not (mode == "--quick" and failure == "pytest")
+    assert result.returncode == (7 if selected_failure else 0), result.stderr
     phases = [
         ("Dependencies", "sync"),
         ("Lint", "ruff"),
-        ("Pytest", "pytest"),
+        *([] if mode == "--quick" else [("Pytest", "pytest")]),
         ("JavaScript", "node"),
     ]
     for phase, command in phases:
@@ -53,7 +56,10 @@ def test_full_check_phases_and_exit_status(tmp_path: Path, failure: str) -> None
         assert "[check] JavaScript finished: exit 0" in result.stdout
     assert f"[check] Finished: exit {result.returncode}" in result.stdout
     assert "s phase," in result.stdout and "s elapsed)" in result.stdout
-    if failure == "pytest":
+    if mode == "--quick":
+        assert "COMMAND pytest" not in result.stdout
+        assert "Pytest started" not in result.stdout
+    elif failure == "pytest":
         assert "JavaScript started" not in result.stdout
 
 

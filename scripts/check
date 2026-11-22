@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+mode=${1:---full}
+if [[ $# -gt 1 || ( "$mode" != --full && "$mode" != --quick ) ]]; then
+    printf 'Usage: scripts/check [--full|--quick]\n' >&2
+    exit 2
+fi
+
 started=$SECONDS
 trap 'result=$?; printf "[check] Finished: exit %s (%ss elapsed)\n" "$result" "$((SECONDS - started))"' EXIT
 
@@ -19,13 +25,19 @@ phase() {
 phase Dependencies uv sync --locked
 phase Lint uv run ruff check .
 
-# Amp orb commands inherit SIGINT as ignored, but the test suite exercises SIGINT handling.
-phase Pytest uv run python -c '
+if [[ "$mode" == --full ]]; then
+    # Amp orb commands inherit SIGINT as ignored, but the test suite exercises SIGINT handling.
+    phase Pytest uv run python -c '
 import os
 import signal
 
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 os.execvp("uv", ["uv", "run", "pytest"])
 '
+fi
 
 phase JavaScript node --check src/local_text/static/app.js
+phase Diff git diff --check
+for shell_script in scripts/*.sh raycast/*.sh; do
+    phase "Shell ($shell_script)" /bin/sh -n "$shell_script"
+done

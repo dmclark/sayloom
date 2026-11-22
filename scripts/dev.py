@@ -705,20 +705,63 @@ def verify_service(state: State) -> None:
 
 def verify_repository() -> None:
     root = repository_root()
-    environment = clean_environment()
-    for check in (
-        [str(root / "scripts/check")],
-        ["git", "diff", "--check"],
-    ):
-        subprocess.run(check, cwd=root, env=environment, check=True)
-    for shell_script in sorted((*root.glob("scripts/*.sh"), *root.glob("raycast/*.sh"))):
-        subprocess.run(["/bin/sh", "-n", str(shell_script)], env=environment, check=True)
+    subprocess.run(
+        [str(root / "scripts/check"), "--quick"],
+        cwd=root,
+        env=clean_environment(),
+        check=True,
+    )
+
+
+def verify_schema(state: State) -> None:
+    # Use this checkout's locked environment without importing application dependencies
+    # into the standalone development controller. All database access here is read-only.
+    script = """
+import sqlite3
+from pathlib import Path
+from urllib.parse import quote
+from alembic.script import ScriptDirectory
+from alembic.util.exc import CommandError
+from local_text.config import load_settings
+from local_text.database import ApplicationDatabase, SCHEMA_REVISION
+
+database = ApplicationDatabase(load_settings().resolved_database_path)
+status = database.schema_status()
+if database.path.exists():
+    uri = f"file:{quote(str(database.path), safe='/')}?mode=ro"
+    with sqlite3.connect(uri, uri=True) as connection:
+        tables = {row[0] for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        )}
+        versions = (
+            list(connection.execute("SELECT version_num FROM alembic_version"))
+            if 'alembic_version' in tables else []
+        )
+        if len(versions) > 1 or (not status.current_revision and tables - {'alembic_version'}):
+            raise SystemExit('Selected schema is incompatible; database preserved')
+graph = ScriptDirectory(str(Path.cwd() / 'migrations'))
+if graph.get_heads() != [SCHEMA_REVISION]:
+    raise SystemExit('Migration head and runtime schema disagree; database preserved')
+try:
+    pending = list(graph.iterate_revisions(SCHEMA_REVISION, status.current_revision))
+except CommandError:
+    raise SystemExit('Selected schema has no supported upgrade path; database preserved') from None
+print(f'Schema ready for controlled initialization/upgrade: {status.state}; '
+      f'{len(pending)} pending migration(s)')
+"""
+    subprocess.run(
+        ["uv", "run", "python", "-c", script],
+        cwd=repository_root(),
+        env=state_environment(state, load_configuration=True),
+        check=True,
+    )
 
 
 def restart(state: State, *, run_checks: bool = True) -> None:
     preflight(state)
     if run_checks:
         verify_repository()
+        verify_schema(state)
     if stop_service(state):
         time.sleep(1)
     if not port_is_available(state.port):
@@ -763,6 +806,9 @@ def activate(root: Path, state: State, *, raycast_directory: Path = RAYCAST_DIRE
         )
     except ValueError as error:
         fail(str(error))
+    preflight(state)
+    verify_repository()
+    verify_schema(state)
     previous_owners = [
         candidate
         for candidate in states_on_port(root, DEVELOPMENT_PORT)
@@ -773,11 +819,10 @@ def activate(root: Path, state: State, *, raycast_directory: Path = RAYCAST_DIRE
             repoint_raycast_aliases(alias_plan)
             print(f"State {state.name!r} already owns the Raycast port {DEVELOPMENT_PORT}")
             return
-        restart(state)
+        restart(state, run_checks=False)
         repoint_raycast_aliases(alias_plan)
         return
 
-    verify_repository()
     affected = [state, *previous_owners]
     loaded_names = {candidate.name for candidate in affected if stop_service(candidate)}
     if loaded_names:
