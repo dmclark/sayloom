@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 import time
+from copy import deepcopy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib import request
@@ -770,37 +771,42 @@ def test_restart_and_confirmed_update_pin_the_previewed_commit(
 
 
 @pytest.mark.parametrize(
-    "response",
+    "responses",
     [
-        {"run": {"head_sha": "0" * 40}},
-        {"run": {"repository": {"full_name": "other/sayloom"}}},
-        {"run": {"head_repository": {"full_name": "fork/sayloom"}}},
-        {"run": {"path": ".github/workflows/other.yml"}},
-        {"run": {"workflow_id": 99}},
-        {"run": {"head_branch": "feature"}},
-        {"run": {"event": "pull_request"}},
-        {"workflow": {"path": ".github/workflows/other.yml"}},
-        {"missing_job": True},
-        {"missing_run": True},
-        {"rerun_pending": True},
-        {"newer_failed": True, "pagination": True},
-        {"job": {"run_attempt": 99}},
-        {"job": {"head_sha": "0" * 40}},
-        {"job": {"run_id": 99}},
-        {"ambiguous_job": True},
-        {"http_status": 503},
-        {"http_status": 403},
-        {"http_status": 429},
-        {"invalid_json": True},
-        {"truncated": True},
-        {"incomplete_page": True},
-        {"pagination": True, "empty_page": True},
-        {"lose_at": 2},
-        {"preparation_failure": True},
+        pytest.param(
+            [
+                {"run": {"head_sha": "0" * 40}},
+                {"run": {"repository": {"full_name": "other/sayloom"}}},
+                {"run": {"head_repository": {"full_name": "fork/sayloom"}}},
+                {"run": {"path": ".github/workflows/other.yml"}},
+                {"run": {"workflow_id": 99}},
+                {"run": {"head_branch": "feature"}},
+                {"run": {"event": "pull_request"}},
+                {"workflow": {"path": ".github/workflows/other.yml"}},
+                {"missing_job": True},
+                {"missing_run": True},
+                {"rerun_pending": True},
+                {"newer_failed": True, "pagination": True},
+                {"job": {"run_attempt": 99}},
+                {"job": {"head_sha": "0" * 40}},
+                {"job": {"run_id": 99}},
+                {"ambiguous_job": True},
+                {"http_status": 503},
+                {"http_status": 403},
+                {"http_status": 429},
+                {"invalid_json": True},
+                {"truncated": True},
+                {"incomplete_page": True},
+                {"pagination": True, "empty_page": True},
+            ],
+            id="initial-ci",
+        ),
+        pytest.param([{"lose_at": 2}], id="pre-stop-recheck"),
+        pytest.param([{"preparation_failure": True}], id="preparation-failure"),
     ],
 )
 def test_ci_refusal_preserves_running_installation(
-    tmp_path, service_environment, github_api, response
+    tmp_path, service_environment, github_api, responses
 ):
     upstream, checkout = application_pair(tmp_path)
     prepared = install(tmp_path, checkout, upstream, "--initialize", "--yes")
@@ -817,35 +823,45 @@ def test_ci_refusal_preserves_running_installation(
     before = {path: path.read_bytes() for path in paths}
     old = git(checkout, "rev-parse", "HEAD")
     (upstream / "tracked").write_text("unapproved candidate\n")
-    if response.get("preparation_failure"):
+    if responses[0].get("preparation_failure"):
         (upstream / "uv.lock").write_text("synthetic-private-lock-error\n")
     git(upstream, "commit", "-am", "Synthetic candidate")
-    github_api.update(response)
-    refused = stable(
-        tmp_path, checkout, upstream, "update", "--yes", environment=service_environment
-    )
-    assert refused.returncode != 0, refused.stdout
-    assert (
-        '"eligible": false' in refused.stdout
-        or "Rechecking Linux CI" in refused.stdout
-        or response.get("preparation_failure")
-    )
-    assert "error: Stable operation failed:" in refused.stderr
-    assert "synthetic-private-lock-error" not in refused.stdout + refused.stderr
-    if response.get("preparation_failure"):
-        assert (root / "operation-error.log").stat().st_mode & 0o777 == 0o600
-    assert git(checkout, "rev-parse", "HEAD") == old
-    assert {path: path.read_bytes() for path in paths} == before
-    assert not (root / "maintenance.json").exists()
-    assert not (root / "backups").exists()
-    status = stable(tmp_path, checkout, upstream, "status", environment=service_environment)
-    assert json.loads(status.stdout)["health"]["ready"] is True
+    original_api = deepcopy(github_api)
+    # Only initial CI refusals share an installation. Later failures stay isolated above.
+    for index, response in enumerate(responses):
+        case = f"response {index}"
+        github_api.clear()
+        github_api.update(deepcopy(original_api))
+        github_api.update(response)
+        refused = stable(
+            tmp_path, checkout, upstream, "update", "--yes", environment=service_environment
+        )
+        assert refused.returncode != 0, f"{case}: {refused.stdout}"
+        assert (
+            '"eligible": false' in refused.stdout
+            or "Rechecking Linux CI" in refused.stdout
+            or response.get("preparation_failure")
+        ), case
+        assert "error: Stable operation failed:" in refused.stderr, case
+        assert "synthetic-private-lock-error" not in refused.stdout + refused.stderr, case
+        if response.get("preparation_failure"):
+            assert (root / "operation-error.log").stat().st_mode & 0o777 == 0o600, case
+        assert git(checkout, "rev-parse", "HEAD") == old, case
+        assert {path: path.read_bytes() for path in paths} == before, case
+        assert not (root / "maintenance.json").exists(), case
+        assert not (root / "backups").exists(), case
+        status = stable(tmp_path, checkout, upstream, "status", environment=service_environment)
+        assert json.loads(status.stdout)["health"]["ready"] is True, case
 
 
-@pytest.mark.parametrize("part", ["run", "job"])
-@pytest.mark.parametrize(
-    "status,conclusion",
-    [
+def test_preview_refuses_non_success_ci(tmp_path, github_api):
+    upstream, checkout = application_pair(tmp_path)
+    prepared = install(tmp_path, checkout, upstream, "--initialize", "--yes")
+    assert prepared.returncode == 0, prepared.stderr
+    (upstream / "tracked").write_text("candidate\n")
+    git(upstream, "commit", "-am", "Synthetic candidate")
+    original_api = deepcopy(github_api)
+    for status, conclusion in (
         ("queued", None),
         ("in_progress", None),
         ("completed", "failure"),
@@ -854,23 +870,20 @@ def test_ci_refusal_preserves_running_installation(
         ("completed", "neutral"),
         ("completed", "timed_out"),
         ("completed", None),
-    ],
-)
-def test_preview_refuses_non_success_ci(tmp_path, github_api, part, status, conclusion):
-    upstream, checkout = application_pair(tmp_path)
-    prepared = install(tmp_path, checkout, upstream, "--initialize", "--yes")
-    assert prepared.returncode == 0, prepared.stderr
-    (upstream / "tracked").write_text("candidate\n")
-    git(upstream, "commit", "-am", "Synthetic candidate")
-    github_api[part] = {"status": status, "conclusion": conclusion}
-    refused = stable(tmp_path, checkout, upstream, "update", "--dry-run")
-    assert refused.returncode != 0
-    preview = json.loads(refused.stdout)
-    assert preview["candidate"] == git(upstream, "rev-parse", "HEAD")
-    assert preview["changed_files"] == "tracked"
-    assert preview["migrations"] == []
-    assert preview["linux_ci"]["eligible"] is False
-    assert "not automatically verified" in preview["local_verification"]
+    ):
+        for part in ("run", "job"):
+            case = f"{part}: {status}/{conclusion}"
+            github_api.clear()
+            github_api.update(deepcopy(original_api))
+            github_api[part] = {"status": status, "conclusion": conclusion}
+            refused = stable(tmp_path, checkout, upstream, "update", "--dry-run")
+            assert refused.returncode != 0, case
+            preview = json.loads(refused.stdout)
+            assert preview["candidate"] == git(upstream, "rev-parse", "HEAD"), case
+            assert preview["changed_files"] == "tracked", case
+            assert preview["migrations"] == [], case
+            assert preview["linux_ci"]["eligible"] is False, case
+            assert "not automatically verified" in preview["local_verification"], case
 
 
 def test_noncanonical_upstream_update_refuses_but_installed_restart_works(
