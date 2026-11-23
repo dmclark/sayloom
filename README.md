@@ -335,6 +335,11 @@ Confirmation rereads the allowlisted source and rejects a stale digest. The writ
 
 ## Development
 
+For publication and Stable approval, follow the
+[verification policy](docs/verification.md): full Linux CI, manually selected
+application/Mac checks, separate browser coverage and candidate-bound evidence.
+Local checks do not establish hosted CI or real-service acceptance.
+
 ```sh
 scripts/check
 scripts/check --full
