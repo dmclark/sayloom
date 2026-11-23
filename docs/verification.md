@@ -11,7 +11,7 @@ to `main`, on standard `ubuntu-latest`, with Python 3.12, Node 24 and uv caching
 Local selection never reduces that hosted coverage. Explicit full local
 verification remains available as `scripts/check` or `scripts/check --full`.
 
-The Linux identity for the future Stable eligibility lookup (#217) is:
+The Linux identity enforced by Stable's eligibility lookup (#217) is:
 
 | Field | Required value |
 | --- | --- |
@@ -29,11 +29,29 @@ not qualify. Missing, pending, failed, cancelled, skipped, neutral or unverifiab
 results do not qualify. Lookup must account for pagination and reruns and fail
 closed on API outage/rate limits. No hosted Mac result is required.
 
-This document defines the contract; #217 implements its lookup and Stable gate.
-It does not change current Stable update behavior or branch protection. After
-separately authorized publication, inspect the exact published SHA's Actions
-run and job, including provenance, attempt and conclusion, before claiming
-hosted success. A local run is not a GitHub check.
+Stable previews eligibility and checks it again before stopping the service and
+before replacing code. The lookup uses the public GitHub API without credentials
+or a `gh` login. It validates workflow/repository provenance, paginates runs and
+jobs, selects the highest run number and its latest attempt, and refuses
+incomplete or inconsistent responses (including results beyond the API's
+1,000-result search limit). The `checks` job's explicit API name is
+`Linux full checks`; a same-named job outside that trusted workflow cannot qualify.
+Only canonical `github.com/dmclark/sayloom` upstream URLs qualify for updates;
+custom-source update support is deliberately narrowed, not silently trusted.
+Installed-version start/restart remains offline and independent of this gate.
+
+This gate replaces ordinary updates' candidate-wide full-suite/lint/syntax
+reruns, not the installation/configuration/schema, locked preparation, synthetic
+command, backup/rehearsal, recovery or health safeguards. Backup and rehearsal
+occur **after stopping Stable**. Changing CI metadata is separate from structural
+plan equality; upstream movement does not change the reviewed candidate SHA.
+See [copied-controller adoption](../README.md#adopt-the-new-copied-controller):
+an old installed copy retains its old checks for the first successful update.
+
+Branch protection is unchanged. After separately authorized publication, inspect
+the exact published SHA's Actions run and job, including provenance, attempt and
+conclusion, before claiming hosted success. A local run is not a GitHub check;
+source implementation and synthetic acceptance are not installed acceptance.
 
 ## Select local checks by responsibility
 
@@ -127,7 +145,7 @@ The trusted owner/agent reviews applicable application, Mac, browser and
 separately authorized real-service evidence before the existing explicit Stable
 update approval. Resolve missing required evidence before approval. A different
 candidate requires renewed review. No signed attestation, verification database
-or second approval stage is introduced. Automated #217 eligibility will cover
+or second approval stage is introduced. Automated #217 eligibility covers
 Linux CI only: unattended invocation or `--yes` neither proves local testing nor
 waives the operator's review responsibility.
 
@@ -160,7 +178,8 @@ clipboard behavior need their own authorized desktop checks.
 
 This policy implements the amended [#216](https://github.com/dmclark/sayloom/issues/216)
 contract and the [approved selection boundaries](https://ampcode.com/artifacts/test-selection-boundaries-1187d495-3825-4bbb-a32c-ccb9e302f092).
-The Stable lookup/controller adoption (#217), pre-push selector, hosted Mac CI,
-workflow dispatch and owner-service actions are not implemented here. Publication
-and installation require separate authorization; local success alone establishes
-neither hosted CI nor installed acceptance.
+The Stable gate and documented copied-controller adoption implement amended
+[#217](https://github.com/dmclark/sayloom/issues/217). The pre-push selector, hosted
+Mac CI, workflow dispatch and owner-service actions remain outside scope.
+Publication and installation require separate authorization; local success alone
+establishes neither hosted CI nor installed acceptance.

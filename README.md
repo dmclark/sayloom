@@ -496,8 +496,14 @@ stable="$HOME/.local/share/local-text/stable-runtime/stable"
 commit, and updates from a fresh GitHub `main` fetch. This fetch changes only Git
 objects and a dedicated reference, never the checkout. The explicit upstream
 defaults to `https://github.com/dmclark/sayloom.git`, independently of `origin`;
-`--upstream` at installation selects another source. Offline checks report
-availability as `unknown`. Ahead/divergent history is not treated as a safe update.
+`--upstream` at installation can still select another source for installation and
+status. **Updates now deliberately refuse noncanonical upstreams.** Only the
+canonical `github.com/dmclark/sayloom` HTTPS URLs (with or without `.git`),
+`git@github.com:dmclark/sayloom.git` and
+`ssh://git@github.com/dmclark/sayloom.git` qualify. This narrows the previous
+custom-source update contract; there is no CI bypass or alternate trust policy.
+Offline checks report availability as `unknown`. Ahead/divergent history is not
+treated as a safe update.
 
 `start` and `restart` use only the installed revision and environment. They never
 fetch, sync dependencies, migrate, initialize, or seed. LaunchAgent runs Stable
@@ -505,21 +511,60 @@ at login; failed startup is reported rather than retried indefinitely. A stopped
 or crashed service can be started explicitly after inspecting status/logs.
 
 `update` previews the exact candidate commit, changed files, migration identifiers,
-and requested seed action before confirmation. `--dry-run` does not prepare
-dependencies or rehearse migrations. After confirmation, update prepares a
-separate locked environment and runs candidate checks against synthetic state
-without provider credentials. It then revalidates the approved basis, stops
-Stable for a short maintenance window, and installs only the previewed commit.
-Network or preparation failure leaves the current service untouched.
+requested seed action and Linux CI eligibility/blockers before confirmation.
+`--dry-run` does not prepare dependencies or rehearse migrations; an ineligible
+candidate returns a nonzero status. The credential-free public GitHub API lookup
+requires the exact candidate's successful `main` push workflow
+`.github/workflows/ci.yml` and its `Linux full checks` job, including the latest
+run/attempt. Missing, pending, failed, cancelled, skipped, neutral, malformed,
+unverifiable or rate-limited results refuse the update. No `gh` login or hosted
+Mac check is needed.
+
+Before the existing update confirmation, the operator must review applicable
+candidate-bound local evidence under [the verification policy](docs/verification.md)
+for the **complete installed-to-candidate delta**, including selected Mac/browser
+and separately authorized real-service evidence. Resolve missing required evidence
+before approval. The controller verifies Linux CI only, not local evidence;
+`--yes` does not waive this responsibility or create a second approval stage.
+A different candidate requires renewed impact and evidence review.
+
+After confirmation, update prepares a separate locked environment and validates
+synthetic commands without provider credentials. It no longer reruns the
+candidate-wide pytest, Ruff or JavaScript syntax checks. It revalidates the
+installation/schema basis and Linux eligibility before stopping Stable, then
+rechecks CI before replacing code. CI metadata is not part of structural plan
+equality. The previewed SHA remains pinned even if upstream moves. Dependency or
+CI preparation failure leaves the running service untouched.
 
 Schema migration uses a verified SQLite backup and is rehearsed on a copy before
-touching the original. Existing data is retained by the migrations, subject to
+touching the original. **Stable is stopped before backup and rehearsal**; both
+occur within the maintenance window, not uninterrupted service. Pre-mutation
+failure attempts to recover the previous revision/service. Existing data is
+retained by the migrations, subject to
 review of the particular transformation; the script cannot prove a migration is
 non-destructive. Historical migration edits, unknown revisions, non-linear graphs,
 launcher protocol incompatibility, dirty tracked files, and untracked collisions
 are rejected. `--seed` explicitly requests deterministic seeding as part of the
 approved update; it is not a normal startup action. `--yes` accepts the displayed
 operation without an interactive prompt and should be used only after review.
+
+### Adopt the new copied controller
+
+The installed controller is a copy outside the checkout. Source changes alone
+do not change its behavior. A pre-#217 copy still runs the old candidate-wide
+checks, even when updating to code containing the Linux gate. A successful update
+copies the new controller for **subsequent** invocations; the already-loaded old
+controller completes that first update under the old rules.
+
+Synthetic old/new-controller rehearsal covers old-path failure retaining the
+old copy, a successful old-path update adopting the new copy, and subsequent
+new-path CI refusal/success. That first old-path update still needs operator
+review of exact-SHA hosted CI and applicable local evidence; the old controller
+does not enforce the new gate. Plan for one last old-controller full run. Do not
+overwrite an installed controller or reinstall over an existing installation as
+a shortcut. Any manual bootstrap requires separate review and authorization.
+This implementation does not publish the candidate or replace the owner's
+installed controller; hosted and installed acceptance remain separate.
 
 ### Recover without silently restoring older data
 

@@ -18,8 +18,10 @@ import tempfile
 import time
 import uuid
 from contextlib import contextmanager
+from http.client import HTTPException
 from pathlib import Path
 from urllib import error, request
+from urllib.parse import urlencode
 
 STABLE_PROTOCOL = 2
 PORT = 7532
@@ -132,7 +134,10 @@ def environment(installed: dict, source: Path, database: Path | None = None) -> 
         key: value
         for key, value in os.environ.items()
         if (not key.startswith(("LOCAL_TEXT_", "UV_", "PYTHON", "PYTEST_")) or key == "UV_OFFLINE")
-        and key not in {"GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"}
+        and key not in {
+            "GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY",
+            "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN",
+        }
     }
     values.update(configuration(Path(installed["configuration"])))
     values.update(
@@ -741,9 +746,167 @@ def activate(root: Path, installed: dict, record: dict) -> None:
     (root / "maintenance.json").unlink()
 
 
+def linux_ci(upstream: str, candidate: str) -> dict:
+    """Public, credential-free evidence only; never execute candidate code here."""
+    result = {"eligible": False, "candidate": candidate}
+    if upstream not in {
+        UPSTREAM,
+        "https://github.com/dmclark/sayloom",
+        "git@github.com:dmclark/sayloom.git",
+        "ssh://git@github.com/dmclark/sayloom.git",
+    }:
+        return {
+            **result,
+            "blocker": "updates require the canonical github.com/dmclark/sayloom upstream",
+        }
+    api = "https://api.github.com/repos/dmclark/sayloom"
+    repository = "https://github.com/dmclark/sayloom"
+
+    def require(condition: bool) -> None:
+        if not condition:
+            fail("Linux CI provenance or response could not be verified")
+
+    def get(path: str) -> dict:
+        url = api + path
+        with request.urlopen(
+            request.Request(
+                url,
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    "User-Agent": "sayloom-stable",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+            ),
+            timeout=20,
+        ) as response:
+            require(response.status == 200 and response.geturl() == url)
+            payload = response.read(4_000_001)
+            require(len(payload) <= 4_000_000)
+            length = response.headers.get("Content-Length")
+            require(length is None or int(length) == len(payload))
+            value = json.loads(payload)
+            require(isinstance(value, dict))
+            return value
+
+    def pages(path: str, key: str) -> list:
+        items = []
+        total = None
+        for page in range(1, 11):
+            separator = "&" if "?" in path else "?"
+            value = get(f"{path}{separator}per_page=100&page={page}")
+            count = value["total_count"]
+            require(type(count) is int and 0 <= count <= 1000)
+            require(total is None or total == count)
+            total = count
+            batch = value[key]
+            require(isinstance(batch, list) and len(batch) <= 100)
+            items.extend(batch)
+            if len(items) == total:
+                return items
+            require(bool(batch) and len(items) < total)
+        fail("Linux CI pagination could not be verified")
+
+    def provenance(run: dict, workflow: dict) -> None:
+        require(
+            run["head_sha"] == candidate
+            and run["head_branch"] == "main"
+            and run["event"] == "push"
+            and run["path"] == ".github/workflows/ci.yml"
+            and run["workflow_id"] == workflow["id"]
+            and run["workflow_url"] == workflow["url"]
+        )
+        for key in ("repository", "head_repository"):
+            repo = run[key]
+            require(
+                repo["full_name"] == "dmclark/sayloom"
+                and repo["html_url"] == repository
+                and repo["url"] == api
+                and repo["fork"] is False
+            )
+        require(
+            type(run["id"]) is int
+            and run["id"] > 0
+            and type(run["run_number"]) is int
+            and run["run_number"] > 0
+            and type(run["run_attempt"]) is int
+            and run["run_attempt"] > 0
+        )
+        require(
+            run["url"] == f"{api}/actions/runs/{run['id']}"
+            and run["html_url"] == f"{repository}/actions/runs/{run['id']}"
+        )
+
+    try:
+        workflow = get("/actions/workflows/ci.yml")
+        require(
+            type(workflow["id"]) is int
+            and workflow["id"] > 0
+            and workflow["path"] == ".github/workflows/ci.yml"
+            and workflow["url"] == f"{api}/actions/workflows/{workflow['id']}"
+            and workflow["html_url"] == f"{repository}/actions/workflows/ci.yml"
+            and workflow["state"] == "active"
+        )
+        query = urlencode({"head_sha": candidate, "branch": "main", "event": "push"})
+        path = f"/actions/workflows/{workflow['id']}/runs?{query}"
+
+        def latest() -> dict:
+            runs = pages(path, "workflow_runs")
+            require(len({run["id"] for run in runs}) == len(runs))
+            for run in runs:
+                provenance(run, workflow)
+            if not runs:
+                fail("no exact-commit main push Linux CI run exists")
+            return max(runs, key=lambda run: (run["run_number"], run["id"]))
+
+        run = latest()
+        # The list may lag a rerun; read the run itself before selecting its attempt.
+        current = get(f"/actions/runs/{run['id']}")
+        provenance(current, workflow)
+        require(current["run_attempt"] >= run["run_attempt"])
+        run = current
+        result.update(run_id=run["id"], attempt=run["run_attempt"], url=run["html_url"])
+        if run["status"] != "completed" or run["conclusion"] != "success":
+            fail("latest exact-commit Linux CI run/attempt is not completed successfully")
+        jobs = pages(f"/actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs", "jobs")
+        require(len({job["id"] for job in jobs}) == len(jobs))
+        required = [job for job in jobs if job["name"] == "Linux full checks"]
+        if len(required) != 1:
+            fail("required Linux full checks job is missing or ambiguous")
+        job = required[0]
+        require(
+            type(job["id"]) is int
+            and job["id"] > 0
+            and job["run_id"] == run["id"]
+            and job["head_sha"] == candidate
+            and type(job["run_attempt"]) is int
+            and job["run_attempt"] == run["run_attempt"]
+        )
+        if job["status"] != "completed" or job["conclusion"] != "success":
+            fail("required Linux full checks job is not completed successfully")
+        final = get(f"/actions/runs/{run['id']}")
+        newest = latest()
+        for observed in (final, newest):
+            provenance(observed, workflow)
+            require(
+                observed["id"] == run["id"]
+                and observed["run_attempt"] == run["run_attempt"]
+                and observed["status"] == "completed"
+                and observed["conclusion"] == "success"
+            )
+        return {**result, "eligible": True, "job": "Linux full checks"}
+    except RuntimeError as exc:
+        return {**result, "blocker": str(exc)}
+    except (OSError, error.URLError, HTTPException, ValueError, KeyError, TypeError):
+        return {
+            **result,
+            "blocker": "GitHub Linux CI API unavailable, rate-limited or unverifiable",
+        }
+
+
 def update(root: Path, installed: dict, arguments: argparse.Namespace) -> None:
     require_idle(root)
     require_checkout(installed)
+    print("[Stable update] Fetching published main candidate", file=sys.stderr, flush=True)
     fetched = availability(Path(installed["checkout"]), installed["upstream"], installed["commit"])
     if fetched["updates"] == "current":
         print(json.dumps({"updates": "current", "health": health(installed.get("port", PORT))}))
@@ -752,14 +915,28 @@ def update(root: Path, installed: dict, arguments: argparse.Namespace) -> None:
         fail(f"cannot update: upstream state is {fetched['updates']}")
     candidate = fetched["candidate"]
     plan = update_plan(installed, candidate, arguments.seed)
-    print(json.dumps(plan, indent=2), flush=True)
+    print("[Stable update] Looking up exact-commit Linux CI", file=sys.stderr, flush=True)
+    eligibility = linux_ci(installed["upstream"], candidate)
+    print(json.dumps({**plan, "linux_ci": eligibility, "local_verification": (
+        "Operator must review applicable candidate-bound local evidence for the complete "
+        "installed-to-candidate delta under docs/verification.md before approval. "
+        "This is not automatically verified; --yes does not waive review."
+    )}, indent=2), flush=True)
+    if not eligibility["eligible"]:
+        fail(eligibility["blocker"])
     if arguments.dry_run or not confirm("Prepare and install this exact commit?", arguments.yes):
         return
+    started = time.monotonic()
+
+    def phase(name: str) -> None:
+        print(f"[Stable update +{time.monotonic() - started:.1f}s] {name}", flush=True)
+
     checkout = Path(installed["checkout"])
     record = {"previous": installed, "candidate": None, "backup": None, "data_mutated": False}
     with candidate_source(root, checkout, candidate) as source:
+        phase("Linux CI verified; preparing locked candidate environment")
         prepared = prepare_environment(root, {**installed, "commit": candidate}, source)
-        # Candidate tests receive synthetic state and no provider credentials.
+        phase("Validating synthetic commands")
         synthetic_configuration = source.parent / "test-configuration.json"
         write_json(synthetic_configuration, {})
         synthetic = {
@@ -768,26 +945,20 @@ def update(root: Path, installed: dict, arguments: argparse.Namespace) -> None:
             "database": str(source.parent / "test-database.sqlite3"),
         }
         raycast_commands(synthetic, source)
-        for command in (("ruff", "check", "."), ("pytest", "-q")):
-            run(
-                prepared["python"],
-                "-c",
-                "import os,signal,sys; signal.signal(signal.SIGINT, signal.SIG_DFL); "
-                "os.execv(sys.executable, [sys.executable, '-m', *sys.argv[1:]])",
-                *command,
-                cwd=source,
-                env=environment(synthetic, source),
-                timeout=600,
-            )
-        run("node", "--check", str(source / "src/local_text/static/app.js"))
         # No automatic post-preparation fetch: the reviewed commit remains pinned.
         if update_plan(installed, candidate, arguments.seed) != plan:
             fail("installation/schema changed since preview; review a fresh update")
+        phase("Rechecking Linux CI before stopping Stable")
+        eligibility = linux_ci(installed["upstream"], candidate)
+        if not eligibility["eligible"]:
+            fail(eligibility["blocker"])
         record["candidate"] = prepared
         progress(root, record, "stopping")
         try:
+            phase("Stopping Stable; backup and rehearsal follow during maintenance")
             stop_service(root, installed)
             if plan["migrations"] or arguments.seed:
+                phase("Backing up and rehearsing on a copy")
                 progress(root, record, "backing_up")
                 backup = backup_database(root, Path(installed["database"]))
                 record["backup"] = str(backup)
@@ -804,7 +975,12 @@ def update(root: Path, installed: dict, arguments: argparse.Namespace) -> None:
                 validate_application(prepared, source)
             require_checkout(installed)
             require_no_collisions(checkout, candidate)
+            phase("Rechecking Linux CI before replacing code")
+            eligibility = linux_ci(installed["upstream"], candidate)
+            if not eligibility["eligible"]:
+                fail(eligibility["blocker"])
             progress(root, record, "replacing_code")
+            phase("Replacing code and applying approved migrations/seeds")
             git(checkout, "-c", "core.hooksPath=/dev/null", "merge", "--ff-only", candidate)
             if plan["migrations"] or arguments.seed:
                 record["data_mutated"] = True
@@ -813,6 +989,7 @@ def update(root: Path, installed: dict, arguments: argparse.Namespace) -> None:
                     admin(prepared, checkout, "migrate")
                 if arguments.seed:
                     admin(prepared, checkout, "seed")
+            phase("Validating candidate application and activating with health checks")
             validate_application(prepared, checkout)
             activate(root, prepared, record)
             write_json(root / "last-update.json", record)
@@ -821,8 +998,10 @@ def update(root: Path, installed: dict, arguments: argparse.Namespace) -> None:
             shutil.copyfile(checkout / "scripts/stable.py", temporary)
             temporary.chmod(0o700)
             temporary.replace(root / "stable.py")
+            phase("Update succeeded; Linux CI verified, local evidence remains operator-reviewed")
             print(f"Stable is healthy at {candidate}; previous environment and backups retained.")
         except BaseException:
+            phase("Update failed; attempting pre-mutation recovery when safe")
             progress(root, record, "failed")
             try:
                 stop_service(root, installed)
@@ -1066,8 +1245,11 @@ def main() -> None:
             and arguments.command not in {"status", "serve"}
         ):
             diagnostic = root / "operation-error.log"
-            diagnostic.write_text((exc.stdout or "") + (exc.stderr or ""))
-            diagnostic.chmod(0o600)
+            with open(diagnostic, "w", opener=lambda name, flags: os.open(
+                name, flags | os.O_NOFOLLOW, 0o600
+            )) as output:
+                os.fchmod(output.fileno(), 0o600)
+                output.write((exc.stdout or "") + (exc.stderr or ""))
             message = f"{Path(exc.cmd[0]).name} failed; inspect {diagnostic}"
         print(f"error: Stable operation failed: {message}", file=sys.stderr)
         raise SystemExit(1) from exc

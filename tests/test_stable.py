@@ -9,14 +9,139 @@ import socket
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib import request
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 SCRIPT = REPOSITORY / "scripts/stable.py"
+CANONICAL = "https://github.com/dmclark/sayloom.git"
+
+
+def controller_command(script: Path = SCRIPT) -> list[str]:
+    # Test-side HTTP transport only: production has no endpoint override or CI bypass.
+    return [sys.executable, "-c", """
+import os, runpy, sys
+from urllib import request
+original = request.urlopen
+def fixture_open(req, *args, **kwargs):
+    url = req.full_url if isinstance(req, request.Request) else req
+    prefix = 'https://api.github.com/repos/dmclark/sayloom'
+    if url.startswith(prefix):
+        forwarded = request.Request(os.environ['SAYLOOM_FIXTURE_API'] + url[len(prefix):],
+                                    headers=dict(req.header_items()))
+        response = original(forwarded, *args, **kwargs)
+        response.url = url
+        return response
+    return original(req, *args, **kwargs)
+request.urlopen = fixture_open
+sys.argv = sys.argv[1:]
+runpy.run_path(sys.argv[0], run_name='__main__')
+""", str(script)]
+
+
+@pytest.fixture(autouse=True)
+def github_api(monkeypatch):
+    api = "https://api.github.com/repos/dmclark/sayloom"
+    web = "https://github.com/dmclark/sayloom"
+    state = {"workflow_reads": 0, "requests": [], "sha": "", "run": {}, "job": {}}
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            state["requests"].append(self.path)
+            assert "Authorization" not in self.headers
+            parsed = urlsplit(self.path)
+            query = parse_qs(parsed.query)
+            path = parsed.path
+            if path == "/actions/workflows/ci.yml":
+                state["workflow_reads"] += 1
+            status = state.get("http_status", 200)
+            if state.get("lose_at") == state["workflow_reads"]:
+                status = 503
+            repo = {"full_name": "dmclark/sayloom", "html_url": web, "url": api, "fork": False}
+            run = {
+                "id": 20, "run_number": 2, "run_attempt": 1,
+                "url": api + "/actions/runs/20", "html_url": web + "/actions/runs/20",
+                "head_sha": state["sha"], "head_branch": "main", "event": "push",
+                "path": ".github/workflows/ci.yml", "workflow_id": 7,
+                "workflow_url": api + "/actions/workflows/7",
+                "repository": repo, "head_repository": repo,
+                "updated_at": str(len(state["requests"])),  # Not structural plan identity.
+                "status": "completed", "conclusion": "success", **state["run"],
+            }
+            if path.endswith("/runs"):
+                state["sha"] = query["head_sha"][0]
+                run["head_sha"] = state["run"].get("head_sha", state["sha"])
+                runs = [] if state.get("missing_run") else [run]
+                if state.get("pagination"):
+                    runs.insert(0, {**run, "id": 10, "run_number": 1,
+                                    "url": api + "/actions/runs/10",
+                                    "html_url": web + "/actions/runs/10"})
+                if state.get("newer_failed"):
+                    runs.append({**run, "id": 30, "run_number": 3, "conclusion": "failure",
+                                 "url": api + "/actions/runs/30",
+                                 "html_url": web + "/actions/runs/30"})
+                value = {"total_count": len(runs), "workflow_runs": runs}
+                if state.get("pagination"):
+                    page = int(query["page"][0])
+                    value["workflow_runs"] = runs[page - 1:page]
+                    if page > 1 and state.get("empty_page"):
+                        value["workflow_runs"] = []
+                if state.get("incomplete_page"):
+                    value["total_count"] += 1
+            elif path.endswith("/jobs"):
+                jobs = [{"id": 100, "run_id": 20, "head_sha": state["sha"],
+                         "run_attempt": run["run_attempt"], "name": "Linux full checks",
+                         "status": "completed", "conclusion": "success", **state["job"]}]
+                if state.get("missing_job"):
+                    jobs = []
+                if state.get("ambiguous_job"):
+                    jobs.append({**jobs[0], "id": 101})
+                if state.get("pagination"):
+                    jobs.insert(0, {**jobs[0], "id": 99, "name": "unrelated job"})
+                value = {"total_count": len(jobs), "jobs": jobs}
+                if state.get("pagination"):
+                    page = int(query["page"][0])
+                    value["jobs"] = jobs[page - 1:page]
+            elif path == "/actions/workflows/ci.yml":
+                value = {"id": 7, "path": ".github/workflows/ci.yml", "state": "active",
+                         "url": api + "/actions/workflows/7",
+                         "html_url": web + "/actions/workflows/ci.yml",
+                         **state.get("workflow", {})}
+            else:
+                value = run
+                if state.get("newer_failed"):
+                    value = {**run, "id": 30, "run_number": 3, "conclusion": "failure",
+                             "url": api + "/actions/runs/30",
+                             "html_url": web + "/actions/runs/30"}
+                if state.get("rerun_pending"):
+                    value = {**value, "run_attempt": 2, "status": "queued", "conclusion": None}
+            payload = b"invalid-json" if state.get("invalid_json") else json.dumps(value).encode()
+            self.send_response(status)
+            if state.get("truncated"):
+                self.send_header("Content-Length", str(len(payload) + 50))
+                self.close_connection = True
+            self.end_headers()
+            self.wfile.write(payload)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.02})
+    thread.start()
+    monkeypatch.setenv("SAYLOOM_FIXTURE_API", f"http://127.0.0.1:{server.server_port}")
+    try:
+        yield state
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
 
 
 @pytest.fixture(scope="session")
@@ -125,6 +250,7 @@ def repository_pair(tmp_path: Path) -> tuple[Path, Path]:
     subprocess.run(["git", "clone", str(upstream), str(checkout)], check=True, capture_output=True)
     git(checkout, "config", "user.email", "synthetic@example.invalid")
     git(checkout, "config", "user.name", "Synthetic test")
+    git(checkout, "config", f"url.{upstream}.insteadOf", CANONICAL)
     return upstream, checkout
 
 
@@ -140,14 +266,13 @@ def stable(
         arguments = (*arguments, "--port", (tmp_path / "port").read_text())
     return subprocess.run(
         [
-            sys.executable,
-            str(SCRIPT),
+            *controller_command(),
             "--root",
             str(tmp_path / "stable"),
             "--checkout",
             str(checkout),
             "--upstream",
-            str(upstream),
+            CANONICAL if "install" in arguments else str(upstream),
             *arguments,
         ],
         env={**os.environ, "HOME": str(tmp_path / "home"), **(environment or {})},
@@ -576,22 +701,43 @@ def test_restart_and_confirmed_update_pin_the_previewed_commit(
     tmp_path,
     service_environment,
     monkeypatch,
+    github_api,
 ):
     upstream, checkout = application_pair(tmp_path)
     prepared = install(tmp_path, checkout, upstream, "--initialize", "--yes")
     assert prepared.returncode == 0, prepared.stderr
     before = (tmp_path / "data.sqlite3").read_bytes()
+    github_api["http_status"] = 503
     for operation in ("start", "start", "restart"):
         result = stable(tmp_path, checkout, upstream, operation, environment=service_environment)
         assert result.returncode == 0, result.stderr
     assert (tmp_path / "data.sqlite3").read_bytes() == before
+    assert github_api["requests"] == []  # Installed start/restart require no GitHub access.
+    github_api.pop("http_status")
+    github_api["pagination"] = True
+    github_api["run"] = {"run_attempt": 2}
+    token_keys = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
+    for key in token_keys:
+        monkeypatch.setenv(key, "synthetic-token-must-not-reach-candidate")
+    with (upstream / "src/local_text/database.py").open("a") as output:
+        output.write(f"\nassert not set({token_keys!r}) & __import__('os').environ.keys()\n")
+    # Controlled CI evidence replaces these candidate-wide reruns, not operator review.
+    (upstream / "tests/test_smoke.py").write_text(
+        "import os\n\ndef test_candidate():\n    assert False\n"
+    )
+    (upstream / "src/local_text/static/app.js").write_text("{ invalid JavaScript\n")
     (upstream / "tracked").write_text("reviewed release\n")
     git(upstream, "commit", "-am", "Reviewed release")
     reviewed = git(upstream, "rev-parse", "HEAD")
     # A caller's test paths must not govern the nested candidate verification.
     monkeypatch.setenv("PYTEST_ADDOPTS", f"--basetemp={tmp_path}")
     process = subprocess.Popen(
-        [sys.executable, str(SCRIPT), "--root", str(tmp_path / "stable"), "update"],
+        [
+            *controller_command(tmp_path / "stable/stable.py"),
+            "--root",
+            str(tmp_path / "stable"),
+            "update",
+        ],
         env={**os.environ, "HOME": str(tmp_path / "home"), **service_environment},
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
@@ -618,6 +764,164 @@ def test_restart_and_confirmed_update_pin_the_previewed_commit(
     assert (tmp_path / "data.sqlite3").read_bytes() == before
     status = stable(tmp_path, checkout, upstream, "status", environment=service_environment)
     assert json.loads(status.stdout)["updates"] == "behind"
+    assert json.loads(status.stdout)["health"]["ready"] is True
+    assert any("page=2" in path and "/runs?" in path for path in github_api["requests"])
+    assert any("/attempts/2/jobs" in path and "page=2" in path for path in github_api["requests"])
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        {"run": {"head_sha": "0" * 40}},
+        {"run": {"repository": {"full_name": "other/sayloom"}}},
+        {"run": {"head_repository": {"full_name": "fork/sayloom"}}},
+        {"run": {"path": ".github/workflows/other.yml"}},
+        {"run": {"workflow_id": 99}},
+        {"run": {"head_branch": "feature"}},
+        {"run": {"event": "pull_request"}},
+        {"workflow": {"path": ".github/workflows/other.yml"}},
+        {"missing_job": True},
+        {"missing_run": True},
+        {"rerun_pending": True},
+        {"newer_failed": True, "pagination": True},
+        {"job": {"run_attempt": 99}},
+        {"job": {"head_sha": "0" * 40}},
+        {"job": {"run_id": 99}},
+        {"ambiguous_job": True},
+        {"http_status": 503},
+        {"http_status": 403},
+        {"http_status": 429},
+        {"invalid_json": True},
+        {"truncated": True},
+        {"incomplete_page": True},
+        {"pagination": True, "empty_page": True},
+        {"lose_at": 2},
+        {"preparation_failure": True},
+    ],
+)
+def test_ci_refusal_preserves_running_installation(
+    tmp_path, service_environment, github_api, response
+):
+    upstream, checkout = application_pair(tmp_path)
+    prepared = install(tmp_path, checkout, upstream, "--initialize", "--yes")
+    assert prepared.returncode == 0, prepared.stderr
+    started = stable(tmp_path, checkout, upstream, "start", environment=service_environment)
+    assert started.returncode == 0, started.stderr
+    root = tmp_path / "stable"
+    paths = [
+        tmp_path / "data.sqlite3",
+        root / "installation.json",
+        root / "stable.py",
+        *tmp_path.glob("synthetic-service-*.json"),
+    ]
+    before = {path: path.read_bytes() for path in paths}
+    old = git(checkout, "rev-parse", "HEAD")
+    (upstream / "tracked").write_text("unapproved candidate\n")
+    if response.get("preparation_failure"):
+        (upstream / "uv.lock").write_text("synthetic-private-lock-error\n")
+    git(upstream, "commit", "-am", "Synthetic candidate")
+    github_api.update(response)
+    refused = stable(
+        tmp_path, checkout, upstream, "update", "--yes", environment=service_environment
+    )
+    assert refused.returncode != 0, refused.stdout
+    assert (
+        '"eligible": false' in refused.stdout
+        or "Rechecking Linux CI" in refused.stdout
+        or response.get("preparation_failure")
+    )
+    assert "error: Stable operation failed:" in refused.stderr
+    assert "synthetic-private-lock-error" not in refused.stdout + refused.stderr
+    if response.get("preparation_failure"):
+        assert (root / "operation-error.log").stat().st_mode & 0o777 == 0o600
+    assert git(checkout, "rev-parse", "HEAD") == old
+    assert {path: path.read_bytes() for path in paths} == before
+    assert not (root / "maintenance.json").exists()
+    assert not (root / "backups").exists()
+    status = stable(tmp_path, checkout, upstream, "status", environment=service_environment)
+    assert json.loads(status.stdout)["health"]["ready"] is True
+
+
+@pytest.mark.parametrize("part", ["run", "job"])
+@pytest.mark.parametrize(
+    "status,conclusion",
+    [
+        ("queued", None),
+        ("in_progress", None),
+        ("completed", "failure"),
+        ("completed", "cancelled"),
+        ("completed", "skipped"),
+        ("completed", "neutral"),
+        ("completed", "timed_out"),
+        ("completed", None),
+    ],
+)
+def test_preview_refuses_non_success_ci(tmp_path, github_api, part, status, conclusion):
+    upstream, checkout = application_pair(tmp_path)
+    prepared = install(tmp_path, checkout, upstream, "--initialize", "--yes")
+    assert prepared.returncode == 0, prepared.stderr
+    (upstream / "tracked").write_text("candidate\n")
+    git(upstream, "commit", "-am", "Synthetic candidate")
+    github_api[part] = {"status": status, "conclusion": conclusion}
+    refused = stable(tmp_path, checkout, upstream, "update", "--dry-run")
+    assert refused.returncode != 0
+    preview = json.loads(refused.stdout)
+    assert preview["candidate"] == git(upstream, "rev-parse", "HEAD")
+    assert preview["changed_files"] == "tracked"
+    assert preview["migrations"] == []
+    assert preview["linux_ci"]["eligible"] is False
+    assert "not automatically verified" in preview["local_verification"]
+
+
+def test_noncanonical_upstream_update_refuses_but_installed_restart_works(
+    tmp_path,
+    service_environment,
+    github_api,
+):
+    upstream, checkout = application_pair(tmp_path)
+    prepared = install(tmp_path, checkout, upstream, "--initialize", "--yes")
+    assert prepared.returncode == 0, prepared.stderr
+    manifest = tmp_path / "stable/installation.json"
+    installed = json.loads(manifest.read_text())
+    installed["upstream"] = str(upstream)
+    manifest.write_text(json.dumps(installed))
+    old = git(checkout, "rev-parse", "HEAD")
+    (upstream / "tracked").write_text("custom source\n")
+    git(upstream, "commit", "-am", "Custom candidate")
+    refused = stable(
+        tmp_path, checkout, upstream, "update", "--yes", environment=service_environment
+    )
+    assert refused.returncode != 0
+    assert "canonical github.com/dmclark/sayloom upstream" in refused.stderr
+    restarted = stable(tmp_path, checkout, upstream, "restart", environment=service_environment)
+    assert restarted.returncode == 0, restarted.stderr
+    assert github_api["requests"] == []
+    assert git(checkout, "rev-parse", "HEAD") == old
+
+
+def test_lost_ci_after_stop_recovers_before_code_or_data_mutation(
+    tmp_path,
+    service_environment,
+    github_api,
+):
+    upstream, checkout = application_pair(tmp_path)
+    prepared = install(tmp_path, checkout, upstream, "--initialize", "--yes")
+    assert prepared.returncode == 0, prepared.stderr
+    started = stable(tmp_path, checkout, upstream, "start", environment=service_environment)
+    assert started.returncode == 0, started.stderr
+    old = git(checkout, "rev-parse", "HEAD")
+    before = (tmp_path / "data.sqlite3").read_bytes()
+    add_schema_release(upstream)
+    github_api["lose_at"] = 3
+    refused = stable(
+        tmp_path, checkout, upstream, "update", "--yes", environment=service_environment
+    )
+    assert refused.returncode != 0
+    assert "Previous Stable recovered; no database mutation occurred" in refused.stdout
+    assert git(checkout, "rev-parse", "HEAD") == old
+    assert (tmp_path / "data.sqlite3").read_bytes() == before
+    assert not (tmp_path / "stable/maintenance.json").exists()
+    status = stable(tmp_path, checkout, upstream, "status", environment=service_environment)
     assert json.loads(status.stdout)["health"]["ready"] is True
 
 
