@@ -38,7 +38,9 @@ incomplete or inconsistent responses (including results beyond the API's
 `Linux full checks`; a same-named job outside that trusted workflow cannot qualify.
 Only canonical `github.com/dmclark/sayloom` upstream URLs qualify for updates;
 custom-source update support is deliberately narrowed, not silently trusted.
-Installed-version start/restart remains offline and independent of this gate.
+Compatibility start/restart and primary stop/uninstall remain offline and
+independent of this gate. Default `stable` launch checks published main and
+performs the approved install/update/preparation path when needed.
 
 This gate replaces ordinary updates' candidate-wide full-suite/lint/syntax
 reruns, not the installation/configuration/schema, locked preparation, synthetic
@@ -46,7 +48,10 @@ command, backup/rehearsal, recovery or health safeguards. Backup and rehearsal
 occur **after stopping Stable**. Changing CI metadata is separate from structural
 plan equality; upstream movement does not change the reviewed candidate SHA.
 See [copied-controller adoption](../README.md#adopt-the-new-copied-controller):
-an old installed copy retains its old checks for the first successful update.
+protocol-1 adoption uses independently obtained, reviewed pinned source and
+the new controller's checks, not an old controller's cross-protocol update.
+Review the bootstrap file digest and full published pin before recommending a
+live command. Synthetic adoption evidence is not owner-installed acceptance.
 
 Branch protection is unchanged. After separately authorized publication, inspect
 the exact published SHA's Actions run and job, including provenance, attempt and
@@ -73,7 +78,7 @@ the `src/local_text/` rows share that prefix; script paths are written in full.
 | `src/local_text/cleanup.py`, `prompts.py`, `personal_corrections.py` | Application; accompanying startup/configuration/schema changes select both. |
 | `src/local_text/static/*`, `tests/browser/*` | Application plus affected browser checks. |
 | `raycast/*`, `launchd/*`, `scripts/raycast_aliases.py`, `scripts/install-raycast.py`, `scripts/render-launchd-plist.py` | Mac integration, including target-generation and synthetic Raycast server-response coverage. |
-| `scripts/dev.py`, `scripts/stable.py`, `scripts/development_state.py`, `scripts/run-development.py`, runtime/lifecycle shell wrappers | Both: service management shares configuration, startup, migration and environment contracts. |
+| `scripts/dev.py`, `scripts/stable.py`, `scripts/stable-bootstrap.py`, `scripts/development_state.py`, `scripts/run-development.py`, runtime/lifecycle shell wrappers | Both: service management shares configuration, startup, migration and environment contracts. |
 | `src/local_text/app.py`, `config.py`, `database.py`, `models.py`, `state.py`, `admin.py`, `legacy_import.py`, `prompt_store.py`, `target_store.py`, `targets.py`, `target_adapter.py` | Both: startup, schema, seeding, health/outgoing-state APIs and generated-command contracts. An API-only edit in `app.py` is not automatically application-only. |
 | `migrations/*`, `alembic.ini`, `pyproject.toml`, `uv.lock`, `src/local_text/__init__.py` | Both: schema, dependencies and independent installation. |
 | `scripts/check`, shared test fixtures, `.github/workflows/*`, executable environment setup, future selector/hook implementation | Both: verification must cover its consumers. |

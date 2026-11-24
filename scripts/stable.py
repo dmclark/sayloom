@@ -27,6 +27,7 @@ STABLE_PROTOCOL = 2
 PORT = 7532
 UPSTREAM = "https://github.com/dmclark/sayloom.git"
 DEFAULT_ROOT = Path.home() / ".local/share/local-text/stable-runtime"
+DEFAULT_CHECKOUT = Path.home() / ".local/share/local-text/stable-checkout"
 DEFAULT_DATABASE = Path.home() / ".local/share/local-text/stable/local-text.sqlite3"
 DEFAULT_CONFIGURATION = Path.home() / ".config/local-text/stable/environment.json"
 CONFIGURATION_KEYS = {
@@ -72,12 +73,24 @@ def read_json(path: Path) -> dict:
 
 
 def write_json(path: Path, value: dict) -> None:
+    write_private(path, json.dumps(value, indent=2))
+
+
+def write_private(path: Path, contents: str, mode: int = 0o600) -> None:
     temporary = path.with_suffix(".tmp")
-    with open(temporary, "w", opener=lambda name, flags: os.open(name, flags, 0o600)) as output:
-        json.dump(value, output, indent=2)
+    with open(
+        temporary, "w", opener=lambda name, flags: os.open(name, flags | os.O_NOFOLLOW, mode)
+    ) as output:
+        os.fchmod(output.fileno(), mode)
+        output.write(contents)
         output.flush()
         os.fsync(output.fileno())
     temporary.replace(path)
+    descriptor = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 @contextmanager
@@ -155,7 +168,7 @@ def load_installation(root: Path) -> dict:
     if not (root / "installation.json").is_file():
         fail("Stable is not installed; use install to review defaults or select external paths")
     installed = read_json(root / "installation.json")
-    if installed["protocol"] not in {1, STABLE_PROTOCOL}:
+    if type(installed["protocol"]) is not int or installed["protocol"] not in {1, STABLE_PROTOCOL}:
         fail("unsupported Stable installation protocol")
     return installed
 
@@ -243,7 +256,10 @@ def prepare_environment(root: Path, installed: dict, source: Path) -> dict:
         env=values,
         timeout=300,
     )
-    return {**installed, "python": str(destination / "bin/python")}
+    prepared = {**installed, "python": str(destination / "bin/python")}
+    if "service_arguments" in prepared:
+        prepared["service_arguments"] = [prepared["python"], *installed["service_arguments"][1:]]
+    return prepared
 
 
 def service_target(installed: dict) -> str:
@@ -315,12 +331,15 @@ def stop_service(root: Path, installed: dict) -> None:
     fail("Stable service did not finish unloading; no replacement was started")
 
 
-def write_plist(root: Path, installed: dict) -> Path:
+def write_plist(root: Path, installed: dict, previous: dict | None = None) -> Path:
     plist = Path(installed["plist"])
     plist.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     if plist.exists():
         existing = plistlib.loads(plist.read_bytes())
-        if existing.get("ProgramArguments") != installed["service_arguments"]:
+        if existing.get("ProgramArguments") not in (
+            installed["service_arguments"],
+            (previous or installed)["service_arguments"],
+        ):
             fail("refusing to replace an unmanaged LaunchAgent")
     content = {
         "Label": installed["label"],
@@ -450,6 +469,22 @@ def require_command_destinations(directory: Path, commands: dict) -> None:
             fail("refusing to replace an existing Raycast entry; review the command collision")
 
 
+def command_entry(root: Path, installed: dict) -> str:
+    # The administrative controller must survive a damaged application environment.
+    return (
+        "#!/bin/sh\nexec "
+        + shlex.join(
+            [
+                installed.get("controller_python", installed["python"]),
+                str(root / "stable.py"),
+                "--root",
+                str(root),
+            ]
+        )
+        + ' "$@"\n'
+    )
+
+
 def install(root: Path, arguments: argparse.Namespace) -> None:
     require_idle(root)
     if (root / "installation.json").exists():
@@ -510,13 +545,14 @@ def install(root: Path, arguments: argparse.Namespace) -> None:
         fail("database is missing; explicit install --initialize is required")
     if arguments.initialize and database.exists():
         fail("--initialize is only for a new database; existing data requires explicit review")
-    commit = git(checkout, "rev-parse", "HEAD")
+    commit = getattr(arguments, "pinned_commit", None) or git(checkout, "rev-parse", "HEAD")
     port = arguments.port if arguments.port is not None else PORT
     if not 1024 <= port <= 65535 or port == 7523:
         fail("Stable port must be between 1024 and 65535 and not development port 7523")
     label = "local.local-text.stable." + hashlib.sha256(str(root).encode()).hexdigest()[:12]
     installed = {
         "protocol": STABLE_PROTOCOL,
+        "controller_python": str(Path(sys.executable).resolve()),
         "commit": commit,
         "port": port,
         "checkout": str(checkout),
@@ -540,7 +576,8 @@ def install(root: Path, arguments: argparse.Namespace) -> None:
             "Stable installation requires port-aware source with launcher protocol "
             f"{STABLE_PROTOCOL}"
         )
-    require_free_port(port)
+    if not getattr(arguments, "preparing_replacement", False):
+        require_free_port(port)
     if not confirm("Prepare Stable installation (does not start it)?", arguments.yes):
         return
     if not config.exists():
@@ -549,7 +586,9 @@ def install(root: Path, arguments: argparse.Namespace) -> None:
         with open(config, "x", opener=lambda name, flags: os.open(name, flags, 0o600)) as output:
             output.write("{}\n")
         print("Created empty provider configuration; external cleanup is not enabled.")
+    require_checkout(installed)
     installed = prepare_environment(root, installed, checkout)
+    require_checkout(installed)
     installed["service_arguments"] = [
         installed["python"],
         str(root / "stable.py"),
@@ -562,12 +601,11 @@ def install(root: Path, arguments: argparse.Namespace) -> None:
     require_command_destinations(command_directory, commands)
     if not arguments.initialize:
         validate_application(installed, checkout)
-    shutil.copyfile(Path(__file__), root / "stable.py")
+    require_checkout(installed)
+    shutil.copyfile(checkout / "scripts/stable.py", root / "stable.py")
     os.chmod(root / "stable.py", 0o700)
     entry = root / "stable"
-    entry.write_text(
-        "#!/bin/sh\nexec " + shlex.join(installed["service_arguments"][:-1]) + ' "$@"\n'
-    )
+    entry.write_text(command_entry(root, installed))
     entry.chmod(0o700)
     write_plist(root, installed)
     command_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -575,6 +613,7 @@ def install(root: Path, arguments: argparse.Namespace) -> None:
         destination = command_directory / name
         destination.write_text(contents)
         destination.chmod(0o700)
+    installed["commands"] = commands
     write_json(root / "installation.json", installed)
     if arguments.initialize:
         write_json(
@@ -639,10 +678,11 @@ def require_no_collisions(checkout: Path, target: str) -> None:
             fail("candidate collides with untracked files; refusing to overwrite them")
 
 
-def update_plan(installed: dict, candidate: str, seed: bool) -> dict:
+def update_plan(installed: dict, candidate: str, seed: bool, *, rebuilding: bool = False) -> dict:
     checkout = Path(installed["checkout"])
-    require_checkout(installed)
-    require_no_collisions(checkout, candidate)
+    if not rebuilding:
+        require_checkout(installed)
+        require_no_collisions(checkout, candidate)
     controller = git(checkout, "show", f"{candidate}:scripts/stable.py")
     if assignment(controller, "STABLE_PROTOCOL") != STABLE_PROTOCOL:
         fail("candidate launcher protocol requires a separately reviewed installation")
@@ -733,16 +773,126 @@ def backup_database(root: Path, database: Path) -> Path:
     return destination
 
 
+def backup_installation(
+    root: Path, installed: dict, record: dict, source_checkout: Path | None = None
+) -> None:
+    destination = root / "backups" / f"{time.time_ns()}-installation"
+    destination.mkdir(mode=0o700, parents=True)
+    record["preservation"] = str(destination)
+    progress(root, record, "backing_up")
+    record["backup"] = str(backup_database(root, Path(installed["database"])))
+    checkout = source_checkout or Path(installed["checkout"])
+    archive = destination / "source.tar"
+    git(checkout, "archive", "--format=tar", f"--output={archive}", installed["commit"])
+    archive.chmod(0o600)
+    # A tar is obtainable source even if the checkout or remote later disappears.
+    with tarfile.open(archive) as source:
+        if not source.getmember("scripts/stable.py").isfile():
+            fail("backup does not contain the installed controller source")
+    bundle = destination / "source.bundle"
+    git(checkout, "bundle", "create", str(bundle), "--all")
+    bundle.chmod(0o600)
+    git(checkout, "bundle", "verify", str(bundle))
+    files = {
+        "installation.json": root / "installation.json",
+        "controller.py": root / "stable.py",
+        "stable": root / "stable",
+        "launch.plist": Path(installed["plist"]),
+        "configuration": Path(installed["configuration"]),
+    }
+    for name, path in files.items():
+        if path.is_symlink():
+            fail(f"cannot preserve symlinked installation artifact: {name}")
+        if path.is_file():
+            shutil.copyfile(path, destination / name)
+            (destination / name).chmod(0o600)
+    runtime = Path(installed["python"]).parent.parent
+    if runtime.is_dir() and (runtime / "pyvenv.cfg").is_file():
+        shutil.copytree(runtime, destination / "environment", symlinks=True)
+        (destination / "environment").chmod(0o700)
+        run(
+            str(destination / "environment/bin/python"), "-c", "import alembic, fastapi, sqlalchemy"
+        )
+    try:
+        original_head = git(Path(installed["checkout"]), "rev-parse", "HEAD")
+    except subprocess.SubprocessError:
+        original_head = None
+    metadata = {
+        "installation": installed,
+        "schema": database_revision(Path(record["backup"])),
+        "database_backup": record["backup"],
+        "checkout_commit": original_head,
+        "source_commit": installed["commit"],
+        "retained_environment": installed["python"],
+        "sha256": {
+            str(path.relative_to(destination)): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in destination.rglob("*")
+            if path.is_file() and not path.is_symlink()
+        },
+    }
+    write_json(destination / "recovery.json", metadata)
+    verify_preservation(destination)
+    print(f"Private recovery material retained: {destination}; database: {record['backup']}")
+
+
+def verify_preservation(destination: Path) -> dict:
+    metadata = read_json(destination / "recovery.json")
+    for name, expected in metadata["sha256"].items():
+        if hashlib.sha256((destination / name).read_bytes()).hexdigest() != expected:
+            fail("retained installation backup failed integrity verification")
+    return metadata
+
+
+@contextmanager
+def preparing(root: Path, record: dict):
+    progress(root, record, "preparing")
+    try:
+        yield
+    except BaseException:
+        if (root / "maintenance.json").exists() and read_json(root / "maintenance.json").get(
+            "phase"
+        ) == "preparing":
+            # Ordinary preparation failure leaves the old runtime untouched. A killed
+            # controller leaves this durable marker for explicit recovery instead.
+            (root / "maintenance.json").unlink()
+        raise
+
+
 def progress(root: Path, record: dict, phase: str) -> None:
     record["phase"] = phase
     write_json(root / "maintenance.json", record)
 
 
-def activate(root: Path, installed: dict, record: dict) -> None:
+def activate(root: Path, installed: dict, record: dict, controller: Path | None = None) -> None:
     record["launch_commit"] = installed["commit"]
     progress(root, record, "activating")
+    previous = load_installation(root)
+    commands = raycast_commands(installed, Path(installed["checkout"]))
+    directory = Path(installed["raycast_directory"])
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    for name, contents in commands.items():
+        path = directory / name
+        if path.exists() and (
+            path.is_symlink()
+            or path.read_text() not in (contents, previous.get("commands", {}).get(name))
+        ):
+            fail("changed/unowned command collision; repair cannot overwrite owner files")
+    for name, contents in commands.items():
+        path = directory / name
+        path.write_text(contents)
+        path.chmod(0o700)
+    installed["commands"] = commands
+    write_plist(root, installed, previous)
+    write_private(
+        root / "stable.py",
+        (controller or Path(installed["checkout"]) / "scripts/stable.py").read_text(),
+        0o700,
+    )
+    write_private(root / "stable", command_entry(root, installed), 0o700)
     write_json(root / "installation.json", installed)
     start_service(root, installed)
+    record["phase"] = "completed"
+    write_json(root / "last-update.json", record)
     (root / "maintenance.json").unlink()
 
 
@@ -903,25 +1053,54 @@ def linux_ci(upstream: str, candidate: str) -> dict:
         }
 
 
-def update(root: Path, installed: dict, arguments: argparse.Namespace) -> None:
+def update(
+    root: Path,
+    installed: dict,
+    arguments: argparse.Namespace,
+    fetched: dict | None = None,
+    *,
+    replacement: Path | None = None,
+) -> None:
     require_idle(root)
-    require_checkout(installed)
+    if installed["protocol"] != STABLE_PROTOCOL and not getattr(
+        arguments, "adoption_revision", None
+    ):
+        fail("launcher protocol transition requires the reviewed external adoption bootstrap")
+    if replacement is None:
+        require_checkout(installed)
     print("[Stable update] Fetching published main candidate", file=sys.stderr, flush=True)
-    fetched = availability(Path(installed["checkout"]), installed["upstream"], installed["commit"])
-    if fetched["updates"] == "current":
+    if fetched is None:
+        fetched = availability(
+            Path(installed["checkout"]), installed["upstream"], installed["commit"]
+        )
+    if fetched["updates"] == "current" and replacement is None:
         print(json.dumps({"updates": "current", "health": health(installed.get("port", PORT))}))
         return
-    if fetched["updates"] != "behind":
+    if fetched["updates"] not in {"behind", "current"}:
         fail(f"cannot update: upstream state is {fetched['updates']}")
     candidate = fetched["candidate"]
-    plan = update_plan(installed, candidate, arguments.seed)
+    planning = {**installed, "checkout": str(replacement or installed["checkout"])}
+    if replacement:
+        planning["python"] = sys.executable
+    plan = update_plan(planning, candidate, arguments.seed, rebuilding=replacement is not None)
     print("[Stable update] Looking up exact-commit Linux CI", file=sys.stderr, flush=True)
     eligibility = linux_ci(installed["upstream"], candidate)
-    print(json.dumps({**plan, "linux_ci": eligibility, "local_verification": (
-        "Operator must review applicable candidate-bound local evidence for the complete "
-        "installed-to-candidate delta under docs/verification.md before approval. "
-        "This is not automatically verified; --yes does not waive review."
-    )}, indent=2), flush=True)
+    print(
+        json.dumps(
+            {
+                **plan,
+                "linux_ci": eligibility,
+                "local_verification": (
+                    "Operator must review applicable candidate-bound local evidence for the "
+                    "complete "
+                    "installed-to-candidate delta under docs/verification.md before approval. "
+                    "This is not automatically verified; --yes does not waive review."
+                ),
+            },
+            indent=2,
+        ),
+        flush=True,
+    )
     if not eligibility["eligible"]:
         fail(eligibility["blocker"])
     if arguments.dry_run or not confirm("Prepare and install this exact commit?", arguments.yes):
@@ -931,11 +1110,21 @@ def update(root: Path, installed: dict, arguments: argparse.Namespace) -> None:
     def phase(name: str) -> None:
         print(f"[Stable update +{time.monotonic() - started:.1f}s] {name}", flush=True)
 
-    checkout = Path(installed["checkout"])
-    record = {"previous": installed, "candidate": None, "backup": None, "data_mutated": False}
-    with candidate_source(root, checkout, candidate) as source:
+    checkout = replacement or Path(installed["checkout"])
+    record = {
+        "previous": installed,
+        "candidate": None,
+        "backup": None,
+        "data_mutated": False,
+        "adoption": bool(getattr(arguments, "adoption_revision", None)),
+    }
+    with preparing(root, record), candidate_source(root, checkout, candidate) as source:
         phase("Linux CI verified; preparing locked candidate environment")
-        prepared = prepare_environment(root, {**installed, "commit": candidate}, source)
+        prepared = prepare_environment(root, {**planning, "commit": candidate}, source)
+        prepared["controller_python"] = str(Path(sys.executable).resolve())
+        prepared["protocol"] = STABLE_PROTOCOL
+        if replacement:
+            prepared["managed_checkout"] = True
         phase("Validating synthetic commands")
         synthetic_configuration = source.parent / "test-configuration.json"
         write_json(synthetic_configuration, {})
@@ -946,7 +1135,10 @@ def update(root: Path, installed: dict, arguments: argparse.Namespace) -> None:
         }
         raycast_commands(synthetic, source)
         # No automatic post-preparation fetch: the reviewed commit remains pinned.
-        if update_plan(installed, candidate, arguments.seed) != plan:
+        if (
+            update_plan(planning, candidate, arguments.seed, rebuilding=replacement is not None)
+            != plan
+        ):
             fail("installation/schema changed since preview; review a fresh update")
         phase("Rechecking Linux CI before stopping Stable")
         eligibility = linux_ci(installed["upstream"], candidate)
@@ -957,11 +1149,11 @@ def update(root: Path, installed: dict, arguments: argparse.Namespace) -> None:
         try:
             phase("Stopping Stable; backup and rehearsal follow during maintenance")
             stop_service(root, installed)
+            backup_installation(root, installed, record, replacement)
+            backup = Path(record["backup"])
             if plan["migrations"] or arguments.seed:
                 phase("Backing up and rehearsing on a copy")
                 progress(root, record, "backing_up")
-                backup = backup_database(root, Path(installed["database"]))
-                record["backup"] = str(backup)
                 progress(root, record, "rehearsing")
                 with tempfile.TemporaryDirectory(prefix="rehearsal-", dir=root) as directory:
                     rehearsal = Path(directory) / "database.sqlite3"
@@ -973,7 +1165,7 @@ def update(root: Path, installed: dict, arguments: argparse.Namespace) -> None:
                     validate_application({**prepared, "database": str(rehearsal)}, source)
             else:
                 validate_application(prepared, source)
-            require_checkout(installed)
+            require_checkout({**planning, "commit": candidate} if replacement else installed)
             require_no_collisions(checkout, candidate)
             phase("Rechecking Linux CI before replacing code")
             eligibility = linux_ci(installed["upstream"], candidate)
@@ -992,23 +1184,21 @@ def update(root: Path, installed: dict, arguments: argparse.Namespace) -> None:
             phase("Validating candidate application and activating with health checks")
             validate_application(prepared, checkout)
             activate(root, prepared, record)
-            write_json(root / "last-update.json", record)
-            # Already-loaded control code remains intact while replacing its installed source.
-            temporary = root / "stable.py.tmp"
-            shutil.copyfile(checkout / "scripts/stable.py", temporary)
-            temporary.chmod(0o700)
-            temporary.replace(root / "stable.py")
             phase("Update succeeded; Linux CI verified, local evidence remains operator-reviewed")
             print(f"Stable is healthy at {candidate}; previous environment and backups retained.")
         except BaseException:
             phase("Update failed; attempting pre-mutation recovery when safe")
             progress(root, record, "failed")
             try:
-                stop_service(root, installed)
+                stop_service(root, load_installation(root))
                 if not record["data_mutated"]:
-                    if git(checkout, "rev-parse", "HEAD") != installed["commit"]:
+                    if (
+                        not replacement
+                        and git(checkout, "rev-parse", "HEAD") != installed["commit"]
+                    ):
                         git(checkout, "reset", "--keep", installed["commit"])
-                    validate_application(installed, checkout)
+                    require_checkout(installed)
+                    validate_application(installed, Path(installed["checkout"]))
                     activate(root, installed, record)
                     print("Previous Stable recovered; no database mutation occurred.")
             except (OSError, RuntimeError, subprocess.SubprocessError):
@@ -1028,9 +1218,35 @@ def recover(root: Path, installed: dict, arguments: argparse.Namespace) -> None:
     if not path.exists():
         fail("no update recovery record exists")
     record = read_json(path)
+    if record.get("preservation"):
+        if (Path(record["preservation"]) / "recovery.json").exists():
+            verify_preservation(Path(record["preservation"]))
+        elif arguments.restore_backup or record["data_mutated"]:
+            fail("installation backup was interrupted; no verified restoration is available")
     selected = record.get(arguments.use)
     if not selected:
         fail("recovery record has no selected runtime; manual inspection is required")
+    selected = dict(selected)
+    preservation = Path(record["preservation"]) if record.get("preservation") else None
+    if arguments.use == "previous" and record.get("adoption") and not preservation:
+        fail(
+            "interrupted adoption has no complete original snapshot; use candidate recovery "
+            "to preserve originals before activation, not a manual checkout reset"
+        )
+    if arguments.use == "previous" and preservation:
+        if (
+            not Path(selected["python"]).is_file()
+            and (preservation / "environment/bin/python").is_file()
+        ):
+            selected["python"] = str(preservation / "environment/bin/python")
+            selected["service_arguments"] = [selected["python"], *selected["service_arguments"][1:]]
+        if record.get("adoption") or not Path(selected["checkout"]).is_dir():
+            destination = root / "sources" / uuid.uuid4().hex
+            destination.parent.mkdir(mode=0o700, exist_ok=True)
+            run("git", "clone", str(preservation / "source.bundle"), str(destination))
+            git(destination, "checkout", "-B", "main", selected["commit"])
+            selected["checkout"] = str(destination)
+            selected["managed_checkout"] = True
     checkout = Path(selected["checkout"])
     head = git(checkout, "rev-parse", "HEAD")
     if head not in {
@@ -1046,7 +1262,14 @@ def recover(root: Path, installed: dict, arguments: argparse.Namespace) -> None:
         fail("interrupted initialization requires recover --use candidate; data will be preserved")
     if arguments.restore_backup and not backup:
         fail("this update has no database backup")
-    if arguments.use == "previous" and record.get("data_mutated") and not arguments.restore_backup:
+    if arguments.restore_backup and selected["database"] != installed["database"]:
+        fail("selected runtime uses a retained separate database; recover without --restore-backup")
+    if (
+        arguments.use == "previous"
+        and record.get("data_mutated")
+        and not arguments.restore_backup
+        and record["previous"]["database"] == (record.get("candidate") or {}).get("database")
+    ):
         fail(
             "database mutation began; previous-runtime recovery requires explicit --restore-backup"
         )
@@ -1057,8 +1280,15 @@ def recover(root: Path, installed: dict, arguments: argparse.Namespace) -> None:
         arguments.yes,
     ):
         return
+    if arguments.use == "candidate" and not record.get("initialization"):
+        eligibility = linux_ci(selected["upstream"], selected["commit"])
+        if not eligibility["eligible"]:
+            fail(eligibility["blocker"])
     progress(root, record, "recovering")
     stop_service(root, installed)
+    if arguments.use == "candidate" and not record.get("initialization") and not backup:
+        backup_installation(root, installed, record, checkout)
+        backup = record["backup"]
     if arguments.restore_backup:
         database = Path(installed["database"])
         try:
@@ -1094,9 +1324,27 @@ def recover(root: Path, installed: dict, arguments: argparse.Namespace) -> None:
     if record.get("initialization"):
         admin(selected, checkout, "migrate")
         admin(selected, checkout, "seed")
+    elif arguments.use == "candidate":
+        pending = probe(selected, checkout)["migrations"]
+        if pending:
+            with tempfile.TemporaryDirectory(prefix="recovery-rehearsal-", dir=root) as directory:
+                rehearsal = Path(directory) / "database.sqlite3"
+                shutil.copyfile(backup, rehearsal)
+                admin(selected, checkout, "migrate", rehearsal)
+                validate_application({**selected, "database": str(rehearsal)}, checkout)
+            record["data_mutated"] = True
+            progress(root, record, "migrating")
+            admin(selected, checkout, "migrate")
     validate_application(selected, checkout)
-    activate(root, selected, record)
-    write_json(root / "last-update.json", record)
+    previous_controller = preservation / "controller.py" if preservation else None
+    activate(
+        root,
+        selected,
+        record,
+        previous_controller
+        if arguments.use == "previous" and previous_controller and previous_controller.is_file()
+        else None,
+    )
     print("Stable recovery verified; recovery material retained.")
 
 
@@ -1172,14 +1420,434 @@ def status(root: Path, checkout: Path, upstream: str) -> dict:
     }
 
 
+def prerequisites() -> None:
+    if sys.version_info < (3, 12):  # noqa: UP036 - standalone bootstrap host, not project Python
+        fail("Stable requires Python 3.12 or newer; select a supported host interpreter")
+    for executable in ("git", "uv", "launchctl", "lsof"):
+        if not shutil.which(executable):
+            fail(f"Stable requires {executable} on PATH; install this host prerequisite first")
+
+
+def require_complete(root: Path, installed: dict) -> None:
+    require_idle(root)
+    require_checkout(installed)
+    if installed["protocol"] != STABLE_PROTOCOL:
+        fail("legacy installation requires the external adoption bootstrap; no files changed")
+    expected = [installed["python"], str(root / "stable.py"), "--root", str(root), "serve"]
+    if installed["service_arguments"] != expected:
+        fail("inconsistent service registration; inspect installation before repair")
+    checkout = Path(installed["checkout"])
+    controller = root / "stable.py"
+    if (
+        not controller.is_file()
+        or controller.is_symlink()
+        or controller.read_text()
+        != run(
+            "git", "-C", str(checkout), "show", f"{installed['commit']}:scripts/stable.py"
+        ).stdout
+        or not Path(installed["python"]).is_file()
+        or not (root / "stable").is_file()
+        or (root / "stable").read_text() != command_entry(root, installed)
+    ):
+        fail("incomplete Stable runtime; inspect installation before repair")
+    plist = Path(installed["plist"])
+    if (
+        not plist.is_file()
+        or plistlib.loads(plist.read_bytes()).get("ProgramArguments") != expected
+    ):
+        fail("inconsistent Stable LaunchAgent; inspect installation before repair")
+    for name, contents in installed.get("commands", {}).items():
+        command = Path(installed["raycast_directory"]) / name
+        if not command.is_file() or command.is_symlink() or command.read_text() != contents:
+            fail("incomplete Stable commands; inspect installation before repair")
+    validate_application(installed, checkout)
+
+
+def default_launch(root: Path, arguments: argparse.Namespace) -> None:
+    prerequisites()
+    require_idle(root)
+    manifest = root / "installation.json"
+    if manifest.exists():
+        installed = load_installation(root)
+        for option in ("checkout", "database", "configuration", "raycast_directory", "port"):
+            selected = getattr(arguments, option)
+            if selected is not None and str(selected) != str(installed.get(option, PORT)):
+                fail(f"existing Stable retains its selected {option}; override refused")
+        require_complete(root, installed)
+        fetched = availability(
+            Path(installed["checkout"]), installed["upstream"], installed["commit"]
+        )
+        if fetched["updates"] == "current":
+            state = service_status(root, installed)
+            if state["owned"] and state["pid"] and not health(installed.get("port", PORT))["ready"]:
+                stop_service(root, installed)
+            start_service(root, installed)
+            print(f"Stable is current and healthy at {installed['commit']}")
+            return
+        if fetched["updates"] == "behind":
+            update(root, installed, arguments, fetched)
+            if load_installation(root)["commit"] != fetched["candidate"]:
+                fail("update not approved; installation preserved, not an up-to-date success")
+            return
+        fail(f"published main could not be selected ({fetched['updates']}); installation preserved")
+    for reserved in ("stable.py", "stable", "environments", "backups"):
+        if (root / reserved).exists() or (root / reserved).is_symlink():
+            fail("incomplete installation; inspect/repair rather than initialize new data")
+    checkout = (arguments.checkout or DEFAULT_CHECKOUT).expanduser().resolve()
+    managed = not checkout.exists()
+    if managed:
+        checkout.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        run(
+            "git", "clone", "--branch", "main", "--single-branch", arguments.upstream, str(checkout)
+        )
+    candidate = git(checkout, "rev-parse", "HEAD")
+    require_checkout({"checkout": str(checkout), "commit": candidate})
+    fetched = availability(checkout, arguments.upstream, candidate)
+    if fetched["updates"] != "current":
+        fail("fresh checkout is not published main; preserved for inspection, no data initialized")
+    eligibility = linux_ci(arguments.upstream, candidate)
+    print(
+        json.dumps(
+            {
+                "candidate": candidate,
+                "linux_ci": eligibility,
+                "local_verification": "Review applicable candidate-bound local evidence under "
+                "docs/verification.md. --yes does not waive review.",
+            },
+            indent=2,
+        ),
+        flush=True,
+    )
+    if not eligibility["eligible"]:
+        fail(eligibility["blocker"])
+    selected = argparse.Namespace(**vars(arguments))
+    selected.checkout = checkout
+    selected.pinned_commit = candidate
+    selected.initialize = not (arguments.database or DEFAULT_DATABASE).expanduser().exists()
+    selected.reuse_existing = True
+    if not confirm(
+        "Install this exact Stable candidate, prepare its database and start it?", arguments.yes
+    ):
+        fail("installation not approved; no database or configuration changed")
+    selected.yes = True
+    install(root, selected)
+    installed = load_installation(root)
+    installed["managed_checkout"] = managed
+    write_json(manifest, installed)
+    require_checkout(installed)
+    eligibility = linux_ci(arguments.upstream, candidate)
+    if not eligibility["eligible"]:
+        fail(eligibility["blocker"])
+    start_service(root, installed)
+    print(f"Stable is current and healthy at {candidate}. Command: {root / 'stable'}")
+
+
+def acquire_replacement(root: Path, installed: dict) -> tuple[Path, dict]:
+    destination = root / "sources" / uuid.uuid4().hex
+    destination.parent.mkdir(mode=0o700, exist_ok=True)
+    run(
+        "git",
+        "clone",
+        "--branch",
+        "main",
+        "--single-branch",
+        installed["upstream"],
+        str(destination),
+    )
+    fetched = availability(destination, installed["upstream"], installed["commit"])
+    if fetched["updates"] not in {"current", "behind"}:
+        fail("cannot acquire published main for repair; original installation preserved")
+    eligibility = linux_ci(installed["upstream"], fetched["candidate"])
+    print(json.dumps({"candidate": fetched["candidate"], "linux_ci": eligibility}, indent=2))
+    if not eligibility["eligible"]:
+        fail(eligibility["blocker"])
+    # This newly created checkout is disposable; never reset the selected installation.
+    git(destination, "reset", "--hard", fetched["candidate"])
+    return destination, fetched
+
+
+def repair(root: Path, arguments: argparse.Namespace) -> None:
+    prerequisites()
+    require_idle(root)
+    installed = load_installation(root)
+    if installed["protocol"] != STABLE_PROTOCOL:
+        fail("protocol-1 requires the reviewed external adoption bootstrap, not ordinary repair")
+    print(
+        "Repair preserves configuration and database, rebuilding managed application artifacts. "
+        "It cannot bypass failed release verification, ownership checks or unsupported migrations."
+    )
+    replacement, fetched = acquire_replacement(root, installed)
+    update(root, installed, arguments, fetched, replacement=replacement)
+
+
+def adopt(root: Path, arguments: argparse.Namespace) -> None:
+    prerequisites()
+    require_idle(root)
+    installed = load_installation(root)
+    if installed["protocol"] == STABLE_PROTOCOL:
+        if installed["commit"] != arguments.adoption_revision:
+            fail("already-adopted installation differs from the reviewed bootstrap pin")
+        default_launch(root, arguments)
+        return
+    copied = root / "stable.py"
+    if copied.is_symlink() or assignment(copied.read_text(), "STABLE_PROTOCOL") != 1:
+        fail("adoption requires a supported protocol-1 copied controller; original preserved")
+    configuration(Path(installed["configuration"]))
+    replacement, fetched = acquire_replacement(root, installed)
+    if fetched["candidate"] != arguments.adoption_revision:
+        fail("published main moved from the reviewed bootstrap pin; review a new invocation")
+    try:
+        original_head = git(Path(installed["checkout"]), "rev-parse", "HEAD")
+    except (OSError, subprocess.SubprocessError):
+        original_head = None
+    print(
+        json.dumps(
+            {
+                "operation": "explicit protocol-1 adoption, not ordinary update",
+                "recorded_application": installed["commit"],
+                "checkout": installed["checkout"],
+                "checkout_commit": original_head,
+                "copied_controller_sha256": hashlib.sha256(copied.read_bytes()).hexdigest(),
+                "service": service_status(root, installed),
+                "candidate": fetched["candidate"],
+                "database_preserved": installed["database"],
+                "configuration_preserved": installed["configuration"],
+                "original_source_environment": "retained; replacement uses a new isolated checkout",
+                "private_recovery_location": str(root / "backups"),
+                "warning": "After database mutation, rollback needs confirmed restoration and can "
+                "lose newer changes. Unsupported populated transitions require a separately "
+                "confirmed clean installation, never clearing the original.",
+            },
+            indent=2,
+        ),
+        flush=True,
+    )
+    update(root, installed, arguments, fetched, replacement=replacement)
+    if load_installation(root)["protocol"] != STABLE_PROTOCOL:
+        fail("adoption not approved; original installation preserved")
+
+
+def clean_install(root: Path, arguments: argparse.Namespace) -> None:
+    prerequisites()
+    # A separately confirmed fresh installation may follow a refused/interrupted
+    # transition. Preserve that transaction as well as its original backup.
+    prior_transaction = root / "maintenance.json"
+    interrupted = read_json(prior_transaction) if prior_transaction.exists() else None
+    installed = load_installation(root)
+    replacement, fetched = acquire_replacement(root, installed)
+    candidate = fetched["candidate"]
+    if arguments.adoption_revision and candidate != arguments.adoption_revision:
+        fail("clean-install candidate differs from the reviewed bootstrap pin")
+    if (
+        assignment(git(replacement, "show", f"{candidate}:scripts/stable.py"), "STABLE_PROTOCOL")
+        != STABLE_PROTOCOL
+    ):
+        fail("clean installation requires the supported candidate launcher protocol")
+    database = Path(installed["database"])
+    fresh = database.with_name(f"{database.stem}-clean-{uuid.uuid4().hex}{database.suffix}")
+    print(
+        f"Clean installation preview: {root}\nCandidate: {candidate}\n"
+        f"Fresh database with reset application settings: {fresh}\n"
+        f"Retain provider configuration: {installed['configuration']}\n"
+        f"Original database remains untouched: {database}\n"
+        f"Original checkout/environment retained; recovery material: {root / 'backups'}\n"
+        "Review candidate-bound local evidence under docs/verification.md before approval."
+    )
+    if not confirm(
+        "Create this fresh installation AND reset application settings?",
+        arguments.confirm_clean_install,
+    ):
+        fail("clean installation cancelled; original database/runtime/configuration preserved")
+    if interrupted is not None:
+        retained = root / "backups" / f"{uuid.uuid4().hex}-transaction.json"
+        retained.parent.mkdir(mode=0o700, exist_ok=True)
+        write_json(retained, interrupted)
+        print(f"Previous interrupted transaction and its recovery locations retained at {retained}")
+    record = {
+        "previous": installed,
+        "candidate": None,
+        "backup": None,
+        "data_mutated": False,
+        "clean_install": True,
+        "adoption": installed["protocol"] == 1,
+    }
+    stage = root / "staging" / uuid.uuid4().hex
+    stage.mkdir(mode=0o700, parents=True)
+    selected = argparse.Namespace(
+        checkout=replacement,
+        pinned_commit=candidate,
+        database=fresh,
+        configuration=Path(installed["configuration"]),
+        raycast_directory=stage / "commands",
+        port=installed.get("port", PORT),
+        upstream=installed["upstream"],
+        reuse_existing=True,
+        initialize=True,
+        yes=True,
+        preparing_replacement=True,
+    )
+    with preparing(root, record):
+        install(stage, selected)
+        prepared = load_installation(stage)
+        Path(prepared["plist"]).unlink()
+        prepared.update(
+            label=installed["label"],
+            plist=installed["plist"],
+            raycast_directory=installed["raycast_directory"],
+            managed_checkout=True,
+        )
+        prepared["service_arguments"] = [
+            prepared["python"],
+            str(root / "stable.py"),
+            "--root",
+            str(root),
+            "serve",
+        ]
+        record["candidate"] = prepared
+        eligibility = linux_ci(installed["upstream"], candidate)
+        if not eligibility["eligible"]:
+            fail(eligibility["blocker"])
+        progress(root, record, "stopping")
+        stop_service(root, installed)
+        backup_installation(root, installed, record, replacement)
+        eligibility = linux_ci(installed["upstream"], candidate)
+        if not eligibility["eligible"]:
+            fail(eligibility["blocker"])
+        activate(root, prepared, record)
+    print(
+        f"Fresh Stable is healthy; original database remains at {database}. "
+        f"Private backups retained at {record['preservation']}."
+    )
+
+
+def launch_with_choices(root: Path, arguments: argparse.Namespace) -> None:
+    if arguments.recovery:
+        arguments.use = arguments.recovery
+        recover(root, load_installation(root), arguments)
+        return
+    operation = (
+        clean_install
+        if arguments.clean_install
+        else repair
+        if arguments.repair
+        else adopt
+        if arguments.adoption_revision
+        else default_launch
+    )
+    try:
+        operation(root, arguments)
+    except (OSError, RuntimeError, sqlite3.Error, subprocess.SubprocessError) as exc:
+        reason = str(exc) if isinstance(exc, RuntimeError) else type(exc).__name__
+        print(f"Operation did not complete: {reason}", file=sys.stderr)
+        print(
+            "Safe choices: retry stable; stable --repair rebuilds artifacts, not eligibility; "
+            "stable --clean-install previews a separately confirmed fresh database while retaining "
+            "the original. Interrupted transactions: stable --recovery candidate or previous; "
+            "--restore-backup requires confirmation and can lose newer changes.",
+            file=sys.stderr,
+        )
+        if not sys.stdin.isatty():
+            raise
+        choice = (
+            input("Retry [r], repair [p], clean installation [c], or cancel [N]? ").strip().lower()
+        )
+        if choice == "r":
+            operation(root, arguments)
+        elif choice == "p":
+            repair(root, arguments)
+        elif choice == "c":
+            clean_install(root, arguments)
+        else:
+            raise
+
+
+def uninstall(root: Path, installed: dict, yes: bool) -> None:
+    print(
+        f"Remove owned Stable service and application artifacts from {root}.\n"
+        f"Retain database: {installed['database']}\n"
+        f"Retain configuration: {installed['configuration']}\n"
+        f"Retain backups/recovery records: {root / 'backups'}"
+    )
+    if not confirm("Uninstall Stable, retaining private data and backups?", yes):
+        fail("uninstall not confirmed; no files or services changed")
+    # Do not require the checkout, dependencies, configuration parser or network.
+    plist = Path(installed["plist"])
+    if plist.exists() and (
+        plist.is_symlink()
+        or plistlib.loads(plist.read_bytes()).get("ProgramArguments")
+        != installed["service_arguments"]
+    ):
+        fail("refusing to remove an unmanaged LaunchAgent")
+    stop_service(root, installed)
+    plist.unlink(missing_ok=True)
+    for name, contents in installed.get("commands", {}).items():
+        command = Path(installed["raycast_directory"]) / name
+        if command.is_file() and not command.is_symlink() and command.read_text() == contents:
+            command.unlink()
+        elif command.exists() or command.is_symlink():
+            print(f"Retained changed or unowned command: {command}")
+    if installed.get("managed_checkout"):
+        checkout = Path(installed["checkout"])
+        if checkout.exists():
+            try:
+                require_checkout(installed)
+                if git(checkout, "status", "--porcelain", "--untracked-files=all", "--ignored"):
+                    fail("additional checkout files")
+            except (OSError, RuntimeError, subprocess.SubprocessError):
+                print(f"Retained changed or damaged checkout: {checkout}")
+            else:
+                shutil.rmtree(checkout)
+    runtime = Path(installed["python"]).parent.parent
+    if (
+        runtime.is_relative_to(root)
+        and runtime.parent.name == "environments"
+        and not runtime.is_symlink()
+    ):
+        if any(
+            Path(installed[key]).is_relative_to(runtime) for key in ("database", "configuration")
+        ):
+            print(f"Retained environment containing private data: {runtime}")
+        elif runtime.is_dir():
+            shutil.rmtree(runtime)
+    for name in ("stable", "stable.py"):
+        (root / name).unlink(missing_ok=True)
+    write_json(root / "uninstalled.json", installed)
+    (root / "installation.json").unlink()
+    print("Stable uninstalled; private data, configuration and recovery material retained.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=DEFAULT_ROOT)
-    parser.add_argument("--checkout", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--checkout", type=Path)
     parser.add_argument("--upstream", default=UPSTREAM)
-    commands = parser.add_subparsers(dest="command", required=True)
+    parser.add_argument("--database", type=Path)
+    parser.add_argument("--configuration", type=Path)
+    parser.add_argument("--raycast-directory", type=Path)
+    parser.add_argument("--port", type=int)
+    parser.add_argument("--yes", action="store_true", help="approve after local evidence review")
+    choices = parser.add_mutually_exclusive_group()
+    choices.add_argument("--repair", action="store_true", help="rebuild artifacts; preserve data")
+    choices.add_argument(
+        "--clean-install", action="store_true", help="preview a preserved-original reset"
+    )
+    choices.add_argument("--recovery", choices=("previous", "candidate"))
+    parser.add_argument(
+        "--confirm-clean-install",
+        action="store_true",
+        help="separately approve the displayed fresh-database/settings reset",
+    )
+    parser.add_argument("--restore-backup", action="store_true")
+    parser.add_argument("--adoption-revision", help=argparse.SUPPRESS)
+    parser.set_defaults(dry_run=False, seed=False)
+    commands = parser.add_subparsers(dest="command", help="default: install/update/prepare/start")
     commands.add_parser("status")
-    installer = commands.add_parser("install", help="prepare a new installation; does not start it")
+    commands.add_parser("stop", help="stop only this service; no network or database preparation")
+    uninstaller = commands.add_parser(
+        "uninstall", help="remove owned artifacts; retain private data"
+    )
+    uninstaller.add_argument("--yes", action="store_true", default=argparse.SUPPRESS)
+    installer = commands.add_parser("install", help="compatibility: prepare without starting")
     installer.add_argument(
         "--checkout",
         type=Path,
@@ -1198,8 +1866,8 @@ def main() -> None:
     installer.add_argument("--initialize", action="store_true")
     installer.add_argument("--yes", action="store_true")
     for operation in ("start", "restart", "serve"):
-        commands.add_parser(operation)
-    updater = commands.add_parser("update")
+        commands.add_parser(operation, help="compatibility: readiness-only service operation")
+    updater = commands.add_parser("update", help="compatibility: explicitly update")
     updater.add_argument("--dry-run", action="store_true")
     updater.add_argument("--seed", action="store_true", help="explicitly apply deterministic seeds")
     updater.add_argument("--yes", action="store_true")
@@ -1208,6 +1876,8 @@ def main() -> None:
     recovery.add_argument("--restore-backup", action="store_true")
     recovery.add_argument("--yes", action="store_true")
     arguments = parser.parse_args()
+    if arguments.command in {"install", "status"} and arguments.checkout is None:
+        arguments.checkout = Path(__file__).resolve().parents[1]
     root = arguments.root.expanduser().absolute()
     try:
         if arguments.command == "status":
@@ -1216,7 +1886,13 @@ def main() -> None:
             launch(root, load_installation(root))
         else:
             with locked(root):
-                if arguments.command == "install":
+                if arguments.command is None:
+                    launch_with_choices(root, arguments)
+                elif arguments.command == "stop":
+                    stop_service(root, load_installation(root))
+                elif arguments.command == "uninstall":
+                    uninstall(root, load_installation(root), arguments.yes)
+                elif arguments.command == "install":
                     install(root, arguments)
                 elif arguments.command == "update":
                     update(root, load_installation(root), arguments)
@@ -1245,9 +1921,11 @@ def main() -> None:
             and arguments.command not in {"status", "serve"}
         ):
             diagnostic = root / "operation-error.log"
-            with open(diagnostic, "w", opener=lambda name, flags: os.open(
-                name, flags | os.O_NOFOLLOW, 0o600
-            )) as output:
+            with open(
+                diagnostic,
+                "w",
+                opener=lambda name, flags: os.open(name, flags | os.O_NOFOLLOW, 0o600),
+            ) as output:
                 os.fchmod(output.fileno(), 0o600)
                 output.write((exc.stdout or "") + (exc.stderr or ""))
             message = f"{Path(exc.cmd[0]).name} failed; inspect {diagnostic}"

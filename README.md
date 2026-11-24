@@ -396,15 +396,55 @@ not run on the same machine. Both controllers discard ambient application,
 Python import, pytest-option, and uv environment-path overrides before executing selected
 application commands; `UV_OFFLINE` remains available for offline preparation.
 Stable never follows an active worktree or copies uncommitted implementation.
-Do not pull or edit its checkout manually: use the explicit update command.
+Do not pull or edit its checkout manually: the default launch command selects
+and verifies published canonical `main`.
 
-### Prepare an installation
+### Launch, stop, or uninstall Stable
 
-Use Python 3.12 or newer and `uv`. From the checkout containing the Stable
-tooling, review the default paths without supplying parameters:
+Host prerequisites are macOS, Python 3.12 or newer, Git, `uv`, `launchctl` and
+`lsof` on PATH. The launcher reports missing tools; it does not install system
+tooling. From a reviewed checkout containing the Stable tooling, first run:
 
 ```sh
-.venv/bin/python scripts/stable.py install
+python3 scripts/stable.py
+```
+
+With no subcommand, this clones published `main` into
+`~/.local/share/local-text/stable-checkout` when absent, previews the exact
+candidate and required local-evidence review, and asks before preparing the
+installation and starting it. A missing fresh database is explicitly initialized
+and seeded within that approval; existing data is never implicitly reset.
+Existing installations retain their selected paths, configuration and port.
+
+After installation, use the generated entry point from any directory:
+
+```sh
+stable="$HOME/.local/share/local-text/stable-runtime/stable"
+"$stable"
+"$stable" stop
+"$stable" uninstall
+```
+
+The default command checks the latest published version, updates and prepares
+the database when approved, then ensures the owned service is healthy. It leaves
+an already-current healthy service running. `stop` is offline and idempotent.
+`uninstall` asks for confirmation, removes owned service and application
+artifacts without requiring working application dependencies or network, and
+retains configuration, databases and recovery material. Changed/unowned commands
+and checkouts are retained and reported rather than deleted. Older retained
+sources/environments remain recovery material; there is no automatic pruning.
+
+The entry point uses the resolved host Python, not the application environment;
+keep that supported Python installation available. No global PATH is modified.
+An existing protocol-1 installation needs the reviewed external adoption below,
+not this first-install command or a manually pulled checkout.
+
+### Advanced preparation and configuration
+
+The compatibility `install` operation prepares without starting:
+
+```sh
+python3 scripts/stable.py install
 ```
 
 Defaults are the Stable database at
@@ -478,10 +518,10 @@ blindly replace an older Stable service: inspect its registration, launcher,
 environment, data paths, and health first. It never restores a stash or removes
 untracked files.
 
-### Check, start, and update independently
+### Diagnostics and compatibility operations
 
-The installed shell entry point uses its prepared Python interpreter, so it does
-not depend on the checkout's `.venv` or the shell's default Python:
+`status` remains diagnostic. Separate start/restart/update operations remain
+compatibility commands, not steps required for everyday launch:
 
 ```sh
 stable="$HOME/.local/share/local-text/stable-runtime/stable"
@@ -550,23 +590,46 @@ operation without an interactive prompt and should be used only after review.
 
 ### Adopt the new copied controller
 
-The installed controller is a copy outside the checkout. Source changes alone
-do not change its behavior. A pre-#217 copy still runs the old candidate-wide
-checks, even when updating to code containing the Linux gate. A successful update
-copies the new controller for **subsequent** invocations; the already-loaded old
-controller completes that first update under the old rules.
+The installed controller is a copy outside the checkout. Protocol-1 controllers
+cannot perform the protocol-2 transition through ordinary update, even when a
+manually pulled checkout contains newer tooling. Do not reset that checkout,
+edit its manifest, overwrite the copied controller or reinstall over it.
 
-Synthetic old/new-controller rehearsal covers old-path failure retaining the
-old copy, a successful old-path update adopting the new copy, and subsequent
-new-path CI refusal/success. That first old-path update still needs operator
-review of exact-SHA hosted CI and applicable local evidence; the old controller
-does not enforce the new gate. Plan for one last old-controller full run. Do not
-overwrite an installed controller or reinstall over an existing installation as
-a shortcut. Any manual bootstrap requires separate review and authorization.
-This implementation does not publish the candidate or replace the owner's
-installed controller; hosted and installed acceptance remain separate.
+Use standalone `scripts/stable-bootstrap.py` from the exact reviewed, published
+revision. Obtain that file independently of the managed checkout, verify its
+SHA-256 against the review record, and use supported host Python with the host
+prerequisites listed above. From its download directory, its one-command
+interface is `python3 ./stable-bootstrap.py --revision FULL_REVIEWED_SHA`;
+`--root` selects a nondefault installation. This interface is not a pinned live
+adoption recommendation: the release approval must supply the actual full SHA,
+bootstrap digest, download location and copyable invocation after publication.
+Unpublished implementation and synthetic source SHAs cannot be used for live
+adoption. Live installation changes require separate owner approval.
+
+The bootstrap independently acquires canonical source, checks the exact pin and
+its own file bytes, inventories the selected installation and previews backup
+and rollback locations before confirmation. It supports a protocol-1 manifest,
+newer protocol-1 copied controller, legacy literal configuration and mismatched
+protocol-2 checkout without inventing a historical recovery record. Unknown
+protocols fail closed. The original checkout is retained; adoption uses new
+source and dependencies. GitHub authentication and checkout-local dependencies
+are not required. The ordinary protocol guard remains in place.
+
+After success, use the ordinary generated `stable` command. The synthetic
+acceptance test executes the actual bootstrap outside the managed checkout,
+then ordinary launch and another release update. This is not owner-installed
+acceptance. If `main` moves before adoption, review a new pin; recovery can use
+the original reviewed bootstrap pin without selecting a new release.
 
 ### Recover without silently restoring older data
+
+Every replacement, including a code-only update, retains consistent SQLite
+backup, source archive and Git bundle, copied controller/manifest/command and
+service metadata, configuration, and environment under private runtime backups.
+Integrity checks and schema/source identity are recorded before activation.
+SQLite backup includes committed WAL content; it is not a live main-file copy.
+Backups do not authorize bypassing release verification or populated-store
+migration refusal.
 
 An interrupted or failed data-changing update leaves a persistent maintenance
 record and blocks normal startup. Status and the private `operation-error.log`
@@ -575,9 +638,24 @@ failure attempts to recover the previous compatible code/environment. Once
 mutation begins, there is **no automatic database restore or schema downgrade**.
 
 ```sh
-"$stable" recover --use candidate
-"$stable" recover --use previous --restore-backup
+"$stable" --recovery candidate
+"$stable" --recovery previous --restore-backup
 ```
+
+Retry acquisition/preparation failures, or choose `--repair` to rebuild managed
+artifacts while preserving configuration and database. Repair cannot fix failed
+verification, unknown protocols, unmanaged listeners or unsupported migrations.
+Interactive failures offer retry, repair, or clean installation in that invocation;
+noninteractive failures report choices and exit nonzero without guessing.
+
+`--clean-install` previews a fresh sibling database with reset application
+settings, retained provider configuration and archived original runtime/data.
+It requires a separate confirmation; ordinary `--yes` is insufficient.
+`--confirm-clean-install` is an explicit noninteractive acceptance of that reset.
+Cancellation leaves the original database/runtime/configuration unchanged.
+An earlier interrupted transaction and its backup locations are also retained.
+Populated correction data remains in the original database: clean installation
+does not claim to migrate or silently clear it.
 
 Recovery requires confirmation. Previous-runtime recovery after database mutation
 requires explicit backup restoration; this can discard newer writes. The current
@@ -595,8 +673,10 @@ Stable's installed opener and target commands use its persisted port (7532 by
 default), require healthy release-profile responses, and never update, migrate,
 or fall back to development.
 Targets generated by the release app have distinct `stable-` filenames, so
-development installation/removal cannot overwrite them. Updates preserve installed
-commands; regenerate changed target definitions explicitly in the Targets page.
+development installation/removal cannot overwrite them. Updates and repairs
+refresh managed commands from the selected database and refuse changed or unowned
+command collisions. Generate target changes immediately from the Targets page
+rather than waiting for a lifecycle operation.
 
 ## Raycast commands
 
