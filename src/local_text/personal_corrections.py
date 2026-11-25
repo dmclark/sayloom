@@ -332,18 +332,36 @@ class PersonalCorrectionStore:
         except (ValidationError, PersonalCorrectionError) as exc:
             raise PersonalCorrectionError("invalid reviewed approval") from exc
         context = _bounded_optional_text(approval.applicability_context, field="restriction")
+        # Canonical JSON-compatible approved fields, not normalized mapping identity.
+        submitted = approval.model_dump(mode="json")
+        submitted["applicability_context"] = context
+        for field in ("observed_sentence", "intended_sentence"):
+            # Only blank restrictions normalize to absence; sentence display wording
+            # remains exact (an empty field is omitted).
+            submitted[field] = submitted[field] or None
         with self.database.session_factory.begin() as session:
             # Reserve the SQLite writer before UUID, generation or identity reads.
             session.execute(text("BEGIN IMMEDIATE"))
             existing = session.scalar(
-                select(PersonalCorrectionEpisode.id).where(
+                select(PersonalCorrectionEpisode).where(
                     PersonalCorrectionEpisode.owner_id == LOCAL_OWNER_ID,
                     PersonalCorrectionEpisode.approval_id == approval.approval_id,
                 )
             )
             if existing is not None:
-                # Exact committed retry/reconciliation is ticket 3. Never write twice.
-                raise PersonalCorrectionConflictError("approval already committed")
+                receipt = self._reviewed_receipt(session, existing)
+                if receipt is None:
+                    raise PersonalCorrectionConflictError("approval payload changed")
+                # Compare only approved fields, excluding server-assigned references.
+                stored = receipt["approval"]
+                historical = {field: stored[field] for field in submitted if field != "mappings"}
+                historical["mappings"] = [
+                    {field: mapping[field] for field in ReviewedReplacement.model_fields}
+                    for mapping in stored["mappings"]
+                ]
+                if submitted != historical:
+                    raise PersonalCorrectionConflictError("approval payload changed")
+                return receipt
             if approval.application_instance_id != self.application_instance_id:
                 raise PersonalCorrectionConflictError("application instance changed")
             profile = session.get(PersonalCorrectionProfile, LOCAL_OWNER_ID)
@@ -361,12 +379,11 @@ class PersonalCorrectionStore:
                 )
                 session.add(profile)
                 session.flush()
-            fields = approval.model_dump(exclude={"mappings", "expected_authorization_generation"})
-            fields["applicability_context"] = context
-            for field in ("observed_sentence", "intended_sentence"):
-                # Only blank restrictions normalize to absence; approved sentence
-                # display wording remains exact (an empty field is omitted).
-                fields[field] = fields[field] or None
+            fields = {
+                field: value
+                for field, value in submitted.items()
+                if field not in {"mappings", "expected_authorization_generation"}
+            }
             episode = PersonalCorrectionEpisode(
                 id=str(uuid4()),
                 owner_id=LOCAL_OWNER_ID,
@@ -376,8 +393,6 @@ class PersonalCorrectionStore:
             )
             session.add(episode)
             session.flush()
-            entries = []
-            saved_mappings = []
             for ordinal, mapping in enumerate(approval.mappings, start=1):
                 before, intended = mapping.reusable_before_text, mapping.reusable_intended_text
                 before_key, intended_key = map(normalize_correction_text, (before, intended))
@@ -458,27 +473,92 @@ class PersonalCorrectionStore:
                         occurred_at=now,
                     )
                 )
-                entries.append(entry)
-                saved_mappings.append(
-                    {
-                        **mapping.model_dump(),
-                        "ordinal": ordinal,
-                        "entry_id": entry.id,
-                        "alias_id": alias.id,
-                    }
-                )
             session.flush()
-            return {
-                "approval": {
-                    **fields,
-                    "expected_authorization_generation": generation,
-                    "id": episode.id,
-                    "created_at": now,
-                    "mappings": saved_mappings,
-                },
-                "profile": {"enabled": profile.enabled, "authorization_generation": generation},
-                "corrections": [asdict(record) for record in self._entry_records(session, entries)],
-            }
+            return self._reviewed_receipt(session, episode)
+
+    def approval_detail(self, approval_id: str) -> dict[str, object]:
+        """Read a committed v2 approval by its client UUID, not its episode ID.
+
+        Absence only describes this database now; it cannot establish that a save
+        never happened (for example, its history may have been deleted).
+        """
+        with self.database.session_factory() as session:
+            session.execute(text("BEGIN"))
+            episode = session.scalar(
+                select(PersonalCorrectionEpisode).where(
+                    PersonalCorrectionEpisode.owner_id == LOCAL_OWNER_ID,
+                    PersonalCorrectionEpisode.approval_id == approval_id,
+                )
+            )
+            receipt = self._reviewed_receipt(session, episode) if episode else None
+            if receipt is None:
+                raise PersonalCorrectionNotFoundError("approval not available")
+            return receipt
+
+    def _reviewed_receipt(self, session, episode) -> dict[str, object] | None:
+        if episode.correction_contract_version != "personal-correction-v2":
+            return None
+        mappings = session.scalars(
+            select(PersonalCorrectionEpisodeMapping)
+            .where(
+                PersonalCorrectionEpisodeMapping.owner_id == LOCAL_OWNER_ID,
+                PersonalCorrectionEpisodeMapping.episode_id == episode.id,
+            )
+            .order_by(PersonalCorrectionEpisodeMapping.ordinal)
+        ).all()
+        fields = {
+            field: getattr(episode, field)
+            for field in ReviewedApproval.model_fields
+            if field not in {"mappings", "expected_authorization_generation"}
+        }
+        entries = session.scalars(
+            select(PersonalCorrectionEntry).where(
+                PersonalCorrectionEntry.owner_id == LOCAL_OWNER_ID,
+                PersonalCorrectionEntry.id.in_([mapping.entry_id for mapping in mappings]),
+            )
+        ).all()
+        entries_by_id = {entry.id: entry for entry in entries}
+        profile = session.get(PersonalCorrectionProfile, LOCAL_OWNER_ID)
+        return {
+            "approval": {
+                **fields,
+                "expected_authorization_generation": episode.authorization_generation,
+                "id": episode.id,
+                "created_at": _utc(episode.created_at),
+                "mappings": [
+                    {
+                        "ordinal": mapping.ordinal,
+                        "operation": mapping.operation,
+                        "reusable_before_text": mapping.observed_text,
+                        "reusable_intended_text": mapping.intended_text,
+                        "before_change_span": {
+                            "start": mapping.before_change_start,
+                            "end": mapping.before_change_end,
+                        },
+                        "after_change_span": {
+                            "start": mapping.after_change_start,
+                            "end": mapping.after_change_end,
+                        },
+                        "source_start": mapping.source_start,
+                        "source_end": mapping.source_end,
+                        "entry_id": mapping.entry_id,
+                        "alias_id": mapping.alias_id,
+                    }
+                    for mapping in mappings
+                ],
+            },
+            "profile": {
+                "enabled": profile.enabled if profile else False,
+                "authorization_generation": profile.authorization_generation if profile else 0,
+            },
+            "corrections": [
+                asdict(record)
+                for record in self._entry_records(
+                    session,
+                    [entries_by_id[m.entry_id] for m in mappings if m.entry_id in entries_by_id],
+                )
+            ],
+        }
 
     def create_entry(
         self,

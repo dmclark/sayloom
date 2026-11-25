@@ -1,4 +1,4 @@
-"""Synthetic-only contracts for the bounded v2 approval boundary (#205)."""
+"""Synthetic-only contracts for v2 approval and immutable reconciliation (#205/206)."""
 
 import copy
 import json
@@ -106,11 +106,18 @@ def test_exact_immutable_approval_and_truthful_source_bindings(initialized_setti
         ).fetchall() == [("alias_observed", payload["approval_id"], saved["approval"]["id"])]
         with pytest.raises(sqlite3.IntegrityError, match="immutable"):
             db.execute("UPDATE personal_correction_episodes SET observed_sentence = 'changed'")
-    # Duplicate IDs conflict for now, including identical requests and across restart.
-    for request in (payload, {**payload, "applicability_context": None}):
-        assert client.post("/api/personal-corrections/episodes", json=request).status_code == 409
+    retry = client.post("/api/personal-corrections/episodes", json=payload)
+    assert retry.status_code == 201
+    assert retry.headers["cache-control"] == "no-store"
+    assert retry.json() == saved
+    assert (
+        client.post(
+            "/api/personal-corrections/episodes", json={**payload, "applicability_context": None}
+        ).status_code
+        == 409
+    )
     restarted = TestClient(create_app(initialized_settings))
-    assert restarted.post("/api/personal-corrections/episodes", json=payload).status_code == 409
+    assert restarted.post("/api/personal-corrections/episodes", json=payload).json() == saved
     assert row_counts(path)["personal_correction_episodes"] == 1
 
 
@@ -431,7 +438,7 @@ def test_serialized_concurrent_first_saves(initialized_settings, equivalent, sam
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         outcomes = sorted(pool.map(post, (first, second)))
-    assert outcomes == ([201, 409] if same_uuid else [201, 201])
+    assert outcomes == [201, 201]
     counts = row_counts(Path(initialized_settings.database_path))
     assert counts["personal_correction_profiles"] == 1
     assert counts["personal_correction_entries"] == (1 if equivalent else 2)
@@ -495,9 +502,8 @@ def test_store_revalidates_unchecked_models_and_profile_generation(initialized_s
     invalid = valid.model_copy(update={"mappings": ()})
     with pytest.raises(PersonalCorrectionError):
         store.approve_reviewed_replacements(invalid)
-    save(store, valid.model_dump())
-    with pytest.raises(PersonalCorrectionConflictError):
-        store.approve_reviewed_replacements(valid)
+    saved = save(store, valid.model_dump())
+    assert store.approve_reviewed_replacements(valid) == saved
     store.set_profile_enabled(False, expected_authorization_generation=0)
     with pytest.raises(PersonalCorrectionRevisionConflictError):
         store.set_profile_enabled(True, expected_authorization_generation=0)
@@ -591,3 +597,234 @@ def test_http_transaction_failure_is_private_safe_and_rolls_back(initialized_set
     assert "synthetic private" not in response.text
     assert not any(row_counts(Path(initialized_settings.database_path)).values())
     assert client.post("/api/personal-corrections/episodes", json=payload).status_code == 201
+
+
+@pytest.mark.parametrize("source_kind", ["original_selection", "manual_prepared"])
+def test_lost_response_lookup_and_restart_keep_history_separate_from_current_state(
+    initialized_settings, source_kind, monkeypatch
+):
+    client, payload = client_and_payload(initialized_settings)
+    if source_kind == "manual_prepared":
+        payload.update(
+            source_kind=source_kind,
+            selection_start=None,
+            selection_end=None,
+            prepared_id=str(uuid4()),
+            prepared_generation=8,
+            confirmation_id=str(uuid4()),
+            mappings=[replacement(source_start=None)],
+        )
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("reconciliation must not need a provider or prompt")
+
+    monkeypatch.setattr("local_text.app.PromptStore.active", forbidden)
+    # The caller discards the save response, as after a transport loss.
+    assert client.post("/api/personal-corrections/episodes", json=payload).status_code == 201
+    route = f"/api/personal-corrections/episodes/{payload['approval_id']}"
+    original = client.get(route)
+    assert original.status_code == 200
+    assert original.headers["cache-control"] == "no-store"
+    historical = original.json()["approval"]
+    entry_id = historical["mappings"][0]["entry_id"]
+    # Synthetic management state, not a new management API or activation.
+    with sqlite3.connect(initialized_settings.database_path) as db:
+        db.execute(
+            "UPDATE personal_correction_entries SET enabled=0, revision=2 WHERE id=?",
+            (entry_id,),
+        )
+    assert (
+        client.put(
+            "/api/personal-corrections/profile",
+            json={"enabled": False, "expected_authorization_generation": 0},
+        ).status_code
+        == 200
+    )
+    monkeypatch.undo()  # Existing startup may inspect prompt readiness; these routes must not.
+    restarted = TestClient(create_app(initialized_settings))
+    monkeypatch.setattr("local_text.app.PromptStore.active", forbidden)
+    assert (
+        restarted.get("/api/personal-corrections").json()["application_instance_id"]
+        != (payload["application_instance_id"])
+    )
+    before = row_counts(Path(initialized_settings.database_path))
+    retry = restarted.post("/api/personal-corrections/episodes", json=payload)
+    assert retry.status_code == 201, retry.text
+    assert retry.json()["approval"] == historical
+    assert retry.json()["profile"] == {"enabled": False, "authorization_generation": 1}
+    assert retry.json()["corrections"][0]["enabled"] is False
+    assert retry.json()["corrections"][0]["revision"] == 2
+    assert restarted.get(route).json() == retry.json()
+    # Reusing the original instance for a NEW approval remains stale after restart.
+    new = {**payload, "approval_id": str(uuid4()), "expected_authorization_generation": 1}
+    assert restarted.post("/api/personal-corrections/episodes", json=new).status_code == 409
+    assert row_counts(Path(initialized_settings.database_path)) == before
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"review_id": str(uuid4())},
+        {"passage_id": str(uuid4())},
+        {"draft_revision": 4},
+        {"selection_start": 6},
+        {"selection_end": 13},
+        {"application_instance_id": str(uuid4())},
+        {"expected_authorization_generation": 1},
+        {"observed_sentence": "An Umber parcel."},
+        {"intended_sentence": "An amber parcel. "},
+        {"applicability_context": "parcel color"},
+        {"mappings": [replacement("ＵＭＢＥＲ", "ＡＭＢＥＲ")]},
+        {"mappings": [replacement("umber", "azure")]},
+        {"mappings": [replacement(source_start=8)], "selection_end": 13},
+        {
+            "source_kind": "manual_prepared",
+            "selection_start": None,
+            "selection_end": None,
+            "prepared_id": str(uuid4()),
+            "prepared_generation": 8,
+            "confirmation_id": str(uuid4()),
+            "mappings": [replacement(source_start=None)],
+        },
+    ],
+)
+def test_changed_immutable_payload_conflicts_without_writes(initialized_settings, changes):
+    client, payload = client_and_payload(initialized_settings)
+    saved = client.post("/api/personal-corrections/episodes", json=payload).json()
+    changed = {**payload, **changes}
+    ReviewedApproval.model_validate(changed)  # Exercise conflict, not invalid input rejection.
+    with sqlite3.connect(initialized_settings.database_path) as db:
+        before = list(db.iterdump())
+    response = client.post("/api/personal-corrections/episodes", json=changed)
+    assert response.status_code == 409, response.text
+    assert response.headers["cache-control"] == "no-store"
+    assert "umber" not in response.text
+    assert "Parcel color" not in response.text
+    assert (
+        client.get(f"/api/personal-corrections/episodes/{payload['approval_id']}").json() == saved
+    )
+    with sqlite3.connect(initialized_settings.database_path) as db:
+        assert list(db.iterdump()) == before
+
+
+def test_prepared_binding_order_and_exact_spans_are_immutable(initialized_settings):
+    store = PersonalCorrectionStore(ApplicationDatabase(Path(initialized_settings.database_path)))
+    first = replacement("𐐀 umber!", "𐐀 amber!", source_start=None)
+    first["before_change_span"] = first["after_change_span"] = {"start": 2, "end": 7}
+    payload = approval(
+        store.application_instance_id,
+        source_kind="manual_prepared",
+        selection_start=None,
+        selection_end=None,
+        prepared_id=str(uuid4()),
+        prepared_generation=8,
+        confirmation_id=str(uuid4()),
+        mappings=[first, replacement("ochre", "orange", source_start=None)],
+    )
+    saved = save(store, payload)
+    for changes in (
+        {"prepared_id": str(uuid4())},
+        {"prepared_generation": 9},
+        {"confirmation_id": str(uuid4())},
+        {"mappings": list(reversed(payload["mappings"]))},
+        {
+            "mappings": [
+                {
+                    **first,
+                    "before_change_span": {"start": 0, "end": 7},
+                    "after_change_span": {"start": 0, "end": 7},
+                },
+                payload["mappings"][1],
+            ]
+        },
+    ):
+        with pytest.raises(PersonalCorrectionConflictError):
+            save(store, {**payload, **changes})
+    assert store.approval_detail(payload["approval_id"]) == saved
+    assert save(store, payload) == saved
+
+
+def test_absent_optional_values_have_one_canonical_receipt(initialized_settings):
+    store = PersonalCorrectionStore(ApplicationDatabase(Path(initialized_settings.database_path)))
+    payload = approval(
+        store.application_instance_id,
+        applicability_context="  ",
+        observed_sentence="",
+        intended_sentence=None,
+    )
+    saved = save(store, payload)
+    assert (
+        save(store, {**payload, "applicability_context": None, "observed_sentence": None}) == saved
+    )
+    with pytest.raises(PersonalCorrectionConflictError):
+        save(store, {**payload, "intended_sentence": "  "})
+
+
+def test_concurrent_changed_payload_has_one_winner_and_one_immutable_receipt(initialized_settings):
+    client, payload = client_and_payload(initialized_settings)
+    changed = {**payload, "applicability_context": "Different restriction"}
+    barrier = Barrier(2)
+
+    def post(request):
+        barrier.wait(timeout=10)
+        return client.post("/api/personal-corrections/episodes", json=request)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(post, (payload, changed)))
+    assert sorted(r.status_code for r in responses) == [201, 409]
+    winner = next(r.json() for r in responses if r.status_code == 201)
+    assert (
+        client.get(f"/api/personal-corrections/episodes/{payload['approval_id']}").json() == winner
+    )
+    assert all(
+        value == 1 for value in row_counts(Path(initialized_settings.database_path)).values()
+    )
+
+
+def test_approval_lookup_is_owner_scoped_and_absence_is_not_no_save(initialized_settings):
+    client, payload = client_and_payload(initialized_settings)
+    assert client.post("/api/personal-corrections/episodes", json=payload).status_code == 201
+    # Adversarial fixture: bypass schema ownership/immutability, not application behavior.
+    with sqlite3.connect(initialized_settings.database_path) as db:
+        db.execute("PRAGMA ignore_check_constraints=ON")
+        for (name,) in db.execute("SELECT name FROM sqlite_master WHERE type='trigger'").fetchall():
+            db.execute(f'DROP TRIGGER "{name}"')
+        for table in APPROVAL_TABLES:
+            db.execute(f"UPDATE {table} SET owner_id='foreign'")
+    for identifier in (payload["approval_id"], str(uuid4()), "private-invalid-id"):
+        response = client.get(f"/api/personal-corrections/episodes/{identifier}")
+        assert response.status_code == 404
+        assert response.headers["cache-control"] == "no-store"
+        assert "does not prove that no save occurred" in response.text
+        assert "umber" not in response.text
+        assert identifier not in response.text
+    assert all(
+        value == 1 for value in row_counts(Path(initialized_settings.database_path)).values()
+    )
+    # A foreign UUID cannot resolve a local retry or prevent a new owned save.
+    saved = client.post("/api/personal-corrections/episodes", json=payload)
+    assert saved.status_code == 201
+    assert (
+        client.get(f"/api/personal-corrections/episodes/{payload['approval_id']}").json()
+        == saved.json()
+    )
+    with sqlite3.connect(initialized_settings.database_path) as db:
+        assert db.execute(
+            "SELECT owner_id FROM personal_correction_episodes ORDER BY owner_id"
+        ).fetchall() == [("foreign",), ("local",)]
+
+
+def test_approval_read_failure_is_private_safe_and_keeps_outcome_unknown(
+    initialized_settings, monkeypatch
+):
+    client, payload = client_and_payload(initialized_settings)
+
+    def fail(*args, **kwargs):
+        raise OperationalError("private database failure", {}, None)
+
+    monkeypatch.setattr(PersonalCorrectionStore, "approval_detail", fail)
+    response = client.get(f"/api/personal-corrections/episodes/{payload['approval_id']}")
+    assert response.status_code == 503
+    assert response.headers["cache-control"] == "no-store"
+    assert "outcome is unknown" in response.text
+    assert "private database" not in response.text
