@@ -428,10 +428,9 @@ Keep the existing persistence subsystem and episode/event relationships:
 - Retain alias rows needed for existing references, without a second independent
   authorization lifecycle. A new entry has one corresponding before-phrase alias.
 
-Migration splits legacy multi-alias entries into independently controlled
-mappings. Preserve alias IDs, episode/event associations, exact text and
-inherited enablement; reassign entry references coherently. An entry without an
-alias remains explicitly non-reusable. Migration must not invent a trigger.
+The approved [#204 migration exception](https://github.com/dmclark/sayloom/issues/204)
+replaces legacy splitting and evidence reassignment with refusal when any
+correction content exists. It does not invent triggers or convert legacy records.
 
 ### Source-specific bindings and API
 
@@ -607,16 +606,19 @@ increment promises neither deletion nor indefinite receipt retention.
 ### Migration and rollback
 
 Add a forward Alembic migration after verified revision
-`0006_confirmed_correction_batches`. Preserve correction content, provenance,
-enablement and historical links. Split legacy multi-alias entries without losing
-or duplicating evidence. Introduce operation and complete mapping-identity
-constraints, immutable v2 approval fields and authorization generation. Preserve
-owner-scoped foreign keys and cascades; create no profile or correction seeds.
+`0006_confirmed_correction_batches`. Under the approved #204 exception, check
+entries, aliases, episodes, episode mappings and events before modifying schema
+or data. Any populated guarded table causes a content-free refusal requiring
+separately authorized correction-data handling. Preserve the schema revision,
+all correction data and unrelated configuration; do not split, convert, clear
+or reassign legacy evidence.
 
-Do not derive historic spans or restrictions that were never recorded. Legacy
-records remain explicitly legacy where metadata is unavailable. Unexpected
-collisions or inconsistent references stop migration with a content-free
-diagnostic. Do not silently merge, delete or broaden authorization.
+For an eligible empty store, introduce operation and complete mapping-identity
+constraints, immutable bounded v2 approval fields, source-specific binding
+metadata and authorization generation. Preserve owner-scoped foreign keys and
+cascades, prompts, targets and settings; create no profile, correction or seed.
+A content-free profile alone is eligible: preserve its enablement and initialize
+generation to zero, consistent with absent-profile and first-save generation.
 
 Normal startup reports schema readiness only; it never migrates or seeds.
 Downgrade refuses when the old schema cannot represent stored mappings
@@ -651,8 +653,10 @@ Later implementation must verify:
   copying and delivery save nothing; saving changes no output.
 - **Compatibility:** Prepared review works through v2; retired endpoints
   cannot bypass approval or destroy evidence.
-- **Migration:** populated multi-alias state preserves text, authorization and
-  relationships; incompatible downgrade fails; startup never migrates.
+- **Migration:** absent and content-free disabled/enabled profiles upgrade without
+  seeds or unrelated configuration changes; each populated guarded table causes
+  refusal with schema revision and all data unchanged. Incompatible downgrade
+  fails; startup never migrates, clears or seeds. Use synthetic isolated stores only.
 
 Use isolated synthetic data through store, HTTP and desktop-browser paths.
 Inspect affected review and recovery states. These are engineering checks, not
@@ -1364,9 +1368,10 @@ post-creation synchronization; parallel states may diverge.
 ## Database migration and rollback
 
 The [approved first-increment migration design](#migration-and-rollback)
-starts after `0006_confirmed_correction_batches`, preserves legacy evidence and
-refuses lossy downgrade. The historical plan below is not its migration baseline
-or an instruction to create already-existing tables.
+starts after `0006_confirmed_correction_batches` and refuses populated-store
+upgrade rather than converting legacy evidence under the approved #204 exception.
+It refuses lossy downgrade. The historical plan below is not its migration
+baseline or an instruction to create already-existing tables.
 
 **Earlier migration plan, not current execution instructions:** the one-revision
 plan below predates the recorded foundation, approval, and manual-confirmation

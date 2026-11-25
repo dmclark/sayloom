@@ -21,6 +21,7 @@ from local_text.cleanup import (
     SequentialCleanupProvider,
 )
 from local_text.config import Profile, Settings, load_settings
+from local_text.database import SCHEMA_REVISION
 from local_text.prompts import effective_system_prompt
 
 
@@ -38,8 +39,8 @@ def test_health_reports_development_profile(initialized_settings: Settings) -> N
         "development_state": None,
         "database": {
             "state": "current",
-            "current_revision": "0006_confirmed_correction_batches",
-            "expected_revision": "0006_confirmed_correction_batches",
+            "current_revision": SCHEMA_REVISION,
+            "expected_revision": SCHEMA_REVISION,
         },
         "configuration_error": None,
     }
@@ -78,7 +79,7 @@ def test_health_reports_schema_mismatch(tmp_path: Path) -> None:
     assert response.json()["database"] == {
         "state": "mismatch",
         "current_revision": "obsolete_revision",
-        "expected_revision": "0006_confirmed_correction_batches",
+        "expected_revision": SCHEMA_REVISION,
     }
 
 

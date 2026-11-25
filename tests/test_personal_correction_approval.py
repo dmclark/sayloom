@@ -184,18 +184,28 @@ def test_manual_batch_is_atomic_idempotent_and_honest_with_preparation_off(initi
 
 
 def test_batch_migration_preserves_existing_episode_and_guards_downgrade(initialized_settings):
+    database = ApplicationDatabase(Path(initialized_settings.database_path))
+    config = _alembic_config(database.url)
     client = TestClient(create_app(initialized_settings))
     prompt_id = client.get("/api/config").json()["active_prompt_version_id"]
     request = approval_request(prompt_id)
     saved = client.post("/api/personal-corrections/episodes", json=request).json()
-    database = ApplicationDatabase(Path(initialized_settings.database_path))
-    config = _alembic_config(database.url)
+    # Keep this historical migration test at 0006: the new head deliberately
+    # refuses populated upgrades. Capture the full receipt before the round trip.
+    command.downgrade(config, "0006_confirmed_correction_batches")
+    with sqlite3.connect(database.path) as connection:
+        before = connection.execute("SELECT * FROM personal_correction_episodes").fetchall()
     counts = row_counts(database.path)
     command.downgrade(config, "0005_personal_correction_approval")
-    command.upgrade(config, "head")
+    command.upgrade(config, "0006_confirmed_correction_batches")
     assert row_counts(database.path) == counts
-    assert client.post("/api/personal-corrections/episodes", json=request).json() == saved
     with sqlite3.connect(database.path) as connection:
+        assert connection.execute(
+            "SELECT approval_id FROM personal_correction_episodes"
+        ).fetchone() == (saved["approval_id"],)
+        assert connection.execute(
+            "SELECT * FROM personal_correction_episodes"
+        ).fetchall() == before
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
         with pytest.raises(sqlite3.IntegrityError):
             connection.execute(
@@ -203,13 +213,14 @@ def test_batch_migration_preserves_existing_episode_and_guards_downgrade(initial
             )
         with pytest.raises(sqlite3.IntegrityError):
             connection.execute("UPDATE personal_correction_episode_mappings SET ordinal = 0")
-    request["approval_id"] = str(uuid4())
-    request["source_mode"] = "user_confirmed"
-    request["prompt_version_id"] = None
-    assert client.post("/api/personal-corrections/episodes", json=request).status_code == 201
+    with sqlite3.connect(database.path) as connection:
+        connection.execute(
+            "UPDATE personal_correction_episodes SET source_mode = 'user_confirmed', "
+            "prompt_version_id = NULL"
+        )
     with pytest.raises(RuntimeError, match="cannot downgrade"):
         command.downgrade(config, "0005_personal_correction_approval")
-    assert database.schema_status().ready
+    assert database.schema_status().current_revision == "0006_confirmed_correction_batches"
 
 
 def test_approval_rejects_stale_prompt_invalid_contract_and_private_values_without_writes(
@@ -280,7 +291,8 @@ def test_database_rejects_invalid_approval_shapes_and_control_characters(
     with sqlite3.connect(path) as connection:
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute(
-            "INSERT INTO personal_correction_profiles VALUES "
+            "INSERT INTO personal_correction_profiles "
+            "(owner_id, enabled, created_at, updated_at) VALUES "
             "('local', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
         )
         connection.execute(
