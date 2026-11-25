@@ -712,6 +712,34 @@ def create_app(
             "applicability_context": None,
         }
 
+    @application.get("/api/personal-corrections/episodes/{approval_id}")
+    def personal_correction_approval_detail(
+        approval_id: str, response: Response
+    ) -> dict[str, object]:
+        require_configuration(require_prompt=False)
+        response.headers["Cache-Control"] = "no-store"
+        try:
+            return personal_corrections.approval_detail(approval_id)
+        except PersonalCorrectionNotFoundError as exc:
+            raise HTTPException(
+                status_code=404,
+                headers={"Cache-Control": "no-store"},
+                detail={
+                    "code": "personal_correction_approval_not_available",
+                    "message": "This approval is not available in the current database. "
+                    "This does not prove that no save occurred.",
+                },
+            ) from exc
+        except SQLAlchemyError as exc:
+            raise HTTPException(
+                status_code=503,
+                headers={"Cache-Control": "no-store"},
+                detail={
+                    "code": "personal_correction_approval_unavailable",
+                    "message": "The approval could not be read. Its save outcome is unknown.",
+                },
+            ) from exc
+
     @application.post("/api/personal-corrections/episodes")
     def approve_personal_correction(
         request: ReviewedApproval | PersonalCorrectionApprovalRequest, response: Response
