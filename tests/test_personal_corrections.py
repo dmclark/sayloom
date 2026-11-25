@@ -16,6 +16,7 @@ from local_text.app import create_app
 from local_text.config import Profile, Settings
 from local_text.database import ApplicationDatabase
 from local_text.personal_corrections import (
+    PersonalCorrectionConflictError,
     PersonalCorrectionNotFoundError,
     PersonalCorrectionRevisionConflictError,
     PersonalCorrectionStore,
@@ -29,6 +30,16 @@ def migrated_database(path: Path) -> ApplicationDatabase:
     database = ApplicationDatabase(path)
     command.upgrade(_alembic_config(database.url), "head")
     return database
+
+
+def legacy_profile(database: ApplicationDatabase) -> None:
+    """An eligible profile-only legacy fixture, not a new profile creation API."""
+    with sqlite3.connect(database.path) as connection:
+        connection.execute(
+            "INSERT INTO personal_correction_profiles "
+            "(owner_id, enabled, created_at, updated_at) "
+            "VALUES ('local', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        )
 
 
 def test_migration_creates_empty_owned_profile_schema_and_round_trips(tmp_path: Path) -> None:
@@ -194,7 +205,7 @@ def test_populated_migration_downgrade_requires_admin_acknowledgement_and_reupgr
     tmp_path: Path,
 ) -> None:
     database = migrated_database(tmp_path / "populated-downgrade.sqlite3")
-    PersonalCorrectionStore(database).set_profile_enabled(True)
+    legacy_profile(database)
     config = _alembic_config(database.url)
 
     with pytest.raises(RuntimeError, match="destructive.*acknowledgement"):
@@ -271,21 +282,24 @@ def test_startup_reports_predecessor_schema_without_migrating_or_seeding(tmp_pat
         ).fetchone() == (0,)
 
 
-def test_profile_exists_only_after_explicit_enablement_and_disable_preserves_it(
+def test_profile_toggle_cannot_create_absent_profile_and_disable_preserves_it(
     tmp_path: Path,
 ) -> None:
     database = migrated_database(tmp_path / "profile.sqlite3")
     store = PersonalCorrectionStore(database)
 
     assert store.read().enabled is False
-    assert store.set_profile_enabled(False).enabled is False
+    for enabled in (False, True):
+        with pytest.raises(PersonalCorrectionConflictError):
+            store.set_profile_enabled(enabled, expected_authorization_generation=0)
     with sqlite3.connect(database.path) as connection:
         assert connection.execute(
             "SELECT COUNT(*) FROM personal_correction_profiles"
         ).fetchone() == (0,)
 
-    assert store.set_profile_enabled(True).enabled is True
-    assert store.set_profile_enabled(False).enabled is False
+    legacy_profile(database)
+    assert store.set_profile_enabled(True, expected_authorization_generation=0).enabled is True
+    assert store.set_profile_enabled(False, expected_authorization_generation=1).enabled is False
     with sqlite3.connect(database.path) as connection:
         assert connection.execute(
             "SELECT owner_id, enabled FROM personal_correction_profiles"
@@ -297,7 +311,7 @@ def test_entries_are_owner_scoped_normalized_and_disclose_ambiguous_aliases(
 ) -> None:
     database = migrated_database(tmp_path / "entries.sqlite3")
     store = PersonalCorrectionStore(database)
-    store.set_profile_enabled(True)
+    legacy_profile(database)
 
     first = store.create_entry(
         intended_term="Project Atlas",
@@ -347,7 +361,7 @@ def test_entries_are_owner_scoped_normalized_and_disclose_ambiguous_aliases(
 
 def test_entry_edits_are_revision_checked_and_replace_aliases_atomically(tmp_path: Path) -> None:
     store = PersonalCorrectionStore(migrated_database(tmp_path / "revision.sqlite3"))
-    store.set_profile_enabled(True)
+    legacy_profile(store.database)
     created = store.create_entry(
         intended_term="Synthetic Name",
         aliases=("Sin thetic", "Synthetic name"),
@@ -382,7 +396,7 @@ def test_entry_edits_are_revision_checked_and_replace_aliases_atomically(tmp_pat
 def test_concurrent_entry_edits_atomically_reject_one_stale_revision(tmp_path: Path) -> None:
     database = migrated_database(tmp_path / "concurrent-revision.sqlite3")
     store = PersonalCorrectionStore(database)
-    store.set_profile_enabled(True)
+    legacy_profile(database)
     created = store.create_entry(
         intended_term="Original term",
         aliases=("Original alias",),
@@ -393,7 +407,7 @@ def test_concurrent_entry_edits_atomically_reject_one_stale_revision(tmp_path: P
     def synchronize_entry_updates(
         _connection, _cursor, statement: str, _parameters, _context, _executemany
     ) -> None:
-        if statement.lstrip().upper().startswith("UPDATE PERSONAL_CORRECTION_ENTRIES"):
+        if statement.lstrip().upper() == "BEGIN IMMEDIATE":
             writers_ready.wait(timeout=5)
 
     event.listen(database.engine, "before_cursor_execute", synchronize_entry_updates)
@@ -436,15 +450,20 @@ def test_local_api_manages_profile_entries_and_returns_stale_conflicts(
     empty = client.get("/api/personal-corrections")
     assert empty.status_code == 200
     assert empty.headers["cache-control"] == "no-store"
-    assert empty.json() == {"enabled": False, "entries": []}
+    assert empty.json().items() >= {
+        "enabled": False, "entries": [], "authorization_generation": 0
+    }.items()
     owner_attempt = client.put(
         "/api/personal-corrections/profile", json={"enabled": True, "owner_id": "foreign"}
     )
     assert owner_attempt.status_code == 422
     assert "foreign" not in owner_attempt.text
 
-    enabled = client.put("/api/personal-corrections/profile", json={"enabled": True})
-    assert enabled.json() == {"enabled": True, "entries": []}
+    legacy_profile(ApplicationDatabase(Path(initialized_settings.database_path)))
+    enabled = client.put("/api/personal-corrections/profile", json={
+        "enabled": True, "expected_authorization_generation": 0,
+    })
+    assert enabled.json() == {"enabled": True, "entries": [], "authorization_generation": 1}
     first = client.post(
         "/api/personal-corrections/entries",
         json={
@@ -486,7 +505,9 @@ def test_local_api_manages_profile_entries_and_returns_stale_conflicts(
     assert stale.json()["detail"]["code"] == "stale_personal_correction_revision"
     assert client.delete(f"/api/personal-corrections/entries/{entry_id}").status_code == 405
 
-    disabled = client.put("/api/personal-corrections/profile", json={"enabled": False})
+    disabled = client.put("/api/personal-corrections/profile", json={
+        "enabled": False, "expected_authorization_generation": 4,
+    })
     assert disabled.json()["enabled"] is False
     assert len(disabled.json()["entries"]) == 2
 
