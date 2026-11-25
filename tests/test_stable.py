@@ -635,7 +635,7 @@ def test_install_requires_explicit_initialization_and_never_starts_service(tmp_p
     assert not (checkout / ".venv").exists()
     with sqlite3.connect(tmp_path / "data.sqlite3") as connection:
         assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
-            "0006_confirmed_correction_batches",
+            "0007_personal_corrections_v2",
         )
         assert connection.execute("SELECT count(*) FROM active_prompt").fetchone() == (1,)
 
@@ -1298,7 +1298,7 @@ def test_development_activation_and_restart_preserve_coexisting_stable(
             backup_revisions.add(
                 connection.execute("SELECT version_num FROM alembic_version").fetchone()
             )
-    assert ("0006_confirmed_correction_batches",) in backup_revisions
+    assert ("0007_personal_corrections_v2",) in backup_revisions
     assert alias.resolve() == dev_checkout / "raycast/open-sayloom.sh"
     assert not (tmp_path / "irrelevant-command-path").exists()
 
@@ -1423,7 +1423,7 @@ def add_schema_release(upstream: Path, *, fail_live: bool = False) -> str:
     source = upstream / "src/local_text/database.py"
     source.write_text(
         source.read_text().replace(
-            'SCHEMA_REVISION = "0006_confirmed_correction_batches"',
+            'SCHEMA_REVISION = "0007_personal_corrections_v2"',
             'SCHEMA_REVISION = "0007_synthetic_release"',
         )
     )
@@ -1434,7 +1434,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "0007_synthetic_release"
-down_revision = "0006_confirmed_correction_batches"
+down_revision = "0007_personal_corrections_v2"
 
 
 def upgrade():
@@ -1472,11 +1472,14 @@ def test_update_migrates_data_and_explicit_recovery_restores_backup(
         )
         connection.execute("UPDATE targets SET enabled = 0 WHERE id = 'amp'")
         connection.execute(
-            "INSERT INTO personal_correction_profiles VALUES "
+            "INSERT INTO personal_correction_profiles "
+            "(owner_id, enabled, created_at, updated_at) VALUES "
             "('local', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
         )
         connection.execute(
-            "INSERT INTO personal_correction_entries VALUES "
+            "INSERT INTO personal_correction_entries "
+            "(id, owner_id, intended_term, intended_key, applicability_context, enabled, "
+            "revision, created_at, updated_at) VALUES "
             "('entry-9', 'local', 'Synthetic intended term', 'synthetic intended term', "
             "'Synthetic context', 1, 3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
         )
@@ -2002,7 +2005,8 @@ def test_populated_guard_refuses_without_mutation_and_clean_is_a_different_datab
     database = tmp_path / "data.sqlite3"
     with sqlite3.connect(database) as connection:
         connection.execute(
-            "INSERT INTO personal_correction_profiles VALUES "
+            "INSERT INTO personal_correction_profiles "
+            "(owner_id, enabled, created_at, updated_at) VALUES "
             "('local', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
         )
         connection.execute("INSERT INTO app_settings VALUES ('keep', '219', CURRENT_TIMESTAMP)")
@@ -2046,7 +2050,7 @@ def test_populated_guard_refuses_without_mutation_and_clean_is_a_different_datab
             "SELECT value_json FROM app_settings WHERE key = 'keep'"
         ).fetchone() == ("219",)
         assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
-            "0006_confirmed_correction_batches",
+            "0007_personal_corrections_v2",
         )
     with sqlite3.connect(fresh) as connection:
         assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
@@ -2415,7 +2419,8 @@ def test_bootstrap_offers_confirmed_clean_install_after_populated_refusal(
     database = tmp_path / "data.sqlite3"
     with sqlite3.connect(database) as connection:
         connection.execute(
-            "INSERT INTO personal_correction_profiles VALUES "
+            "INSERT INTO personal_correction_profiles "
+            "(owner_id, enabled, created_at, updated_at) VALUES "
             "('local', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
         )
         connection.execute("INSERT INTO app_settings VALUES ('keep', '218', CURRENT_TIMESTAMP)")

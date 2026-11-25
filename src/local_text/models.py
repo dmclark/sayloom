@@ -8,10 +8,12 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -124,10 +126,14 @@ class PersonalCorrectionProfile(Base):
     __table_args__ = (
         CheckConstraint("owner_id = 'local'", name="ck_pc_profiles_local_owner"),
         CheckConstraint("enabled IN (0, 1)", name="ck_pc_profiles_enabled"),
+        CheckConstraint("authorization_generation >= 0", name="ck_pc_profiles_generation"),
     )
 
     owner_id: Mapped[str] = mapped_column(String(20), primary_key=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    authorization_generation: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -163,7 +169,23 @@ class PersonalCorrectionEntry(Base):
         ),
         CheckConstraint("enabled IN (0, 1)", name="ck_pc_entries_enabled"),
         CheckConstraint("revision > 0", name="ck_pc_entries_revision"),
-        UniqueConstraint("owner_id", "intended_key", name="uq_pc_entries_owner_key"),
+        Index(
+            "uq_pc_entries_legacy_key",
+            "owner_id",
+            "intended_key",
+            unique=True,
+            sqlite_where=text("operation IS NULL"),
+        ),
+        Index(
+            "uq_pc_entries_mapping_identity",
+            "owner_id",
+            "operation",
+            "before_key",
+            "intended_key",
+            text("coalesce(applicability_context, '')"),
+            unique=True,
+            sqlite_where=text("operation IS NOT NULL"),
+        ),
         UniqueConstraint("id", "owner_id", name="uq_pc_entries_id_owner"),
     )
 
@@ -173,6 +195,9 @@ class PersonalCorrectionEntry(Base):
     )
     intended_term: Mapped[str] = mapped_column(Text, nullable=False)
     intended_key: Mapped[str] = mapped_column(Text, nullable=False)
+    operation: Mapped[str | None] = mapped_column(String(20))
+    reusable_before_text: Mapped[str | None] = mapped_column(Text)
+    before_key: Mapped[str | None] = mapped_column(Text)
     applicability_context: Mapped[str | None] = mapped_column(Text)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -200,9 +225,7 @@ class PersonalCorrectionAlias(Base):
             _reject_control_characters("alias_key"),
             name="ck_pc_aliases_alias_key_controls",
         ),
-        UniqueConstraint(
-            "owner_id", "entry_id", "alias_key", name="uq_pc_aliases_owner_entry_key"
-        ),
+        UniqueConstraint("owner_id", "entry_id", "alias_key", name="uq_pc_aliases_owner_entry_key"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -225,6 +248,18 @@ class PersonalCorrectionEpisode(Base):
     source_mode: Mapped[str] = mapped_column(String(20), nullable=False)
     prompt_version_id: Mapped[int | None] = mapped_column(Integer)
     correction_contract_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    review_id: Mapped[str | None] = mapped_column(Text)
+    source_kind: Mapped[str | None] = mapped_column(Text)
+    application_instance_id: Mapped[str | None] = mapped_column(Text)
+    authorization_generation: Mapped[int | None] = mapped_column(Integer)
+    passage_id: Mapped[str | None] = mapped_column(Text)
+    draft_revision: Mapped[int | None] = mapped_column(Integer)
+    selection_start: Mapped[int | None] = mapped_column(Integer)
+    selection_end: Mapped[int | None] = mapped_column(Integer)
+    prepared_id: Mapped[str | None] = mapped_column(Text)
+    prepared_generation: Mapped[int | None] = mapped_column(Integer)
+    confirmation_id: Mapped[str | None] = mapped_column(Text)
+    applicability_context: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
@@ -240,6 +275,12 @@ class PersonalCorrectionEpisodeMapping(Base):
     intended_text: Mapped[str] = mapped_column(Text, nullable=False)
     entry_id: Mapped[str] = mapped_column(String(36), nullable=False)
     alias_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    before_change_start: Mapped[int | None] = mapped_column(Integer)
+    before_change_end: Mapped[int | None] = mapped_column(Integer)
+    after_change_start: Mapped[int | None] = mapped_column(Integer)
+    after_change_end: Mapped[int | None] = mapped_column(Integer)
+    source_start: Mapped[int | None] = mapped_column(Integer)
+    source_end: Mapped[int | None] = mapped_column(Integer)
 
 
 class PersonalCorrectionEvent(Base):
