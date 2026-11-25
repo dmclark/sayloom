@@ -2,13 +2,16 @@
 
 import unicodedata
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from typing import Literal
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, select, update
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.exc import IntegrityError
 
+from local_text.cleanup import lexical_repairs
 from local_text.database import ApplicationDatabase
 from local_text.models import (
     PersonalCorrectionAlias,
@@ -39,6 +42,137 @@ class PersonalCorrectionConflictError(PersonalCorrectionError):
     pass
 
 
+class ApprovalSpan(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    start: int = Field(ge=0, le=200)
+    end: int = Field(ge=0, le=200)
+
+
+class ReviewedReplacement(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    operation: Literal["replacement"]
+    reusable_before_text: str
+    reusable_intended_text: str
+    before_change_span: ApprovalSpan
+    after_change_span: ApprovalSpan
+    source_start: int | None = Field(default=None, ge=0, le=100_000)
+    source_end: int | None = Field(default=None, ge=0, le=100_000)
+
+    @model_validator(mode="after")
+    def validate_replacement(self):
+        before = _validated_text(self.reusable_before_text, maximum=200, field="before phrase")
+        after = _validated_text(self.reusable_intended_text, maximum=200, field="intended phrase")
+        repairs = lexical_repairs(before, after)
+        if self.operation != "replacement" or len(repairs) != 1:
+            raise ValueError("one replacement is required")
+        repair = repairs[0]
+        b, a = self.before_change_span, self.after_change_span
+        if (
+            repair.operation != "replacement"
+            or not 0 <= b.start < b.end <= len(before)
+            or not 0 <= a.start < a.end <= len(after)
+            or b.start > repair.original_span.start
+            or b.end < repair.original_span.end
+            or a.start > repair.prepared_span.start
+            or a.end < repair.prepared_span.end
+            or before[: b.start] != after[: a.start]
+            or before[b.end :] != after[a.end :]
+            or before[: b.start] + after[a.start : a.end] + before[b.end :] != after
+        ):
+            raise ValueError("invalid replacement spans")
+        if (self.source_start is None) != (self.source_end is None):
+            raise ValueError("incomplete source range")
+        if self.source_start is not None and self.source_end - self.source_start != len(before):
+            raise ValueError("source range must match before phrase length")
+        return self
+
+
+class ReviewedApproval(BaseModel):
+    """Bounded immutable v2 input, validated equally at HTTP and store boundaries."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    approval_id: str
+    review_id: str
+    correction_contract_version: Literal["personal-correction-v2"]
+    source_kind: Literal["original_selection", "manual_prepared"]
+    source_mode: Literal["user_confirmed"]
+    prompt_version_id: None = None
+    application_instance_id: str
+    expected_authorization_generation: int = Field(ge=0)
+    passage_id: str
+    draft_revision: int = Field(ge=0, le=2**63 - 1)
+    selection_start: int | None = Field(default=None, ge=0, le=100_000)
+    selection_end: int | None = Field(default=None, ge=0, le=100_000)
+    prepared_id: str | None = None
+    prepared_generation: int | None = Field(default=None, ge=0, le=2**63 - 1)
+    confirmation_id: str | None = None
+    mappings: tuple[ReviewedReplacement, ...] = Field(min_length=1, max_length=20, strict=False)
+    applicability_context: str | None = None
+    observed_sentence: str | None = None
+    intended_sentence: str | None = None
+
+    @model_validator(mode="after")
+    def validate_approval(self):
+        for value in (
+            self.approval_id,
+            self.review_id,
+            self.application_instance_id,
+            self.passage_id,
+            self.prepared_id,
+            self.confirmation_id,
+        ):
+            if value is not None and (len(value) != 36 or str(UUID(value)) != value):
+                raise ValueError("binding identifiers must be canonical UUIDs")
+        if self.source_kind == "original_selection":
+            if (
+                self.selection_start is None
+                or self.selection_end is None
+                or self.selection_end <= self.selection_start
+                or self.prepared_id is not None
+                or self.prepared_generation is not None
+                or self.confirmation_id is not None
+            ):
+                raise ValueError("invalid Original binding")
+            previous_end = 0
+            for mapping in self.mappings:
+                if (
+                    mapping.source_start is None
+                    or mapping.source_end is None
+                    or mapping.source_start < previous_end
+                    or mapping.source_start < self.selection_start
+                    or mapping.source_end > self.selection_end
+                ):
+                    raise ValueError("invalid ordered Original source ranges")
+                previous_end = mapping.source_end
+        elif self.source_kind == "manual_prepared":
+            if (
+                self.selection_start is not None
+                or self.selection_end is not None
+                or self.prepared_id is None
+                or self.prepared_generation is None
+                or self.confirmation_id is None
+                or any(m.source_start is not None for m in self.mappings)
+            ):
+                raise ValueError("invalid Prepared binding")
+        keys = [
+            (
+                normalize_correction_text(m.reusable_before_text),
+                normalize_correction_text(m.reusable_intended_text),
+            )
+            for m in self.mappings
+        ]
+        if len(keys) != len(set(keys)):
+            raise ValueError("equivalent selected mappings require review")
+        for field in ("applicability_context", "observed_sentence", "intended_sentence"):
+            value = getattr(self, field)
+            if value is not None:
+                _bounded_optional_text(value, field=field)
+        return self
+
+
 @dataclass(frozen=True)
 class PersonalCorrectionAliasRecord:
     id: str
@@ -64,6 +198,7 @@ class PersonalCorrectionEntryRecord:
 class PersonalCorrectionProfileRecord:
     enabled: bool
     entries: tuple[PersonalCorrectionEntryRecord, ...] = ()
+    authorization_generation: int = 0
 
 
 @dataclass(frozen=True)
@@ -102,9 +237,17 @@ def _validated_text(value: str, *, maximum: int, field: str) -> str:
         raise PersonalCorrectionError(f"{field} must not be blank")
     if len(value) > maximum:
         raise PersonalCorrectionError(f"{field} is too long")
-    if any(unicodedata.category(character) == "Cc" for character in value):
+    if any(unicodedata.category(character) in {"Cc", "Cs"} for character in value):
         raise PersonalCorrectionError(f"{field} contains a control character")
     return value
+
+
+def _bounded_optional_text(value: str | None, *, field: str) -> str | None:
+    if value is None:
+        return None
+    if len(value) > 500 or any(unicodedata.category(c) in {"Cc", "Cs"} for c in value):
+        raise PersonalCorrectionError(f"{field} is invalid")
+    return value if value.strip() else None
 
 
 def _validated_entry(
@@ -137,6 +280,7 @@ def _optional_text(value: str | None, *, maximum: int, field: str) -> str | None
 class PersonalCorrectionStore:
     def __init__(self, database: ApplicationDatabase) -> None:
         self.database = database
+        self.application_instance_id = str(uuid4())
 
     def read(self) -> PersonalCorrectionProfileRecord:
         with self.database.session_factory() as session:
@@ -151,25 +295,24 @@ class PersonalCorrectionStore:
             return PersonalCorrectionProfileRecord(
                 enabled=profile.enabled,
                 entries=self._entry_records(session, entries),
+                authorization_generation=profile.authorization_generation,
             )
 
-    def set_profile_enabled(self, enabled: bool) -> PersonalCorrectionProfileRecord:
+    def set_profile_enabled(
+        self, enabled: bool, *, expected_authorization_generation: int
+    ) -> PersonalCorrectionProfileRecord:
+        if type(enabled) is not bool or type(expected_authorization_generation) is not int:
+            raise PersonalCorrectionError("invalid profile preconditions")
         with self.database.session_factory.begin() as session:
+            session.execute(text("BEGIN IMMEDIATE"))
             profile = session.get(PersonalCorrectionProfile, LOCAL_OWNER_ID)
             if profile is None:
-                if not enabled:
-                    return PersonalCorrectionProfileRecord(enabled=False)
-                now = utc_now()
-                profile = PersonalCorrectionProfile(
-                    owner_id=LOCAL_OWNER_ID,
-                    enabled=True,
-                    created_at=now,
-                    updated_at=now,
-                )
-                session.add(profile)
-            else:
-                profile.enabled = enabled
-                profile.updated_at = utc_now()
+                raise PersonalCorrectionConflictError("profile does not exist")
+            if profile.authorization_generation != expected_authorization_generation:
+                raise PersonalCorrectionRevisionConflictError("profile changed")
+            profile.enabled = enabled
+            profile.authorization_generation += 1
+            profile.updated_at = utc_now()
             session.flush()
             entries = session.scalars(
                 select(PersonalCorrectionEntry)
@@ -179,7 +322,163 @@ class PersonalCorrectionStore:
             return PersonalCorrectionProfileRecord(
                 enabled=profile.enabled,
                 entries=self._entry_records(session, entries),
+                authorization_generation=profile.authorization_generation,
             )
+
+    def approve_reviewed_replacements(self, approval: ReviewedApproval) -> dict[str, object]:
+        # Revalidate even model_construct/unchecked models at the store boundary.
+        try:
+            approval = ReviewedApproval.model_validate(approval.model_dump())
+        except (ValidationError, PersonalCorrectionError) as exc:
+            raise PersonalCorrectionError("invalid reviewed approval") from exc
+        context = _bounded_optional_text(approval.applicability_context, field="restriction")
+        with self.database.session_factory.begin() as session:
+            # Reserve the SQLite writer before UUID, generation or identity reads.
+            session.execute(text("BEGIN IMMEDIATE"))
+            existing = session.scalar(
+                select(PersonalCorrectionEpisode.id).where(
+                    PersonalCorrectionEpisode.owner_id == LOCAL_OWNER_ID,
+                    PersonalCorrectionEpisode.approval_id == approval.approval_id,
+                )
+            )
+            if existing is not None:
+                # Exact committed retry/reconciliation is ticket 3. Never write twice.
+                raise PersonalCorrectionConflictError("approval already committed")
+            if approval.application_instance_id != self.application_instance_id:
+                raise PersonalCorrectionConflictError("application instance changed")
+            profile = session.get(PersonalCorrectionProfile, LOCAL_OWNER_ID)
+            generation = profile.authorization_generation if profile else 0
+            if generation != approval.expected_authorization_generation:
+                raise PersonalCorrectionRevisionConflictError("authorization changed")
+            now = utc_now()
+            if profile is None:
+                profile = PersonalCorrectionProfile(
+                    owner_id=LOCAL_OWNER_ID,
+                    enabled=True,
+                    authorization_generation=0,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(profile)
+                session.flush()
+            fields = approval.model_dump(exclude={"mappings", "expected_authorization_generation"})
+            fields["applicability_context"] = context
+            for field in ("observed_sentence", "intended_sentence"):
+                # Only blank restrictions normalize to absence; approved sentence
+                # display wording remains exact (an empty field is omitted).
+                fields[field] = fields[field] or None
+            episode = PersonalCorrectionEpisode(
+                id=str(uuid4()),
+                owner_id=LOCAL_OWNER_ID,
+                created_at=now,
+                authorization_generation=generation,
+                **fields,
+            )
+            session.add(episode)
+            session.flush()
+            entries = []
+            saved_mappings = []
+            for ordinal, mapping in enumerate(approval.mappings, start=1):
+                before, intended = mapping.reusable_before_text, mapping.reusable_intended_text
+                before_key, intended_key = map(normalize_correction_text, (before, intended))
+                entry = session.scalar(
+                    select(PersonalCorrectionEntry).where(
+                        PersonalCorrectionEntry.owner_id == LOCAL_OWNER_ID,
+                        PersonalCorrectionEntry.operation == "replacement",
+                        PersonalCorrectionEntry.before_key == before_key,
+                        PersonalCorrectionEntry.intended_key == intended_key,
+                        PersonalCorrectionEntry.applicability_context == context,
+                    )
+                )
+                if entry is None:
+                    entry = PersonalCorrectionEntry(
+                        id=str(uuid4()),
+                        owner_id=LOCAL_OWNER_ID,
+                        operation="replacement",
+                        reusable_before_text=before,
+                        before_key=before_key,
+                        intended_term=intended,
+                        intended_key=intended_key,
+                        applicability_context=context,
+                        enabled=True,
+                        revision=1,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                    session.add(entry)
+                    session.flush()
+                    alias = PersonalCorrectionAlias(
+                        id=str(uuid4()),
+                        owner_id=LOCAL_OWNER_ID,
+                        entry_id=entry.id,
+                        observed_alias=before,
+                        alias_key=before_key,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                    session.add(alias)
+                    session.flush()
+                else:
+                    alias = session.scalar(
+                        select(PersonalCorrectionAlias).where(
+                            PersonalCorrectionAlias.owner_id == LOCAL_OWNER_ID,
+                            PersonalCorrectionAlias.entry_id == entry.id,
+                            PersonalCorrectionAlias.alias_key == before_key,
+                        )
+                    )
+                    if alias is None:
+                        raise PersonalCorrectionConflictError("mapping alias changed")
+                session.add(
+                    PersonalCorrectionEpisodeMapping(
+                        id=str(uuid4()),
+                        owner_id=LOCAL_OWNER_ID,
+                        episode_id=episode.id,
+                        ordinal=ordinal,
+                        operation="replacement",
+                        observed_text=before,
+                        intended_text=intended,
+                        entry_id=entry.id,
+                        alias_id=alias.id,
+                        before_change_start=mapping.before_change_span.start,
+                        before_change_end=mapping.before_change_span.end,
+                        after_change_start=mapping.after_change_span.start,
+                        after_change_end=mapping.after_change_span.end,
+                        source_start=mapping.source_start,
+                        source_end=mapping.source_end,
+                    )
+                )
+                session.add(
+                    PersonalCorrectionEvent(
+                        owner_id=LOCAL_OWNER_ID,
+                        entry_id=entry.id,
+                        alias_id=alias.id,
+                        episode_id=episode.id,
+                        use_id=approval.approval_id,
+                        event_type="alias_observed",
+                        occurred_at=now,
+                    )
+                )
+                entries.append(entry)
+                saved_mappings.append(
+                    {
+                        **mapping.model_dump(),
+                        "ordinal": ordinal,
+                        "entry_id": entry.id,
+                        "alias_id": alias.id,
+                    }
+                )
+            session.flush()
+            return {
+                "approval": {
+                    **fields,
+                    "expected_authorization_generation": generation,
+                    "id": episode.id,
+                    "created_at": now,
+                    "mappings": saved_mappings,
+                },
+                "profile": {"enabled": profile.enabled, "authorization_generation": generation},
+                "corrections": [asdict(record) for record in self._entry_records(session, entries)],
+            }
 
     def create_entry(
         self,
@@ -205,8 +504,11 @@ class PersonalCorrectionStore:
         )
         try:
             with self.database.session_factory.begin() as session:
-                if session.get(PersonalCorrectionProfile, LOCAL_OWNER_ID) is None:
+                session.execute(text("BEGIN IMMEDIATE"))
+                profile = session.get(PersonalCorrectionProfile, LOCAL_OWNER_ID)
+                if profile is None:
                     raise PersonalCorrectionError("Personal corrections must be enabled first")
+                profile.authorization_generation += 1
                 session.add(entry)
                 session.flush()
                 for alias, alias_key in validated_aliases:
@@ -276,6 +578,7 @@ class PersonalCorrectionStore:
             raise PersonalCorrectionError("correction contract version is invalid")
 
         with self.database.session_factory.begin() as session:
+            session.execute(text("BEGIN IMMEDIATE"))
             existing_episode = session.scalar(
                 select(PersonalCorrectionEpisode).where(
                     PersonalCorrectionEpisode.owner_id == LOCAL_OWNER_ID,
@@ -340,6 +643,7 @@ class PersonalCorrectionStore:
                 entry = session.scalar(
                     select(PersonalCorrectionEntry).where(
                         PersonalCorrectionEntry.owner_id == LOCAL_OWNER_ID,
+                        PersonalCorrectionEntry.operation.is_(None),
                         PersonalCorrectionEntry.intended_key == intended_key,
                     )
                 )
@@ -462,6 +766,15 @@ class PersonalCorrectionStore:
         )
         try:
             with self.database.session_factory.begin() as session:
+                session.execute(text("BEGIN IMMEDIATE"))
+                existing = session.scalar(
+                    select(PersonalCorrectionEntry).where(
+                        PersonalCorrectionEntry.id == entry_id,
+                        PersonalCorrectionEntry.owner_id == LOCAL_OWNER_ID,
+                    )
+                )
+                if existing is not None and existing.operation is not None:
+                    raise PersonalCorrectionConflictError("reviewed mapping cannot use legacy edit")
                 now = utc_now()
                 result = session.execute(
                     update(PersonalCorrectionEntry)
@@ -489,6 +802,8 @@ class PersonalCorrectionStore:
                     if entry_exists is None:
                         raise PersonalCorrectionNotFoundError(entry_id)
                     raise PersonalCorrectionRevisionConflictError(entry_id)
+                profile = session.get(PersonalCorrectionProfile, LOCAL_OWNER_ID)
+                profile.authorization_generation += 1
                 session.execute(
                     delete(PersonalCorrectionAlias).where(
                         PersonalCorrectionAlias.entry_id == entry_id,

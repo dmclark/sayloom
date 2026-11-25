@@ -47,6 +47,7 @@ from local_text.personal_corrections import (
     PersonalCorrectionNotFoundError,
     PersonalCorrectionRevisionConflictError,
     PersonalCorrectionStore,
+    ReviewedApproval,
 )
 from local_text.prompt_store import PromptNotFoundError, PromptRecord, PromptStore, SeedStateError
 from local_text.state import OutgoingStateStore, OutgoingStateUpdate
@@ -285,6 +286,7 @@ class PersonalCorrectionProfileRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool
+    expected_authorization_generation: int = Field(ge=0, strict=True)
 
 
 class PersonalCorrectionEntryCreateRequest(BaseModel):
@@ -509,13 +511,13 @@ def create_app(
             "cleanup_configuration": cleanup_configuration.public(),
         }
 
-    def require_configuration() -> None:
+    def require_configuration(*, require_prompt: bool = True) -> None:
         if not schema.ready:
             raise HTTPException(
                 status_code=503,
                 detail=f"database schema is {schema.state}; run the controlled update workflow",
             )
-        if configuration_error is not None:
+        if require_prompt and configuration_error is not None:
             raise HTTPException(status_code=503, detail=configuration_error)
 
     @application.get("/", response_class=HTMLResponse)
@@ -605,19 +607,27 @@ def create_app(
 
     @application.get("/api/personal-corrections")
     def get_personal_corrections(response: Response) -> dict[str, object]:
-        require_configuration()
+        require_configuration(require_prompt=False)
         response.headers["Cache-Control"] = "no-store"
-        return personal_correction_response(personal_corrections.read())
+        return {
+            **personal_correction_response(personal_corrections.read()),
+            "application_instance_id": personal_corrections.application_instance_id,
+        }
 
     @application.put("/api/personal-corrections/profile")
     def update_personal_correction_profile(
         request: PersonalCorrectionProfileRequest, response: Response
     ) -> dict[str, object]:
-        require_configuration()
+        require_configuration(require_prompt=False)
         response.headers["Cache-Control"] = "no-store"
-        return personal_correction_response(
-            personal_corrections.set_profile_enabled(request.enabled)
-        )
+        try:
+            record = personal_corrections.set_profile_enabled(
+                request.enabled,
+                expected_authorization_generation=request.expected_authorization_generation,
+            )
+        except PersonalCorrectionError as exc:
+            personal_correction_failure(exc)
+        return personal_correction_response(record)
 
     @application.post(
         "/api/personal-corrections/entries", status_code=status.HTTP_201_CREATED
@@ -704,10 +714,27 @@ def create_app(
 
     @application.post("/api/personal-corrections/episodes")
     def approve_personal_correction(
-        request: PersonalCorrectionApprovalRequest, response: Response
+        request: ReviewedApproval | PersonalCorrectionApprovalRequest, response: Response
     ) -> dict[str, object]:
-        require_configuration()
+        require_configuration(require_prompt=not isinstance(request, ReviewedApproval))
         response.headers["Cache-Control"] = "no-store"
+        if isinstance(request, ReviewedApproval):
+            try:
+                result = personal_corrections.approve_reviewed_replacements(request)
+            except PersonalCorrectionError as exc:
+                personal_correction_failure(exc)
+            except SQLAlchemyError as exc:
+                raise HTTPException(
+                    status_code=503,
+                    headers={"Cache-Control": "no-store"},
+                    detail={
+                        "code": "personal_correction_save_unavailable",
+                        "message": "The Personal Correction could not be saved.",
+                        "retry_action": "Retry while this review is current.",
+                    },
+                ) from exc
+            response.status_code = status.HTTP_201_CREATED
+            return result
         try:
             active_prompt_version_id = prompts.active().id
         except SeedStateError as exc:
