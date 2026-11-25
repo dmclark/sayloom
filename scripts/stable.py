@@ -993,7 +993,7 @@ def linux_ci(upstream: str, candidate: str) -> dict:
             and workflow["id"] > 0
             and workflow["path"] == ".github/workflows/ci.yml"
             and workflow["url"] == f"{api}/actions/workflows/{workflow['id']}"
-            and workflow["html_url"] == f"{repository}/actions/workflows/ci.yml"
+            and workflow["html_url"] == f"{repository}/blob/main/.github/workflows/ci.yml"
             and workflow["state"] == "active"
         )
         query = urlencode({"head_sha": candidate, "branch": "main", "event": "push"})

@@ -116,7 +116,7 @@ def github_api(monkeypatch):
             elif path == "/actions/workflows/ci.yml":
                 value = {"id": 7, "path": ".github/workflows/ci.yml", "state": "active",
                          "url": api + "/actions/workflows/7",
-                         "html_url": web + "/actions/workflows/ci.yml",
+                         "html_url": web + "/blob/main/.github/workflows/ci.yml",
                          **state.get("workflow", {})}
             else:
                 value = run
@@ -784,6 +784,8 @@ def test_restart_and_confirmed_update_pin_the_previewed_commit(
                 {"run": {"head_branch": "feature"}},
                 {"run": {"event": "pull_request"}},
                 {"workflow": {"path": ".github/workflows/other.yml"}},
+                {"workflow": {"html_url": "https://github.com/fork/sayloom/blob/main/"
+                                          ".github/workflows/ci.yml"}},
                 {"missing_job": True},
                 {"missing_run": True},
                 {"rerun_pending": True},
